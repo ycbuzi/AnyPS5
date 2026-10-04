@@ -46,7 +46,7 @@ int main() {
     for (int i = 0; i < 4; ++i) result[i] = -1;
     Require(sceSigninDialogGetResult(result) == 0);
     Require(result[0] == kResultUserCanceled);
-    Require(result[1] == 0 && result[2] == 0 && result[3] == 0);
+    Require(result[1] == -1 && result[2] == -1 && result[3] == -1);
 
     Require(sceSigninDialogClose() == 0);
     Require(sceSigninDialogTerminate() == 0);
