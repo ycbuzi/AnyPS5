@@ -13,6 +13,7 @@ namespace {
 void Require(bool value) { if (!value) std::abort(); }
 
 constexpr std::int32_t kPortInPcm = 1;
+constexpr std::int32_t kPortInVoice = 2;
 
 }
 
@@ -29,4 +30,12 @@ int main() {
     std::uint32_t size = sizeof(data);
     Require(sceVoiceWriteToIPort(port, data, &size, 0) == 0);
     Require(size == sizeof(data));
+
+    VoicePortParam voiceParam{};
+    voiceParam.port_type = kPortInVoice;
+    voiceParam.voice.bitrate = 16000;
+    std::uint32_t voicePort = 0;
+    Require(sceVoiceCreatePort(&voicePort, &voiceParam) == 0);
+    std::uint32_t voiceSize = sizeof(data);
+    Require(sceVoiceWriteToIPort(voicePort, data, &voiceSize, 0) == 0);
 }
