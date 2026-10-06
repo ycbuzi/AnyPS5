@@ -3,7 +3,6 @@
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 
-// No touch input is emulated: recognizers exist but never report events.
 static constexpr int32_t GESTURE_HANDLE = 1;
 static constexpr int SCE_SYSTEM_GESTURE_ERROR_INVALID_ARGUMENT = static_cast<int>(0x80D10002);
 static constexpr int SCE_SYSTEM_GESTURE_ERROR_INVALID_HANDLE = static_cast<int>(0x80D10003);
