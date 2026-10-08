@@ -131,6 +131,12 @@ int main() {
             Require(reinterpret_cast<std::uintptr_t>(netmask) % 8 == 0);
             Require((address[0] == 16 && address[1] == 2) || (address[0] == 28 && address[1] == 28));
             Require(netmask[0] == address[0] && netmask[1] == address[1]);
+            Require(address[2] == 0 && address[3] == 0 && netmask[2] == 0 && netmask[3] == 0);
+            if (address[1] == 2) {
+                for (std::size_t index = 8; index < 16; ++index) Require(address[index] == 0 && netmask[index] == 0);
+            } else {
+                for (std::size_t index = 4; index < 8; ++index) Require(address[index] == 0 && netmask[index] == 0);
+            }
             if (item->destination) {
                 const auto* destination = static_cast<const std::uint8_t*>(item->destination);
                 Require(reinterpret_cast<std::uintptr_t>(destination) % 8 == 0);

@@ -89,6 +89,13 @@ std::size_t Aligned(std::size_t size) {
     return (size + 7) & ~static_cast<std::size_t>(7);
 }
 
+std::vector<std::uint8_t> BroadcastAddress(const std::vector<std::uint8_t>& address, const std::vector<std::uint8_t>& netmask) {
+    std::vector<std::uint8_t> broadcast = address;
+    for (std::size_t index = 4; index < 8; ++index)
+        broadcast[index] = static_cast<std::uint8_t>(address[index] | static_cast<std::uint8_t>(~netmask[index]));
+    return broadcast;
+}
+
 #ifdef _WIN32
 std::vector<std::uint8_t> PrefixMask(int family, unsigned prefix) {
     const unsigned bits = family == AF_INET ? 32 : 128;
@@ -96,13 +103,6 @@ std::vector<std::uint8_t> PrefixMask(int family, unsigned prefix) {
     std::uint8_t mask[16] = {};
     for (unsigned bit = 0; bit < prefix; ++bit) mask[bit / 8] |= static_cast<std::uint8_t>(0x80 >> (bit % 8));
     return family == AF_INET ? GuestIpv4(mask) : GuestIpv6(mask, 0);
-}
-
-std::vector<std::uint8_t> BroadcastAddress(const std::vector<std::uint8_t>& address, const std::vector<std::uint8_t>& netmask) {
-    std::vector<std::uint8_t> broadcast = address;
-    for (std::size_t index = 4; index < 8; ++index)
-        broadcast[index] = static_cast<std::uint8_t>(address[index] | static_cast<std::uint8_t>(~netmask[index]));
-    return broadcast;
 }
 
 std::uint32_t InterfaceFlags(const IP_ADAPTER_ADDRESSES* adapter) {
@@ -179,8 +179,14 @@ int HostEntries(std::vector<Entry>& entries) {
             if (!item->ifa_addr || (item->ifa_addr->sa_family != AF_INET && item->ifa_addr->sa_family != AF_INET6)) continue;
             if (!item->ifa_netmask) throw std::runtime_error(std::string("getifaddrs: host address without a netmask on ") + item->ifa_name);
             Entry entry{CheckedName(item->ifa_name), InterfaceFlags(item->ifa_flags), GuestAddress(item->ifa_addr), GuestAddress(item->ifa_netmask), {}};
-            const sockaddr* destination = item->ifa_flags & IFF_POINTOPOINT ? item->ifa_dstaddr : item->ifa_flags & IFF_BROADCAST ? item->ifa_broadaddr : nullptr;
-            if (destination && destination->sa_family == item->ifa_addr->sa_family) entry.destination = GuestAddress(destination);
+            const int family = item->ifa_addr->sa_family;
+            if (item->ifa_flags & IFF_POINTOPOINT) {
+                if (item->ifa_dstaddr && item->ifa_dstaddr->sa_family == family) entry.destination = GuestAddress(item->ifa_dstaddr);
+                else entry.flags &= ~guestPointToPoint;
+            } else if (family == AF_INET && (item->ifa_flags & IFF_BROADCAST)) {
+                entry.destination = item->ifa_broadaddr && item->ifa_broadaddr->sa_family == AF_INET
+                    ? GuestAddress(item->ifa_broadaddr) : BroadcastAddress(entry.address, entry.netmask);
+            }
             entries.push_back(std::move(entry));
         }
     } catch (...) {
