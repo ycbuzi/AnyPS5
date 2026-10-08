@@ -9,6 +9,7 @@ add_library(libkernel SHARED EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Terminal.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Open.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/OpenFileLimit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/File/src/RandomDevice.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/SharedMemory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/RandomDevice.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Stdio.cpp

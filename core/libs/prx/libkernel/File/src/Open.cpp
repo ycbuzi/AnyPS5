@@ -5,6 +5,7 @@
 #include "prx/libkernel/File/include/File.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
 #include "prx/libkernel/File/include/FileLock.hpp"
+#include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/Socket/include/SocketRuntime.hpp"
 #include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
