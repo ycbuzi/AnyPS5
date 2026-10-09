@@ -2,12 +2,19 @@
 #include <cstddef>
 #include <atomic>
 #include <cstdio>
+#include <limits>
+#include <mutex>
+#include <vector>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libkernel/KernelErrors.hpp"
 
 // The handler is recorded but never invoked: host crashes are not turned into guest core dumps.
 static std::atomic<uint64_t> g_coredumpHandler{0};
 static std::atomic<uint64_t> g_coredumpContext{0};
+
+static std::mutex g_userDataLock;
+static std::vector<std::uint8_t> g_userData;
 
 extern "C" {
 
@@ -51,9 +58,19 @@ int APS5_VABI sceCoredumpSetUserDataType(void) {
     return 0;
 }
 
-int APS5_VABI sceCoredumpDebugTextOut(void) {
-    NotImplemented_nid_no_patch("dei8oUx6DbU");
+int APS5_VABI sceCoredumpDebugTextOut(const char* str, int len) {
+    if (str == nullptr || len <= 0) return 0;
+    std::fprintf(stderr, "[coredump] %.*s\n", len, str);
     return 0;
+}
+
+int APS5_VABI sceCoredumpWriteUserData(const void* data, std::size_t size) {
+    if (size == 0) return 0;
+    if (data == nullptr || size > static_cast<std::size_t>(std::numeric_limits<int>::max())) return SCE_KERNEL_ERROR_EINVAL;
+    const auto* bytes = static_cast<const std::uint8_t*>(data);
+    std::lock_guard lock(g_userDataLock);
+    g_userData.insert(g_userData.end(), bytes, bytes + size);
+    return static_cast<int>(size);
 }
 
 int APS5_VABI sceCoredumpGetStopInfoCpu(void) {
