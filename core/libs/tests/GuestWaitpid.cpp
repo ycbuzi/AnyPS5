@@ -16,15 +16,16 @@ static void RequireFailure(int pid, int options, int error) {
     Require(waitpid_nid_postfix(pid, &status, options) == -1);
     Require(*__error_nid_postfix() == error);
     Require(status == untouched);
+    *__error_nid_postfix() = 0;
+    Require(waitpid_nid_postfix(pid, nullptr, options) == -1);
+    Require(*__error_nid_postfix() == error);
 }
 int main() {
     const int self = getpid_nid_postfix();
-    for (int pid : {-1, 0, 1, self, self + 1, -self})
-        for (int options : {0, 1, 2, 4, 8, 16, 32, 0x3f, static_cast<int>(0x80000000u), static_cast<int>(0x8000003fu)})
+    for (int pid : {-1, 0, 1, self, self + 1, -self}) {
+        for (int options : {0, 1, 2, 3, 4, 8, 16, 32, 0x2c, 0x3f, static_cast<int>(0x80000000u), static_cast<int>(0x80000001u), static_cast<int>(0x8000003fu)})
             RequireFailure(pid, options, noChild);
-    for (int options : {0x40, 0x41, 0x100, 0x40000000, static_cast<int>(0xffffffffu)})
-        RequireFailure(-1, options, invalidArgument);
-    *__error_nid_postfix() = 0;
-    Require(waitpid_nid_postfix(-1, nullptr, 1) == -1);
-    Require(*__error_nid_postfix() == noChild);
+        for (int options : {0x40, 0x41, 0x80, 0x100, 0x40000000, static_cast<int>(0x80000040u), static_cast<int>(0xffffffffu)})
+            RequireFailure(pid, options, invalidArgument);
+    }
 }
