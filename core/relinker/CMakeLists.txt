@@ -239,6 +239,13 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_registry.py $<TARGET_FILE:relinker>)
         add_test(NAME guest_host_libc COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_host_libc.py $<TARGET_FILE:relinker>)
+        add_library(guest_module_args_host SHARED elfpatcher/tests/GuestModuleArgsHost.cpp)
+        target_include_directories(guest_module_args_host PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libs)
+        set_target_properties(guest_module_args_host PROPERTIES
+            PREFIX "" SUFFIX ".prx" WINDOWS_EXPORT_ALL_SYMBOLS ON)
+        add_test(NAME guest_module_args COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_module_args.py
+            $<TARGET_FILE:relinker> $<TARGET_FILE:guest_module_args_host>)
         add_test(NAME guest_absolute_symbols COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_absolute_symbols.py $<TARGET_FILE:relinker>)
         add_test(NAME windows_import_modules COMMAND ${Python3_EXECUTABLE}
