@@ -21,6 +21,7 @@ int APS5_VABI futimes_nid_postfix(int, const KernelTimeval*);
 int APS5_VABI socket_nid_postfix(int, int, int);
 int APS5_VABI sceKernelFsync(int);
 int APS5_VABI fdatasync_nid_postfix(int);
+int APS5_VABI sceKernelFdatasync(int);
 int APS5_VABI sceKernelWriteThrottlingStatus(std::uint64_t*);
 int APS5_VABI sceKernelFtruncate(int, long long);
 int APS5_VABI sceKernelTruncate_nid_postfix(const char*, long long);
@@ -139,6 +140,7 @@ int main() {
 #endif
     Require(descriptor >= 0 && sceKernelFsync(descriptor) == 0);
     Require(fdatasync_nid_postfix(descriptor) == 0);
+    Require(sceKernelFdatasync(descriptor) == 0);
     const auto ownerWrite = [&] {
         return (std::filesystem::status(sized).permissions() & std::filesystem::perms::owner_write) != std::filesystem::perms::none;
     };
@@ -162,6 +164,7 @@ int main() {
     Require(fchmod_nid_postfix(descriptor, 0600) == -1 && *__error_nid_postfix() == 9);
     Require(futimes_nid_postfix(descriptor, nullptr) == -1 && *__error_nid_postfix() == 9);
     Require(fdatasync_nid_postfix(descriptor) == -1 && *__error_nid_postfix() == 9);
+    Require(sceKernelFdatasync(descriptor) == -1);
 #endif
     const int socket = socket_nid_postfix(2, 2, 0);
     Require(socket >= 0);
