@@ -6,6 +6,8 @@
 #endif
 #include <vulkan/vulkan.h>
 #include <cstdint>
+#include <array>
+#include <optional>
 #include <span>
 
 namespace AgcDriver::Graphics {
@@ -28,9 +30,11 @@ struct GuestSamplerResource {
     bool compareEnable = false;
     VkCompareOp compareOp = VK_COMPARE_OP_NEVER;
     bool unnormalizedCoordinates = false;
+    bool nonSeamlessCube = false;
 };
 
 GuestSamplerResource DecodeSamplerResource(std::span<const std::uint32_t> words, bool unnormalizedProven = false, bool forceDegammaPaired = false);
+std::optional<std::array<std::uint32_t, 4>> SingleLevelSamplerWords(std::span<const std::uint32_t, 4> words, bool singleLevelImage, bool mipmappedImage);
 
 }
 
