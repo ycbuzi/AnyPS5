@@ -405,13 +405,16 @@ static void* StartNativeThread(void* opaque) {
             throw std::runtime_error("Cannot query guest thread stack");
         self->stackAddress = reinterpret_cast<void*>(high - reserve - self->stackSize);
         self->threadId = std::this_thread::get_id();
+        CurrentGuestState().current = self;
         args->initialized.set_value();
     } catch (...) {
         args->initialized.set_exception(std::current_exception());
         return nullptr;
     }
-    if (!args->start.get())
+    if (!args->start.get()) {
+        CurrentGuestState().current = nullptr;
         return nullptr;
+    }
     auto* guest = args->guest.release();
     args.reset();
     struct ThreadGuard {
