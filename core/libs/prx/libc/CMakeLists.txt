@@ -91,6 +91,13 @@ if(BUILD_TESTING)
     configure_windows_unwind(guest_math_exports_tests)
     add_test(NAME guest_math_exports COMMAND guest_math_exports_tests)
         set_tests_properties(guest_math_exports PROPERTIES ENVIRONMENT_MODIFICATION
+    add_test_executable(guest_hardware_concurrency_tests ${LIBS_INCLUDE_DIR}/tests/GuestHardwareConcurrency.cpp)
+    target_include_directories(guest_hardware_concurrency_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_hardware_concurrency_tests PRIVATE libc)
+    configure_windows_unwind(guest_hardware_concurrency_tests)
+    add_test(NAME guest_hardware_concurrency COMMAND guest_hardware_concurrency_tests)
+    set_tests_properties(guest_hardware_concurrency PROPERTIES TIMEOUT 30)
+        set_tests_properties(guest_hardware_concurrency PROPERTIES ENVIRONMENT_MODIFICATION
     add_test_executable(guest_time_conversion_tests ${LIBS_INCLUDE_DIR}/tests/GuestTimeConversion.cpp)
     target_include_directories(guest_time_conversion_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_time_conversion_tests PRIVATE libc)
