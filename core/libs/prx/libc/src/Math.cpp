@@ -99,6 +99,9 @@ double APS5_VABI fmod_nid_postfix(double x, double y) { return std::fmod(x, y); 
 float APS5_VABI roundf_nid_postfix(float x) { return std::round(x); }
 double APS5_VABI round_nid_postfix(double x) { return std::round(x); }
 double APS5_VABI trunc_nid_postfix(double x) { return std::trunc(x); }
+double APS5_VABI fabs_nid_postfix(double x) { return std::fabs(x); }
+double APS5_VABI sqrt_nid_postfix(double x) { return std::sqrt(x); }
+double APS5_VABI fma_nid_postfix(double x, double y, double z) { return std::fma(x, y, z); }
 float APS5_VABI cbrtf_nid_postfix(float x) { return std::cbrt(x); }
 float APS5_VABI remainderf_nid_postfix(float x, float y) { return std::remainder(x, y); }
 double APS5_VABI floor_nid_postfix(double x) { return std::floor(x); }
