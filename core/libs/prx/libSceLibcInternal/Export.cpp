@@ -4,6 +4,7 @@
 #include "prx/libc/include/HostThreadLocal.hpp"
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -103,6 +104,10 @@ void RegisterThreadExitHook() {
 extern "C" {
 
 int Need_sceLibcInternal_nid_postfix = 1;
+
+long long APS5_VABI atoll_nid_postfix(const char* string) {
+    return std::atoll(string);
+}
 
 void APS5_VABI __cxa_finalize_nid_postfix(void* dsoHandle) {
     CxaFinalize_nid_no_patch(dsoHandle);
