@@ -77,6 +77,7 @@ public:
     // Pending-label table lookup and open-batch overlap test for WAIT_REG_MEM (see Recorder).
     std::optional<Graphics::Recorder::LabelHit> PendingLabel(std::uint64_t address, std::size_t bytes, std::uint64_t afterStamp, Graphics::Recorder::LabelRefusal* refusal = nullptr) const;
     bool OpenWriteOverlaps(std::uint64_t address, std::size_t bytes) const;
+    bool RecordedWritesSettled(std::uint64_t address, std::size_t bytes) const;
     // Fills [address, address + bytes) of host-imported guest memory with a repeating 16-byte pattern,
     // recorded behind the open batch; false when the range is not imported (the caller stores it).
     // Recorded GPU stores over the range are ordered before the fill by its barrier; finished
@@ -158,6 +159,7 @@ public:
     void* Window() const;
     void Resize(std::uint32_t width, std::uint32_t height);
     bool Presentable() const;
+    bool DualSrcBlend() const;
     bool PrimitiveListRestart() const;
     bool SamplerFilterMinmax() const;
     bool ConservativeRasterization() const;
@@ -225,16 +227,6 @@ public:
     // variant (design_cpu_final M4): only when the resource cache served or took the object
     // (reusable, cacheable) and recipes are on (APS5_NO_DISPATCH_RECIPE=1 builds none); else null.
     void Dispatch(const ShaderRecompiler::RecompileResult& shader, std::uint32_t x, std::uint32_t y, std::uint32_t z, std::span<const Graphics::GuestMemorySnapshot> snapshots = {}, std::uint64_t programAddress = 0, std::shared_ptr<PreparedDispatch> prepared = nullptr, std::shared_ptr<const Recipe>* recipe = nullptr);
-    // A dispatch whose group counts are the three dwords at `arguments` in guest memory
-    // (DISPATCH_INDIRECT): the GPU reads them in place from the host import, ordered after everything
-    // recorded before, so the CPU never waits for the shader that wrote them. When the GPU could not
-    // see the current bytes the counts are read on the CPU instead (through the flush hook, as the
-    // driver resolved every indirect dispatch before) and the dispatch is recorded as a direct one:
-    // cpuReason 1 storage-image results were pending over them, 2 a recorded dispatch writes them
-    // through a copied buffer (its CPU write-back lands only when the batch is reaped) or a label
-    // over those dwords is pending, 3 the memory is not host-imported; 0 when recorded GPU-side. argumentReadMs is
-    // what that CPU read (its sync) took. The device limit on group counts is not checked GPU-side.
-    // Debug aid: APS5_NO_GPU_INDIRECT=1 (in the driver) keeps every indirect dispatch on the CPU path.
     struct IndirectOutcome {
         int cpuReason;
         double argumentReadMs;
