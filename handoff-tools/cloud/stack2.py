@@ -46,7 +46,10 @@ def dup_defs(path):
 def dup_tests_exports():
     tests, exports = collections.Counter(), collections.Counter()
     for f in git("ls-files", "*CMakeLists.txt").stdout.split():
-        for n in re.findall(r"add_test\(NAME\s+([A-Za-z0-9_${}]+)", (repo / f).read_text(errors="replace")): tests[(f, n)] += 1
+        text = (repo / f).read_text(errors="replace")
+        for n in re.findall(r"add_test\(NAME\s+([A-Za-z0-9_${}]+)", text): tests[(f, n)] += 1
+        # a target created twice (both sides of an add/add conflict kept) fails at configure time
+        for n in re.findall(r"add_(?:library|executable|test_executable)\(\s*([A-Za-z0-9_${}]+)", text): tests[(f, "target:" + n)] += 1
     for f in git("ls-files", "core/libs/prx/*.cpp").stdout.split():
         for n in re.findall(r'APS5_EXPORT[A-Z_]*\(\s*"([^"]+)"', (repo / f).read_text(errors="replace")): exports[n] += 1
     return {k for k, v in tests.items() if v > 1}, {k for k, v in exports.items() if v > 1}

@@ -1,0 +1,808 @@
+Test project /tmp/claude-0/-home-user-AnyPS5/273e79d8-d6e6-502a-8da0-bb5a906a0d40/scratchpad/build-wt/build
+        Start   1: pr_overlap_encoding
+        Start   2: pr_overlap_tools
+        Start   3: progress_report
+        Start   4: progress_encoding
+  1/398 Test   #2: pr_overlap_tools ...............................   Passed    0.15 sec
+        Start   5: import_audit
+  2/398 Test   #3: progress_report ................................   Passed    0.16 sec
+        Start   6: conventions_function_bodies
+  3/398 Test   #1: pr_overlap_encoding ............................   Passed    0.28 sec
+        Start   7: test_registration
+  4/398 Test   #7: test_registration ..............................   Passed    0.08 sec
+        Start   8: hardware_oracle
+  5/398 Test   #4: progress_encoding ..............................   Passed    0.38 sec
+        Start   9: pr_overlap_exports
+  6/398 Test   #6: conventions_function_bodies ....................   Passed    0.24 sec
+        Start  10: nid_database_cache
+  7/398 Test   #9: pr_overlap_exports .............................   Passed    0.07 sec
+        Start  11: nid_patcher_macho
+  8/398 Test  #11: nid_patcher_macho ..............................   Passed    0.07 sec
+        Start  12: patched_libraries
+  9/398 Test  #10: nid_database_cache .............................   Passed    0.13 sec
+        Start  13: guest_kernel_sys
+ 10/398 Test  #13: guest_kernel_sys ...............................   Passed    0.00 sec
+        Start  14: guest_offline_imports
+ 11/398 Test  #14: guest_offline_imports ..........................   Passed    0.00 sec
+        Start  15: savedata_memory_metadata
+ 12/398 Test  #12: patched_libraries ..............................   Passed    0.02 sec
+        Start  16: savedata_memory_growth
+ 13/398 Test  #15: savedata_memory_metadata .......................   Passed    0.01 sec
+        Start  17: savedata_memory_growth_read_failure
+ 14/398 Test  #17: savedata_memory_growth_read_failure ............***Skipped   0.06 sec
+        Start  18: host_thread_local
+ 15/398 Test  #18: host_thread_local ..............................   Passed    0.01 sec
+        Start  19: savedata_core_write_replacement
+ 16/398 Test  #19: savedata_core_write_replacement ................   Passed    0.04 sec
+        Start  20: savedata_native_write_replacement
+ 17/398 Test  #20: savedata_native_write_replacement ..............   Passed    0.04 sec
+        Start  21: savedata_replace_file_failure
+ 18/398 Test  #21: savedata_replace_file_failure ..................   Passed    0.00 sec
+        Start  22: guest_posix_random
+ 19/398 Test  #22: guest_posix_random .............................   Passed    0.01 sec
+        Start  23: guest_extended_math
+ 20/398 Test  #23: guest_extended_math ............................   Passed    0.01 sec
+        Start  24: guest_numeric_helpers
+ 21/398 Test  #24: guest_numeric_helpers ..........................   Passed    0.01 sec
+        Start  25: guest_rounding
+ 22/398 Test  #25: guest_rounding .................................   Passed    0.00 sec
+        Start  26: guest_math_exports
+ 23/398 Test  #26: guest_math_exports .............................   Passed    0.04 sec
+        Start  27: guest_hardware_concurrency
+ 24/398 Test  #27: guest_hardware_concurrency .....................   Passed    0.01 sec
+        Start  28: guest_memmem
+ 25/398 Test  #28: guest_memmem ...................................   Passed    0.01 sec
+        Start  29: guest_time_conversion
+ 26/398 Test  #29: guest_time_conversion ..........................   Passed    0.18 sec
+        Start  30: precise_wait
+ 27/398 Test  #30: precise_wait ...................................   Passed    0.01 sec
+        Start  31: guest_scan_count
+ 28/398 Test  #31: guest_scan_count ...............................   Passed    0.00 sec
+        Start  32: guest_access
+ 29/398 Test  #32: guest_access ...................................   Passed    0.01 sec
+        Start  33: file_position
+ 30/398 Test  #33: file_position ..................................   Passed    0.00 sec
+        Start  34: guest_wide_formatting
+ 31/398 Test  #34: guest_wide_formatting ..........................   Passed    0.00 sec
+        Start  35: guest_wide_strings
+ 32/398 Test  #35: guest_wide_strings .............................   Passed    0.00 sec
+        Start  36: guest_character
+ 33/398 Test  #36: guest_character ................................   Passed    0.00 sec
+        Start  37: guest_rand48
+ 34/398 Test  #37: guest_rand48 ...................................   Passed    0.00 sec
+        Start  38: guest_math
+ 35/398 Test  #38: guest_math .....................................   Passed    0.03 sec
+        Start  39: guest_float_math
+ 36/398 Test  #39: guest_float_math ...............................   Passed    0.00 sec
+        Start  40: guest_execute_once
+ 37/398 Test  #40: guest_execute_once .............................   Passed    0.01 sec
+        Start  41: guest_std_execute_once
+ 38/398 Test  #41: guest_std_execute_once .........................   Passed    0.01 sec
+        Start  42: guest_fiopen
+ 39/398 Test  #42: guest_fiopen ...................................   Passed    0.01 sec
+        Start  43: guest_working_directory
+ 40/398 Test  #43: guest_working_directory ........................   Passed    0.01 sec
+        Start  44: guest_path_case
+ 41/398 Test  #44: guest_path_case ................................   Passed    0.01 sec
+        Start  45: guest_directory
+ 42/398 Test  #45: guest_directory ................................   Passed    0.01 sec
+        Start  46: guest_environment
+ 43/398 Test  #46: guest_environment ..............................   Passed    0.01 sec
+        Start  47: guest_lifecycle
+ 44/398 Test  #47: guest_lifecycle ................................   Passed    0.01 sec
+        Start  48: guest_thread_callback_abi
+ 45/398 Test  #48: guest_thread_callback_abi ......................   Passed    0.00 sec
+        Start  49: guest_reallocalign
+ 46/398 Test   #8: hardware_oracle ................................   Passed    0.74 sec
+        Start  50: guest_standard_streams
+ 47/398 Test  #16: savedata_memory_growth .........................   Passed    0.56 sec
+        Start  51: file_streams
+ 48/398 Test  #49: guest_reallocalign .............................   Passed    0.01 sec
+        Start  52: guest_errors
+ 49/398 Test  #51: file_streams ...................................   Passed    0.00 sec
+        Start  53: guest_syslog
+ 50/398 Test  #52: guest_errors ...................................   Passed    0.00 sec
+        Start  54: guest_interfaces
+ 51/398 Test  #53: guest_syslog ...................................   Passed    0.00 sec
+        Start  55: mspace
+ 52/398 Test  #54: guest_interfaces ...............................   Passed    0.00 sec
+        Start  56: guest_formatting
+ 53/398 Test  #55: mspace .........................................   Passed    0.01 sec
+        Start  57: guest_new_handler
+ 54/398 Test  #57: guest_new_handler ..............................   Passed    0.00 sec
+        Start  58: guest_search
+ 55/398 Test  #58: guest_search ...................................   Passed    0.01 sec
+        Start  59: guest_demangle
+ 56/398 Test  #50: guest_standard_streams .........................   Passed    0.03 sec
+        Start  60: guest_strings
+ 57/398 Test  #59: guest_demangle .................................   Passed    0.01 sec
+        Start  61: guest_wcsrtombs
+ 58/398 Test  #60: guest_strings ..................................   Passed    0.00 sec
+        Start  62: guest_wcsrtombs_s
+ 59/398 Test  #61: guest_wcsrtombs ................................   Passed    0.00 sec
+        Start  63: exception_runtime
+ 60/398 Test  #62: guest_wcsrtombs_s ..............................   Passed    0.00 sec
+        Start  64: exception_personality
+ 61/398 Test  #64: exception_personality ..........................   Passed    0.00 sec
+        Start  65: guest_exit_order
+ 62/398 Test  #65: guest_exit_order ...............................   Passed    0.00 sec
+        Start  66: exception_c_cleanup
+ 63/398 Test  #56: guest_formatting ...............................   Passed    0.04 sec
+        Start  67: guest_image_anonymous
+ 64/398 Test  #63: exception_runtime ..............................   Passed    0.01 sec
+        Start  68: guest_collate
+ 65/398 Test  #66: exception_c_cleanup ............................   Passed    0.01 sec
+        Start  69: application_heap_replacement
+ 66/398 Test  #67: guest_image_anonymous ..........................   Passed    0.01 sec
+        Start  70: application_heap_invalid_metadata
+ 67/398 Test  #68: guest_collate ..................................   Passed    0.01 sec
+        Start  71: application_heap_default
+ 68/398 Test  #69: application_heap_replacement ...................   Passed    0.01 sec
+        Start  72: application_heap_exit_order
+ 69/398 Test  #70: application_heap_invalid_metadata ..............   Passed    0.01 sec
+        Start  73: application_heap_stats
+ 70/398 Test  #71: application_heap_default .......................   Passed    0.01 sec
+        Start  74: application_heap_stats_default
+ 71/398 Test  #72: application_heap_exit_order ....................   Passed    0.01 sec
+        Start  75: application_heap_stats_missing
+ 72/398 Test  #73: application_heap_stats .........................   Passed    0.01 sec
+        Start  76: cpu_topology
+ 73/398 Test  #74: application_heap_stats_default .................   Passed    0.01 sec
+        Start  77: guest_locale
+ 74/398 Test  #75: application_heap_stats_missing .................   Passed    0.01 sec
+        Start  78: guest_rune_locale
+ 75/398 Test  #76: cpu_topology ...................................   Passed    0.01 sec
+        Start  79: guest_bsd_strings
+ 76/398 Test  #78: guest_rune_locale ..............................   Passed    0.00 sec
+        Start  80: guest_react_native_vsh
+ 77/398 Test  #77: guest_locale ...................................   Passed    0.01 sec
+        Start  81: guest_shader_link
+ 78/398 Test  #79: guest_bsd_strings ..............................   Passed    0.01 sec
+        Start  82: texture_format_lookup
+ 79/398 Test  #80: guest_react_native_vsh .........................   Passed    0.01 sec
+        Start  83: linear_display_buffer
+ 80/398 Test  #81: guest_shader_link ..............................   Passed    0.01 sec
+        Start  84: guest_agc_driver_resources
+ 81/398 Test  #82: texture_format_lookup ..........................   Passed    0.01 sec
+        Start  85: guest_rendering_wait
+ 82/398 Test  #83: linear_display_buffer ..........................   Passed    0.01 sec
+        Start  86: shader_buffer_address
+ 83/398 Test  #84: guest_agc_driver_resources .....................   Passed    0.01 sec
+        Start  87: ray_tracing_miss
+ 84/398 Test  #86: shader_buffer_address ..........................   Passed    0.00 sec
+        Start  88: wave32_wide_subgroup
+ 85/398 Test  #85: guest_rendering_wait ...........................   Passed    0.01 sec
+        Start  89: vector_compare_i16_u16
+ 86/398 Test  #87: ray_tracing_miss ...............................   Passed    0.01 sec
+        Start  90: vector_compare_const
+ 87/398 Test  #89: vector_compare_i16_u16 .........................   Passed    0.00 sec
+        Start  91: vector_min_max_med16
+ 88/398 Test  #88: wave32_wide_subgroup ...........................   Passed    0.01 sec
+        Start  92: vector_mad_legacy
+ 89/398 Test  #90: vector_compare_const ...........................   Passed    0.01 sec
+        Start  93: vector_fused_multiply_add
+ 90/398 Test  #91: vector_min_max_med16 ...........................   Passed    0.00 sec
+        Start  94: vector_constant_factor_tininess
+ 91/398 Test  #92: vector_mad_legacy ..............................   Passed    0.01 sec
+        Start  95: scalar_saveexec
+ 92/398 Test  #93: vector_fused_multiply_add ......................   Passed    0.00 sec
+        Start  96: scalar_swappc
+ 93/398 Test  #94: vector_constant_factor_tininess ................   Passed    0.01 sec
+        Start  97: scalar_bitcount64
+ 94/398 Test  #95: scalar_saveexec ................................   Passed    0.01 sec
+        Start  98: bitfield_mask
+ 95/398 Test  #96: scalar_swappc ..................................   Passed    0.01 sec
+        Start  99: scalar_scratch_load
+ 96/398 Test  #97: scalar_bitcount64 ..............................   Passed    0.01 sec
+        Start 100: scalar_call
+ 97/398 Test  #99: scalar_scratch_load ............................   Passed    0.00 sec
+        Start 101: image_sample_gather
+ 98/398 Test #100: scalar_call ....................................   Passed    0.01 sec
+        Start 102: pixel_ancillary
+ 99/398 Test #101: image_sample_gather ............................   Passed    0.00 sec
+        Start 103: guest_indexed_draw
+100/398 Test #102: pixel_ancillary ................................   Passed    0.00 sec
+        Start 104: image_by
+101/398 Test #103: guest_indexed_draw .............................   Passed    0.00 sec
+        Start 105: image_pck_n
+102/398 Test #104: image_by .......................................   Passed    0.01 sec
+        Start 106: image_msaa_load
+103/398 Test #105: image_pck_n ....................................   Passed    0.00 sec
+        Start 107: guest_ajm
+104/398 Test #106: image_msaa_load ................................   Passed    0.00 sec
+        Start 108: guest_ajm_teardown
+105/398 Test #108: guest_ajm_teardown .............................   Passed    0.00 sec
+        Start 109: guest_ampr_markers
+106/398 Test #107: guest_ajm ......................................   Passed    0.01 sec
+        Start 110: guest_appcontent
+107/398 Test #109: guest_ampr_markers .............................   Passed    0.01 sec
+        Start 111: guest_audio3d_parameters
+108/398 Test #110: guest_appcontent ...............................   Passed    0.01 sec
+        Start 112: guest_audio3d_port
+109/398 Test #111: guest_audio3d_parameters .......................   Passed    0.00 sec
+        Start 113: guest_audio_in_capture
+110/398 Test #113: guest_audio_in_capture .........................   Passed    0.04 sec
+        Start 114: guest_audio_in_no_device
+111/398 Test  #98: bitfield_mask ..................................   Passed    0.13 sec
+        Start 115: audio_out2_pad_mix
+112/398 Test #115: audio_out2_pad_mix .............................   Passed    0.00 sec
+        Start 116: audio_out_mix_level_pad_spk
+113/398 Test #114: guest_audio_in_no_device .......................   Passed    0.08 sec
+        Start 117: audio_out_last_output_time
+114/398 Test #116: audio_out_mix_level_pad_spk ....................   Passed    0.21 sec
+        Start 118: audio_out2_latency
+115/398 Test #118: audio_out2_latency .............................   Passed    0.01 sec
+        Start 119: audio_out2_port_layouts
+116/398 Test #112: guest_audio3d_port .............................   Passed    0.52 sec
+        Start 120: audio_out2_port_buffers
+117/398 Test   #5: import_audit ...................................   Passed    1.81 sec
+        Start 121: audio_out2_timing
+118/398 Test #120: audio_out2_port_buffers ........................   Passed    0.66 sec
+        Start 122: guest_audio_propagation
+119/398 Test #122: guest_audio_propagation ........................   Passed    0.01 sec
+        Start 123: guest_audiodec
+120/398 Test #123: guest_audiodec .................................   Passed    0.02 sec
+        Start 124: guest_avplayer
+121/398 Test #121: audio_out2_timing ..............................   Passed    0.88 sec
+        Start 125: guest_bluetooth_hid
+122/398 Test #125: guest_bluetooth_hid ............................   Passed    0.00 sec
+        Start 126: guest_player_review_dialog
+123/398 Test #126: guest_player_review_dialog .....................   Passed    0.00 sec
+        Start 127: guest_ces
+124/398 Test #127: guest_ces ......................................   Passed    0.00 sec
+        Start 128: guest_content_export
+125/398 Test #128: guest_content_export ...........................   Passed    0.02 sec
+        Start 129: guest_content_search
+126/398 Test #129: guest_content_search ...........................   Passed    0.01 sec
+        Start 130: guest_error_dialog
+127/398 Test #130: guest_error_dialog .............................   Passed    0.00 sec
+        Start 131: fiber
+128/398 Test #131: fiber ..........................................   Passed    0.00 sec
+        Start 132: guest_font
+129/398 Test #132: guest_font .....................................   Passed    0.01 sec
+        Start 133: guest_system_font
+130/398 Test #133: guest_system_font ..............................   Passed    0.01 sec
+        Start 134: guest_font_writing_line
+131/398 Test #134: guest_font_writing_line ........................   Passed    0.01 sec
+        Start 135: guest_font_text
+132/398 Test #135: guest_font_text ................................   Passed    0.01 sec
+        Start 136: guest_gameupdate
+133/398 Test #136: guest_gameupdate ...............................   Passed    0.01 sec
+        Start 137: guest_hmd
+134/398 Test #137: guest_hmd ......................................   Passed    0.00 sec
+        Start 138: guest_hmd2
+135/398 Test #138: guest_hmd2 .....................................   Passed    0.00 sec
+        Start 139: guest_http
+136/398 Test #139: guest_http .....................................   Passed    0.01 sec
+        Start 140: guest_http_response_header
+137/398 Test #140: guest_http_response_header .....................   Passed    0.00 sec
+        Start 141: guest_http2
+138/398 Test #141: guest_http2 ....................................   Passed    0.01 sec
+        Start 142: guest_ime_parameters
+139/398 Test #142: guest_ime_parameters ...........................   Passed    0.00 sec
+        Start 143: guest_ime_keyboard
+140/398 Test #143: guest_ime_keyboard .............................   Passed    0.00 sec
+        Start 144: decoder_jpeg
+141/398 Test #144: decoder_jpeg ...................................   Passed    0.01 sec
+        Start 145: guest_jpeg_dec
+142/398 Test #145: guest_jpeg_dec .................................   Passed    0.01 sec
+        Start 146: guest_jpeg_enc
+143/398 Test #146: guest_jpeg_enc .................................   Passed    0.01 sec
+        Start 147: guest_json
+144/398 Test #147: guest_json .....................................   Passed    0.01 sec
+        Start 148: keyboard_input
+145/398 Test #148: keyboard_input .................................   Passed    0.01 sec
+        Start 149: guest_thread_atexit
+146/398 Test #149: guest_thread_atexit ............................   Passed    0.01 sec
+        Start 150: guest_force_tls_destructor
+147/398 Test #150: guest_force_tls_destructor .....................   Passed    0.01 sec
+        Start 151: guest_login_dialog
+148/398 Test #151: guest_login_dialog .............................   Passed    0.00 sec
+        Start 152: guest_mbus
+149/398 Test #152: guest_mbus .....................................   Passed    0.01 sec
+        Start 153: mouse_input
+150/398 Test #153: mouse_input ....................................   Passed    0.00 sec
+        Start 154: guest_msg_dialog_native
+151/398 Test #154: guest_msg_dialog_native ........................   Passed    0.00 sec
+        Start 155: guest_sce_net
+152/398 Test #155: guest_sce_net ..................................***Skipped   0.08 sec
+        Start 156: ngs2_core_render
+153/398 Test #156: ngs2_core_render ...............................   Passed    0.17 sec
+        Start 157: ngs2_core_geometry
+154/398 Test #157: ngs2_core_geometry .............................   Passed    0.00 sec
+        Start 158: ngs2_render
+155/398 Test #158: ngs2_render ....................................   Passed    0.18 sec
+        Start 159: ngs2_atrac9
+156/398 Test #159: ngs2_atrac9 ....................................   Passed    0.18 sec
+        Start 160: ngs2_filter
+157/398 Test #160: ngs2_filter ....................................   Passed    0.01 sec
+        Start 161: ngs2_custom
+158/398 Test #161: ngs2_custom ....................................   Passed    0.00 sec
+        Start 162: ngs2_parse
+159/398 Test #162: ngs2_parse .....................................   Passed    0.01 sec
+        Start 163: ngs2_stream
+160/398 Test #163: ngs2_stream ....................................   Passed    0.00 sec
+        Start 164: ngs2_userfx
+161/398 Test #164: ngs2_userfx ....................................   Passed    0.00 sec
+        Start 165: ngs2_geometry
+162/398 Test #165: ngs2_geometry ..................................   Passed    0.00 sec
+        Start 166: guest_np_auth
+163/398 Test #166: guest_np_auth ..................................   Passed    0.00 sec
+        Start 167: guest_np_commerce
+164/398 Test #167: guest_np_commerce ..............................   Passed    0.00 sec
+        Start 168: guest_np_reachability
+165/398 Test #168: guest_np_reachability ..........................   Passed    0.00 sec
+        Start 169: guest_np_manager
+166/398 Test #169: guest_np_manager ...............................   Passed    0.01 sec
+        Start 170: guest_np_session_signaling
+167/398 Test #170: guest_np_session_signaling .....................   Passed    0.00 sec
+        Start 171: guest_nptrophy2
+168/398 Test #171: guest_nptrophy2 ................................   Passed    0.00 sec
+        Start 172: guest_np_web_api2
+169/398 Test #172: guest_np_web_api2 ..............................   Passed    0.00 sec
+        Start 173: guest_opus_dec
+170/398 Test #173: guest_opus_dec .................................   Passed    0.01 sec
+        Start 174: guest_pad
+171/398 Test #119: audio_out2_port_layouts ........................   Passed    2.18 sec
+        Start 175: guest_playgo
+172/398 Test #175: guest_playgo ...................................   Passed    0.01 sec
+        Start 176: guest_playgo_dialog
+173/398 Test #176: guest_playgo_dialog ............................   Passed    0.00 sec
+        Start 177: player_invitation_dialog
+174/398 Test #177: player_invitation_dialog .......................   Passed    0.00 sec
+        Start 178: guest_player_selection_dialog
+175/398 Test #178: guest_player_selection_dialog ..................   Passed    0.00 sec
+        Start 179: decoder_png
+176/398 Test #179: decoder_png ....................................   Passed    0.01 sec
+        Start 180: guest_png_dec
+177/398 Test #180: guest_png_dec ..................................   Passed    0.00 sec
+        Start 181: guest_png_enc
+178/398 Test #181: guest_png_enc ..................................   Passed    0.01 sec
+        Start 182: guest_posix_filesystem
+179/398 Test #182: guest_posix_filesystem .........................   Passed    0.01 sec
+        Start 183: guest_resolver
+180/398 Test #183: guest_resolver .................................   Passed    0.00 sec
+        Start 184: guest_psml
+181/398 Test #184: guest_psml .....................................   Passed    0.00 sec
+        Start 185: guest_random
+182/398 Test #185: guest_random ...................................   Passed    0.00 sec
+        Start 186: guest_razor_cpu
+183/398 Test #186: guest_razor_cpu ................................   Passed    0.00 sec
+        Start 187: guest_rtc
+184/398 Test #187: guest_rtc ......................................   Passed    0.00 sec
+        Start 188: guest_savedata_search
+185/398 Test #188: guest_savedata_search ..........................   Passed    0.01 sec
+        Start 189: guest_savedata_delete
+186/398 Test #189: guest_savedata_delete ..........................   Passed    0.01 sec
+        Start 190: guest_savedata_mount_status
+187/398 Test #190: guest_savedata_mount_status ....................   Passed    0.01 sec
+        Start 191: guest_savedata_ps4
+188/398 Test #191: guest_savedata_ps4 .............................   Passed    0.01 sec
+        Start 192: guest_savedata_cancel
+189/398 Test #192: guest_savedata_cancel ..........................   Passed    0.00 sec
+        Start 193: guest_savedata_dialog
+190/398 Test #193: guest_savedata_dialog ..........................   Passed    0.00 sec
+        Start 194: guest_share
+191/398 Test #194: guest_share ....................................   Passed    0.00 sec
+        Start 195: guest_share_native
+192/398 Test #195: guest_share_native .............................   Passed    0.00 sec
+        Start 196: guest_signin_dialog
+193/398 Test #196: guest_signin_dialog ............................   Passed    0.00 sec
+        Start 197: guest_ssl
+194/398 Test #197: guest_ssl ......................................   Passed    0.00 sec
+        Start 198: guest_sysmodule
+195/398 Test #198: guest_sysmodule ................................   Passed    0.00 sec
+        Start 199: guest_system_gesture
+196/398 Test #199: guest_system_gesture ...........................   Passed    0.00 sec
+        Start 200: guest_system_exit_parameters
+197/398 Test #200: guest_system_exit_parameters ...................   Passed    0.01 sec
+        Start 201: guest_system_exit
+198/398 Test #201: guest_system_exit ..............................   Passed    0.00 sec
+        Start 202: guest_quick_exit
+199/398 Test #202: guest_quick_exit ...............................   Passed    0.00 sec
+        Start 203: guest_immediate_exit
+200/398 Test #203: guest_immediate_exit ...........................   Passed    0.00 sec
+        Start 204: guest_return_from_main
+201/398 Test #204: guest_return_from_main .........................   Passed    0.00 sec
+        Start 205: guest_load_exec_restart
+202/398 Test #174: guest_pad ......................................   Passed    0.21 sec
+        Start 206: guest_system_service
+203/398 Test #206: guest_system_service ...........................   Passed    0.01 sec
+        Start 207: guest_system_kill_app_parameters
+204/398 Test #207: guest_system_kill_app_parameters ...............   Passed    0.00 sec
+        Start 208: guest_system_kill_app
+205/398 Test #208: guest_system_kill_app ..........................   Passed    0.01 sec
+        Start 209: guest_system_kill_app_status
+206/398 Test #209: guest_system_kill_app_status ...................   Passed    0.01 sec
+        Start 210: guest_text_to_speech2
+207/398 Test #210: guest_text_to_speech2 ..........................   Passed    0.01 sec
+        Start 211: guest_ult_queue_validation
+208/398 Test #211: guest_ult_queue_validation .....................   Passed    0.01 sec
+        Start 212: guest_ult_queue_fifo
+209/398 Test #212: guest_ult_queue_fifo ...........................   Passed    0.00 sec
+        Start 213: guest_ult_queue_blocking
+210/398 Test #213: guest_ult_queue_blocking .......................   Passed    0.21 sec
+        Start 214: guest_ult_queue_shared-pool
+211/398 Test #205: guest_load_exec_restart ........................   Passed    0.51 sec
+        Start 215: guest_ult_queue_finalize
+212/398 Test #214: guest_ult_queue_shared-pool ....................   Passed    0.31 sec
+        Start 216: guest_ult_queue_stress
+213/398 Test #216: guest_ult_queue_stress .........................   Passed    0.08 sec
+        Start 217: guest_ult_thread_outstanding
+214/398 Test #217: guest_ult_thread_outstanding ...................   Passed    0.00 sec
+        Start 218: guest_ult_thread_validation
+215/398 Test #218: guest_ult_thread_validation ....................   Passed    0.01 sec
+        Start 219: guest_ult_thread_tryjoin
+216/398 Test #219: guest_ult_thread_tryjoin .......................   Passed    0.01 sec
+        Start 220: guest_ult_thread_destroy
+217/398 Test #220: guest_ult_thread_destroy .......................   Passed    0.00 sec
+        Start 221: guest_usbd
+218/398 Test #215: guest_ult_queue_finalize .......................   Passed    0.21 sec
+        Start 222: guest_user_service
+219/398 Test #222: guest_user_service .............................   Passed    0.00 sec
+        Start 223: guest_vdecsw
+220/398 Test #223: guest_vdecsw ...................................   Passed    0.01 sec
+        Start 224: pad_sdl
+221/398 Test #224: pad_sdl ........................................   Passed    0.00 sec
+        Start 225: guest_buffer_reuse
+222/398 Test #225: guest_buffer_reuse .............................   Passed    0.00 sec
+        Start 226: guest_videodec2
+223/398 Test #221: guest_usbd .....................................   Passed    0.05 sec
+        Start 227: guest_voice
+224/398 Test #226: guest_videodec2 ................................   Passed    0.02 sec
+        Start 228: guest_voice_qos
+225/398 Test #227: guest_voice ....................................   Passed    0.01 sec
+        Start 229: guest_voice_qos_app_type_0x10000000
+226/398 Test #228: guest_voice_qos ................................   Passed    0.01 sec
+        Start 230: guest_vr_setup_dialog
+227/398 Test #230: guest_vr_setup_dialog ..........................   Passed    0.00 sec
+        Start 231: guest_web_browser_dialog
+228/398 Test #229: guest_voice_qos_app_type_0x10000000 ............   Passed    0.01 sec
+        Start 232: guest_zlib
+229/398 Test #231: guest_web_browser_dialog .......................   Passed    0.00 sec
+        Start 233: download_data_mount_declared
+230/398 Test #232: guest_zlib .....................................   Passed    0.00 sec
+        Start 234: download_data_mount_none
+231/398 Test #233: download_data_mount_declared ...................   Passed    0.01 sec
+        Start 235: download_data_mount_invalid
+232/398 Test #234: download_data_mount_none .......................   Passed    0.01 sec
+        Start 236: param_json_parser
+233/398 Test #235: download_data_mount_invalid ....................   Passed    0.00 sec
+        Start 237: guest_posix_sem_init
+234/398 Test #237: guest_posix_sem_init ...........................   Passed    0.00 sec
+        Start 238: guest_posix_sem_post
+235/398 Test #238: guest_posix_sem_post ...........................   Passed    0.01 sec
+        Start 239: guest_process_time
+236/398 Test #239: guest_process_time .............................   Passed    0.01 sec
+        Start 240: guest_process_time_counter
+237/398 Test #240: guest_process_time_counter .....................   Passed    0.01 sec
+        Start 241: guest_process_arguments
+238/398 Test #124: guest_avplayer .................................   Passed    2.23 sec
+        Start 242: nid_patcher_dynamic_strings
+239/398 Test #241: guest_process_arguments ........................   Passed    0.01 sec
+        Start 243: nid_patcher_symbol_versions
+240/398 Test #236: param_json_parser ..............................   Passed    0.04 sec
+        Start 244: guest_dynamic_loader
+241/398 Test #244: guest_dynamic_loader ...........................   Passed    0.01 sec
+        Start 245: guest_module_info
+242/398 Test #245: guest_module_info ..............................   Passed    0.01 sec
+        Start 246: guest_file_timestamps
+243/398 Test #242: nid_patcher_dynamic_strings ....................   Passed    0.03 sec
+        Start 247: guest_filesystem
+244/398 Test #246: guest_file_timestamps ..........................   Passed    0.01 sec
+        Start 248: guest_terminal
+245/398 Test #248: guest_terminal .................................   Passed    0.01 sec
+        Start 249: guest_kernel_sync
+246/398 Test #247: guest_filesystem ...............................   Passed    0.03 sec
+        Start 250: guest_kernel_rename
+247/398 Test #249: guest_kernel_sync ..............................   Passed    0.02 sec
+        Start 251: guest_aio
+248/398 Test #250: guest_kernel_rename ............................   Passed    0.01 sec
+        Start 252: guest_once
+249/398 Test #252: guest_once .....................................   Passed    0.01 sec
+        Start 253: guest_pthread_barrier
+250/398 Test #243: nid_patcher_symbol_versions ....................   Passed    0.07 sec
+        Start 254: guest_kernel_is_stack
+251/398 Test #251: guest_aio ......................................   Passed    0.02 sec
+        Start 255: guest_thread_self
+252/398 Test #253: guest_pthread_barrier ..........................   Passed    0.01 sec
+        Start 256: guest_pthread_getname
+253/398 Test #254: guest_kernel_is_stack ..........................   Passed    0.01 sec
+        Start 257: guest_pthread_attr
+254/398 Test #255: guest_thread_self ..............................   Passed    0.01 sec
+        Start 258: guest_pthread_start
+255/398 Test #256: guest_pthread_getname ..........................   Passed    0.01 sec
+        Start 259: guest_pthread_stack
+256/398 Test #257: guest_pthread_attr .............................   Passed    0.01 sec
+        Start 260: guest_cond_timedwait
+257/398 Test #260: guest_cond_timedwait ...........................   Passed    0.01 sec
+        Start 261: guest_cond_recursive_mutex
+258/398 Test #261: guest_cond_recursive_mutex .....................   Passed    0.00 sec
+        Start 262: guest_cpu_time_clocks
+259/398 Test #259: guest_pthread_stack ............................   Passed    0.02 sec
+        Start 263: guest_freebsd_clocks
+260/398 Test #263: guest_freebsd_clocks ...........................   Passed    0.41 sec
+        Start 264: guest_thread_cpu_clock
+261/398 Test #262: guest_cpu_time_clocks ..........................   Passed    0.66 sec
+        Start 265: guest_nanosleep
+262/398 Test #265: guest_nanosleep ................................   Passed    0.16 sec
+        Start 266: guest_pthread_sem
+263/398 Test #266: guest_pthread_sem ..............................   Passed    0.01 sec
+        Start 267: guest_semaphore
+264/398 Test #267: guest_semaphore ................................   Passed    0.00 sec
+        Start 268: guest_pthread_rwlock
+265/398 Test #117: audio_out_last_output_time .....................   Passed    4.40 sec
+        Start 269: guest_pthread_key
+266/398 Test #269: guest_pthread_key ..............................   Passed    0.01 sec
+        Start 270: guest_user_context
+267/398 Test #270: guest_user_context .............................   Passed    0.00 sec
+        Start 271: guest_user_context_exit
+268/398 Test #271: guest_user_context_exit ........................   Passed    0.01 sec
+        Start 272: guest_signals
+269/398 Test #272: guest_signals ..................................   Passed    0.01 sec
+        Start 273: guest_kill
+270/398 Test #273: guest_kill .....................................   Passed    0.00 sec
+        Start 274: guest_signal_sets
+271/398 Test #274: guest_signal_sets ..............................   Passed    0.01 sec
+        Start 275: guest_sigaltstack
+272/398 Test #275: guest_sigaltstack ..............................   Passed    0.00 sec
+        Start 276: guest_exception_handler
+273/398 Test #276: guest_exception_handler ........................   Passed    0.00 sec
+        Start 277: guest_unwind_module_info
+274/398 Test #264: guest_thread_cpu_clock .........................   Passed    0.62 sec
+        Start 278: guest_unwind_module_info_failure
+275/398 Test #277: guest_unwind_module_info .......................   Passed    0.01 sec
+        Start 279: guest_sync_on_address
+276/398 Test #278: guest_unwind_module_info_failure ...............   Passed    0.01 sec
+        Start 280: guest_umtx_op
+277/398 Test #268: guest_pthread_rwlock ...........................   Passed    0.42 sec
+        Start 281: guest_available_cpumask
+278/398 Test #281: guest_available_cpumask ........................   Passed    0.01 sec
+        Start 282: guest_current_cpu
+279/398 Test #282: guest_current_cpu ..............................   Passed    0.01 sec
+        Start 283: guest_getrusage
+280/398 Test #280: guest_umtx_op ..................................   Passed    0.47 sec
+        Start 284: guest_sched_priority
+281/398 Test #284: guest_sched_priority ...........................   Passed    0.00 sec
+        Start 285: guest_waitpid
+282/398 Test #285: guest_waitpid ..................................   Passed    0.01 sec
+        Start 286: guest_kernel_errors
+283/398 Test #286: guest_kernel_errors ............................   Passed    0.01 sec
+        Start 287: guest_getrlimit
+284/398 Test #287: guest_getrlimit ................................   Passed    0.00 sec
+        Start 288: guest_equeue_events
+285/398 Test #258: guest_pthread_start ............................   Passed    1.62 sec
+        Start 289: guest_shm_open
+286/398 Test #289: guest_shm_open .................................   Passed    0.00 sec
+        Start 290: guest_system_configuration
+287/398 Test #290: guest_system_configuration .....................   Passed    0.01 sec
+        Start 291: guest_system_command
+288/398 Test #291: guest_system_command ...........................   Passed    0.00 sec
+        Start 292: guest_udp
+289/398 Test #292: guest_udp ......................................   Passed    0.01 sec
+        Start 293: guest_socket_read_write
+290/398 Test #293: guest_socket_read_write ........................   Passed    0.01 sec
+        Start 294: guest_poll
+291/398 Test #294: guest_poll .....................................   Passed    0.07 sec
+        Start 295: guest_tcp
+292/398 Test #295: guest_tcp ......................................   Passed    0.00 sec
+        Start 296: guest_socket_pair
+293/398 Test #296: guest_socket_pair ..............................   Passed    0.00 sec
+        Start 297: guest_dup
+294/398 Test #297: guest_dup ......................................   Passed    0.00 sec
+        Start 298: guest_elf_phdr_match
+295/398 Test #298: guest_elf_phdr_match ...........................   Passed    0.00 sec
+        Start 299: guest_credentials
+296/398 Test #299: guest_credentials ..............................   Passed    0.00 sec
+        Start 300: guest_addresses
+297/398 Test #300: guest_addresses ................................   Passed    0.00 sec
+        Start 301: guest_memory
+298/398 Test #301: guest_memory ...................................   Passed    0.01 sec
+        Start 302: guest_mlock
+299/398 Test #302: guest_mlock ....................................   Passed    0.00 sec
+        Start 303: guest_msync
+300/398 Test #303: guest_msync ....................................   Passed    0.00 sec
+        Start 304: guest_directory_entries
+301/398 Test #304: guest_directory_entries ........................   Passed    0.01 sec
+        Start 305: guest_file_vector
+302/398 Test #305: guest_file_vector ..............................   Passed    0.01 sec
+        Start 306: guest_sandbox_random_word
+303/398 Test #306: guest_sandbox_random_word ......................   Passed    0.00 sec
+        Start 307: guest_pthread_rename
+304/398 Test #307: guest_pthread_rename ...........................   Passed    0.00 sec
+        Start 308: guest_ulobjmgr
+305/398 Test #308: guest_ulobjmgr .................................   Passed    0.00 sec
+        Start 309: register_context_capture
+306/398 Test #283: guest_getrusage ................................   Passed    0.51 sec
+        Start 310: register_context_restore
+307/398 Test #309: register_context_capture .......................   Passed    0.00 sec
+        Start 311: register_context_threads
+308/398 Test #310: register_context_restore .......................   Passed    0.00 sec
+        Start 312: autorun_exit_status
+309/398 Test #311: register_context_threads .......................   Passed    0.00 sec
+        Start 313: cli_args
+310/398 Test #313: cli_args .......................................   Passed    0.00 sec
+        Start 314: buffer_bounds
+311/398 Test #314: buffer_bounds ..................................   Passed    0.00 sec
+        Start 315: file_writer_binary
+312/398 Test #315: file_writer_binary .............................   Passed    0.00 sec
+        Start 316: file_writer_text
+313/398 Test #316: file_writer_text ...............................   Passed    0.00 sec
+        Start 317: amd64_only_converter
+314/398 Test #317: amd64_only_converter ...........................   Passed    0.01 sec
+        Start 318: decoder_length
+315/398 Test #318: decoder_length .................................   Passed    0.01 sec
+        Start 319: cli_help
+316/398 Test #312: autorun_exit_status ............................   Passed    0.06 sec
+        Start 320: elf_offsets
+317/398 Test #319: cli_help .......................................   Passed    0.07 sec
+        Start 321: dynamic_segment
+318/398 Test #320: elf_offsets ....................................   Passed    0.08 sec
+        Start 322: rela_size
+319/398 Test #279: guest_sync_on_address ..........................   Passed    0.89 sec
+        Start 323: optional_plt
+320/398 Test #288: guest_equeue_events ............................   Passed    0.42 sec
+        Start 324: empty_tls
+321/398 Test #321: dynamic_segment ................................   Passed    0.12 sec
+        Start 325: tls_function_coverage_metadata
+322/398 Test #323: optional_plt ...................................   Passed    0.07 sec
+        Start 326: tls_function_coverage_padding
+323/398 Test #324: empty_tls ......................................   Passed    0.07 sec
+        Start 327: tls_function_coverage_register_loads
+324/398 Test #322: rela_size ......................................   Passed    0.14 sec
+        Start 328: tls_function_coverage_displacement_bounds
+325/398 Test #326: tls_function_coverage_padding ..................   Passed    0.07 sec
+        Start 329: tls_function_coverage_alu_execution
+326/398 Test #328: tls_function_coverage_displacement_bounds ......   Passed    0.12 sec
+        Start 330: tls_function_coverage_register_address_loads
+327/398 Test #327: tls_function_coverage_register_loads ...........   Passed    0.62 sec
+        Start 331: tls_function_coverage_rejected
+328/398 Test #325: tls_function_coverage_metadata .................   Passed    0.67 sec
+        Start 332: tls_function_coverage_displacement_r0
+329/398 Test #331: tls_function_coverage_rejected .................   Passed    0.12 sec
+        Start 333: tls_function_coverage_displacement_r1
+330/398 Test #329: tls_function_coverage_alu_execution ............   Passed    0.94 sec
+        Start 334: tls_function_coverage_displacement_r2
+331/398 Test #332: tls_function_coverage_displacement_r0 ..........   Passed    0.54 sec
+        Start 335: tls_function_coverage_displacement_r3
+332/398 Test #333: tls_function_coverage_displacement_r1 ..........   Passed    0.54 sec
+        Start 336: tls_function_coverage_displacement_r5
+333/398 Test #334: tls_function_coverage_displacement_r2 ..........   Passed    0.58 sec
+        Start 337: tls_function_coverage_displacement_r6
+334/398 Test #335: tls_function_coverage_displacement_r3 ..........   Passed    0.58 sec
+        Start 338: tls_function_coverage_displacement_r7
+335/398 Test #336: tls_function_coverage_displacement_r5 ..........   Passed    0.57 sec
+        Start 339: tls_function_coverage_displacement_r8
+336/398 Test #330: tls_function_coverage_register_address_loads ...   Passed    1.87 sec
+        Start 340: tls_function_coverage_displacement_r9
+337/398 Test #337: tls_function_coverage_displacement_r6 ..........   Passed    0.55 sec
+        Start 341: tls_function_coverage_displacement_r10
+338/398 Test #338: tls_function_coverage_displacement_r7 ..........   Passed    0.55 sec
+        Start 342: tls_function_coverage_displacement_r11
+339/398 Test #339: tls_function_coverage_displacement_r8 ..........   Passed    0.57 sec
+        Start 343: tls_function_coverage_displacement_r12
+340/398 Test #340: tls_function_coverage_displacement_r9 ..........   Passed    0.53 sec
+        Start 344: tls_function_coverage_displacement_r13
+341/398 Test #341: tls_function_coverage_displacement_r10 .........   Passed    0.55 sec
+        Start 345: tls_function_coverage_displacement_r14
+342/398 Test #342: tls_function_coverage_displacement_r11 .........   Passed    0.54 sec
+        Start 346: tls_function_coverage_displacement_r15
+343/398 Test #343: tls_function_coverage_displacement_r12 .........   Passed    0.53 sec
+        Start 347: tls_function_coverage_alu_add
+344/398 Test #344: tls_function_coverage_displacement_r13 .........   Passed    0.51 sec
+        Start 348: tls_function_coverage_alu_or
+345/398 Test #347: tls_function_coverage_alu_add ..................   Passed    0.11 sec
+        Start 349: tls_function_coverage_alu_adc
+346/398 Test #345: tls_function_coverage_displacement_r14 .........   Passed    0.51 sec
+        Start 350: tls_function_coverage_alu_sbb
+347/398 Test #349: tls_function_coverage_alu_adc ..................   Passed    0.12 sec
+        Start 351: tls_function_coverage_alu_and
+348/398 Test #348: tls_function_coverage_alu_or ...................   Passed    0.13 sec
+        Start 352: tls_function_coverage_alu_sub
+349/398 Test #352: tls_function_coverage_alu_sub ..................   Passed    0.12 sec
+        Start 353: tls_function_coverage_alu_xor
+350/398 Test #350: tls_function_coverage_alu_sbb ..................   Passed    0.12 sec
+        Start 354: tls_function_coverage_alu_cmp
+351/398 Test #351: tls_function_coverage_alu_and ..................   Passed    0.12 sec
+        Start 355: tls_diagnostics
+352/398 Test #346: tls_function_coverage_displacement_r15 .........   Passed    0.52 sec
+        Start 356: linux_load_alignment
+353/398 Test #355: tls_diagnostics ................................   Passed    0.08 sec
+        Start 357: linux_eh_frame_header
+354/398 Test #353: tls_function_coverage_alu_xor ..................   Passed    0.12 sec
+        Start 358: linux_dynamic_strings
+355/398 Test #354: tls_function_coverage_alu_cmp ..................   Passed    0.12 sec
+        Start 359: guest_runpath
+356/398 Test #356: linux_load_alignment ...........................   Passed    0.06 sec
+        Start 360: executable_segments
+357/398 Test #358: linux_dynamic_strings ..........................   Passed    0.05 sec
+        Start 361: linux_entry_argv
+358/398 Test #360: executable_segments ............................   Passed    0.11 sec
+        Start 362: linux_program_header_order
+359/398 Test #361: linux_entry_argv ...............................   Passed    0.07 sec
+        Start 363: windows_gui
+360/398 Test #359: guest_runpath ..................................   Passed    0.14 sec
+        Start 364: windows_working_directory
+361/398 Test #363: windows_gui ....................................   Passed    0.05 sec
+        Start 365: windows_address_space
+362/398 Test #362: linux_program_header_order .....................   Passed    0.07 sec
+        Start 366: windows_bss
+363/398 Test #357: linux_eh_frame_header ..........................   Passed    0.24 sec
+        Start 367: windows_icon
+364/398 Test #365: windows_address_space ..........................   Passed    0.04 sec
+        Start 368: guest_intel_trampolines
+365/398 Test #364: windows_working_directory ......................   Passed    0.07 sec
+        Start 369: guest_tls
+366/398 Test #369: guest_tls ......................................   Passed    0.05 sec
+        Start 370: guest_needed_modules
+367/398 Test #368: guest_intel_trampolines ........................   Passed    0.08 sec
+        Start 371: guest_module_directories
+368/398 Test #367: windows_icon ...................................   Passed    0.16 sec
+        Start 372: linux_guest_stack
+369/398 Test #370: guest_needed_modules ...........................   Passed    0.22 sec
+        Start 373: guest_symbol_names
+370/398 Test #371: guest_module_directories .......................   Passed    0.20 sec
+        Start 374: guest_registry
+371/398 Test #372: linux_guest_stack ..............................   Passed    0.17 sec
+        Start 375: macos_output
+372/398 Test #373: guest_symbol_names .............................   Passed    0.06 sec
+        Start 376: guest_host_libc
+373/398 Test #374: guest_registry .................................   Passed    0.10 sec
+        Start 377: guest_module_args
+374/398 Test #375: macos_output ...................................   Passed    0.06 sec
+        Start 378: guest_absolute_symbols
+375/398 Test #376: guest_host_libc ................................   Passed    0.07 sec
+        Start 379: guest_module_identity
+376/398 Test #378: guest_absolute_symbols .........................   Passed    0.07 sec
+        Start 380: guest_needed_nested_modules
+377/398 Test #377: guest_module_args ..............................   Passed    0.11 sec
+        Start 381: windows_import_modules
+378/398 Test #366: windows_bss ....................................   Passed    0.70 sec
+        Start 382: elf_header
+379/398 Test #381: windows_import_modules .........................   Passed    0.22 sec
+        Start 383: input_magic
+380/398 Test #383: input_magic ....................................   Passed    0.05 sec
+        Start 384: input_preservation
+381/398 Test #379: guest_module_identity ..........................   Passed    0.40 sec
+        Start 385: input_file
+382/398 Test #382: elf_header .....................................   Passed    0.17 sec
+        Start 386: string_table_bounds
+383/398 Test #385: input_file .....................................   Passed    0.06 sec
+        Start 387: call_registry
+384/398 Test #384: input_preservation .............................   Passed    0.12 sec
+        Start 388: jmprel_table_bounds
+385/398 Test #386: string_table_bounds ............................   Passed    0.08 sec
+        Start 389: entry_point_bounds
+386/398 Test #388: jmprel_table_bounds ............................   Passed    0.08 sec
+        Start 390: init_array_roots
+387/398 Test #380: guest_needed_nested_modules ....................   Passed    0.54 sec
+        Start 391: windows_icon_resource
+388/398 Test #389: entry_point_bounds .............................   Passed    0.06 sec
+        Start 392: entry_stub
+389/398 Test #391: windows_icon_resource ..........................   Passed    0.01 sec
+        Start 393: strict_nid_filter
+390/398 Test #392: entry_stub .....................................   Passed    0.00 sec
+        Start 394: to_intel_linux_stubs
+391/398 Test #393: strict_nid_filter ..............................   Passed    0.01 sec
+        Start 395: rela_bounds
+392/398 Test #394: to_intel_linux_stubs ...........................   Passed    0.01 sec
+        Start 396: guest_intel_trampolines_execution
+393/398 Test #395: rela_bounds ....................................   Passed    0.01 sec
+        Start 397: dynamic_table_bounds
+394/398 Test #396: guest_intel_trampolines_execution ..............   Passed    0.01 sec
+        Start 398: reloc_table_bounds
+395/398 Test #397: dynamic_table_bounds ...........................   Passed    0.01 sec
+396/398 Test #390: init_array_roots ...............................   Passed    0.10 sec
+397/398 Test #398: reloc_table_bounds .............................   Passed    0.04 sec
+398/398 Test #387: call_registry ..................................   Passed    0.27 sec
+
+100% tests passed, 0 tests failed out of 398
+
+Label Time Summary:
+tls_function_coverage    =  13.52 sec*proc (30 tests)
+
+Total Test time (real) =  11.62 sec
+
+The following tests did not run:
+	 17 - savedata_memory_growth_read_failure (Skipped)
+	155 - guest_sce_net (Skipped)

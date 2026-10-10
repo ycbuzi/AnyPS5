@@ -82,9 +82,9 @@ Completion, measured in the cloud with `python3 tools/progress.py --root <tree> 
 | Ours after the first upstream sync       | 2733        | 3151  | 86.73% |
 | Ours after cycle 1 (49 PRs)              | 2886        | 3260  | 88.53% |
 | Ours after cycle 2, `9a6e26fe2`          | 2922        | 3298  | 88.60% |
-| **Ours now (cycle 3), tip of the branch** | **2945**   | **3300** | **89.24%** |
+| **Ours now (cycle 3), tip of the branch** | **2953**   | **3300** | **89.48%** |
 
-Lead over upstream: **+255 implemented functions, +3.52 points.** 355 functions remain.
+Lead over upstream: **+263 implemented functions, +3.76 points.** 347 functions remain.
 
 Build and test status:
 - Last full Windows suite: **660/660 passed**, on the 29-commit stack (`c44602f8`, base `4e9d298e`).
@@ -95,8 +95,11 @@ Build and test status:
   `ShaderDiskCache.cpp` size assertion (fixed by the `3afc78464` merge); **build 4 of `9a6e26fe2`
   passed: 1515/1515 targets, 0 failures** (Linux, GCC 13, Release). The CPU-side suite
   (`ctest -E '^agc_|video_out'`) was started on it; result in the log at the end of this file.
-- The cycle 3 merges (1886, 1583, 2012, 1689, 1985, 1952) came after build 4 and are not yet
-  built anywhere.
+- Build 5 (cycle 3 tip `be4d34eeb`) failed at configure: the 2012 merge had created
+  `libSceVoice/CMakeLists.txt` on both sides and the resolver kept both copies (two
+  `add_library(libSceVoice)`). Fixed in `4d9cdc4ae`, together with a constant the 2503 slice
+  re-declared in `libSceShare.native/Export.cpp`. Build 6 of `4d9cdc4ae`: see the log at the end.
+- Nothing after `9a6e26fe2` has been built on Windows or tested on a GPU.
 
 ### Cycle 1 (cloud, ~08:50-09:12 UTC)
 
@@ -151,6 +154,9 @@ Candidates: the PRs holding real implementations of what we lack (see "How far c
   1583, 2012, 1689, 1985 applied (+10). 1141 and 1108 rejected: duplicate definitions.
 - 1952 hand-merged (+10): kept our `libc/Export.cpp`, deleted the eight `_Cnd_*`/`_Mtx_*` stubs
   that its new `src/Threads.cpp` implements.
+- 1981 and 1993 hand-merged the same way as 1952 (+3: `vsnprintf_s`, `vsscanf_s`, `_Iswctype`).
+- 2503: only its libSceShare.native and libSceUlt changes applied, as a patch (+5); the rest
+  still conflicts in libkernel, libc and the dialogs.
 - Left out after inspection: 1884 (rewrites libSceSsl on mbedtls, a dependency the project does
   not have), 2393/1802/1431 (written against the pre-1988 thread model; need re-implementation),
   2503 (34 files, 10 real conflict hunks), 82 (needs `Ngs2WaveformFormat` from 1021, which
@@ -286,3 +292,6 @@ PC only (Windows, GPUs, posting):
   and its CPU-side suite passed, **398/398** (`ctest -E '^agc_|video_out'`).
 - 2026-10-10 ~09:40-09:57 UTC (cloud): cycle 3. 1886, 1583, 2012, 1689, 1985 stacked, 1952
   hand-merged (now 2945/3300 = 89.24%). Build 5 of that tip started.
+- 2026-10-10 ~09:58-10:10 UTC (cloud): 1981 and 1993 hand-merged, the Share/Ult slice of 2503
+  applied (2953/3300 = 89.48%). Build 5 failed at configure (duplicate libSceVoice target);
+  fixed in `4d9cdc4ae`; build 6 started on it.
