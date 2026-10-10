@@ -12,12 +12,6 @@ constexpr std::int32_t REQUEST_ID_INVALID = -1;
 
 }
 
-namespace {
-
-constexpr std::int32_t ERROR_INVALID_PARAM = static_cast<std::int32_t>(0x81960002);
-
-}
-
 extern "C" {
 
 int APS5_VABI sceShareCaptureScreenshot(const void* param, int32_t* req_id) {
