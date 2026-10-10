@@ -188,8 +188,13 @@ void TranslationContext::vCvtPkU8F32(const RdnaInstruction& inst) {
 }
 
 void TranslationContext::vPackB32F16(const RdnaInstruction& inst) {
-    const IrU32 low = readF16Bits(sourceAt(inst, 0u));
-    const IrU32 high(ir.ShiftLeftLogical(readF16Bits(sourceAt(inst, 1u)).Value(), ir.Constant(16u)));
+    const auto half = [&](std::uint32_t index) {
+        const IrU32 bits = readF16Bits(sourceAt(inst, index));
+        const IrU1 nan(ir.UGreaterThan(ir.BitwiseAnd(bits.Value(), ir.Constant(0x7fffu)), ir.Constant(0x7c00u)));
+        return IrU32(ir.Select(nan.Value(), quietNan16(bits).Value(), bits.Value()));
+    };
+    const IrU32 low = half(0u);
+    const IrU32 high(ir.ShiftLeftLogical(half(1u).Value(), ir.Constant(16u)));
     const IrU32 result(ir.BitwiseOr(low.Value(), high.Value()));
     writeOperand(inst.destination, &result.Value());
 }

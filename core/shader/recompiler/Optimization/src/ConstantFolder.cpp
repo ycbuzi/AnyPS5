@@ -186,18 +186,27 @@ bool foldCompositeExtract(IrBuilder& builder, IrValue& inst, IrOpcode construct,
 }
 
 bool forwardsWord(const IrUse& use) {
-    return use.user->Opcode() == IrOpcode::Identity || (use.user->Opcode() == IrOpcode::SelectU32 && use.operand != 0u);
+    return use.user->Opcode() == IrOpcode::Identity || use.user->Opcode() == IrOpcode::Phi || (use.user->Opcode() == IrOpcode::SelectU32 && use.operand != 0u);
 }
 
-void collectReaders(IrValue& value, std::vector<IrUse>& readers) {
+void collectReaders(IrValue& value, std::vector<IrUse>& readers, std::vector<const IrValue*>& visited) {
+    if (std::ranges::find(visited, &value) != visited.end()) {
+        return;
+    }
+    visited.push_back(&value);
     const std::vector<IrUse> uses = value.OperandUses();
     for (const IrUse& use : uses) {
         if (forwardsWord(use)) {
-            collectReaders(*use.user, readers);
+            collectReaders(*use.user, readers, visited);
         } else {
             readers.push_back(use);
         }
     }
+}
+
+void collectReaders(IrValue& value, std::vector<IrUse>& readers) {
+    std::vector<const IrValue*> visited;
+    collectReaders(value, readers, visited);
 }
 
 constexpr std::array<std::pair<std::uint32_t, std::uint32_t>, 2> packedFields {{{8u, 4u}, {16u, 13u}}};

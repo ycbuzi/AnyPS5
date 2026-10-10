@@ -841,7 +841,15 @@ void DepthStencilTests() {
     expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "stencil add/subtract");
     queue.context[0x10b] = 0;
     queue.context[0x000] = 1;
-    expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "DB_RENDER_CONTROL");
+    queue.context[0x00b] = std::bit_cast<std::uint32_t>(0.25f);
+    state = AgcDriver::Graphics::DecodeState(queue);
+    Require(state.depth && state.depthTest && state.depthWrite && state.depthCompare == VK_COMPARE_OP_ALWAYS && !state.depthBoundsTest && !state.depthBias && state.viewport.minDepth == 0.25f && state.viewport.maxDepth == 0.25f, "a DEPTH_CLEAR_ENABLE draw does not store DB_DEPTH_CLEAR everywhere it covers");
+    Require(AgcDriver::Graphics::DrawRejection(queue, false).empty(), "precheck rejected a depth clear");
+    queue.context[0x002] = 0x01000000;
+    expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "writable depth plane");
+    Require(AgcDriver::Graphics::DrawRejection(queue, false).find("writable depth plane") != std::string::npos, "precheck accepted read-only depth clear");
+    queue.context[0x002] = 0;
+    queue.context[0x00b] = 0;
     queue.context[0x000] = 0x22;
     state = AgcDriver::Graphics::DecodeState(queue);
     const auto clears = [](const VkStencilOpState& face) {
@@ -882,7 +890,10 @@ void DepthStencilTests() {
     state = AgcDriver::Graphics::DecodeState(queue);
     Require(!state.depthWrite && clears(state.stencilFront), "read-only depth prevented stencil clear");
     queue.context[0x002] = 0;
-    for (const auto control : {1u, 4u, 8u}) {
+    queue.context[0x000] = 0x23;
+    state = AgcDriver::Graphics::DecodeState(queue);
+    Require(state.depthWrite && state.depthCompare == VK_COMPARE_OP_ALWAYS && clears(state.stencilFront), "a combined depth and stencil clear draw does not clear both planes");
+    for (const auto control : {4u, 8u}) {
         queue.context[0x000] = 0x22u | control;
         expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "DB_RENDER_CONTROL");
     }
@@ -3461,6 +3472,13 @@ void highestDrawIndexTests() {
     expectFailure([&] { HighestDrawIndex(bytesOf(narrow), 1, false); }, "unsupported index size");
 }
 
+void storeAtFlipTests() {
+    using AgcDriver::Graphics::StorageTexture;
+    Require(!StorageTexture::StoreAtFlipRequested(nullptr), "an unset APS5_STORE_AT_FLIP stored at each flip");
+    Require(StorageTexture::StoreAtFlipRequested("1"), "APS5_STORE_AT_FLIP=1 did not store at each flip");
+    for (const char* value : {"0", "", "true", "11"}) expectFailure([&] { StorageTexture::StoreAtFlipRequested(value); }, "expected 1");
+}
+
 void vertexCopyTests() {
     using AgcDriver::Graphics::PlanVertexCopies;
     using AgcDriver::Graphics::VertexFetch;
@@ -3586,6 +3604,7 @@ int main() {
         validationTests();
         vertexCopyTests();
         highestDrawIndexTests();
+        storeAtFlipTests();
         pixelParameterSlotTests();
         rectListTests();
         floatControlsModeTests();

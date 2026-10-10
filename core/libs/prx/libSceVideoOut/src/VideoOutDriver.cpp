@@ -315,6 +315,7 @@ int VideoOutDriver::Open(int busType) {
     }
     auto cfg = std::make_shared<VideoOutConfig>();
     cfg->generation = generation;
+    cfg->busType = busType;
     cfg->opened = true;
     cfg->flipStatus.flipArg = -1;
     cfg->flipStatus.currentBuffer = -1;
@@ -464,28 +465,37 @@ void VideoOutDriver::processFlip(FlipRequest& req) {
         req.cfg->lastFlipVblank = req.cfg->vblankStatus.count;
     }
     require(req.width != 0 && req.height != 0 && req.width <= static_cast<uint32_t>(std::numeric_limits<int>::max()) && req.height <= static_cast<uint32_t>(std::numeric_limits<int>::max()), "invalid window dimensions");
-    window.Ensure(req.width, req.height);
-    const auto extensions = windowExtensions(window.Handle());
-    const AgcDriver::PresentationWindow target{window.Handle(), extensions, &createWindowSurface, &windowDrawableSize, req.width, req.height, req.timing};
-    timing.Mark("window_prepare");
-    const auto gpuReady = [](void* context) {
-        auto& request = *static_cast<FlipRequest*>(context);
-        std::lock_guard lock(request.cfg->mutex);
-        request.cfg->CheckAlive();
-        if (request.cfg->Closed()) return;
-        require(!request.terminal && !request.gpuComplete, "invalid GPU completion transition");
-        request.gpuComplete = true;
-        request.cfg->vblankCond.notify_all();
-    };
-    if (req.index >= 0) {
-        const auto display = DescribeVideoOutBuffer(req.buffer, req.group);
-        AgcDriverPresentBuffer_nid_postfix(target, display, gpuReady, &req);
+    if (req.cfg->busType == VIDEO_OUT_BUS_TYPE_OVERLAY) {
+        std::lock_guard lock(req.cfg->mutex);
+        req.cfg->CheckAlive();
+        if (!req.cfg->Closed()) {
+            require(!req.terminal && !req.gpuComplete, "invalid GPU completion transition");
+            req.gpuComplete = true;
+        }
     } else {
-        AgcDriverPresentClear_nid_postfix(target, req.index == VIDEO_OUT_BUFFER_INDEX_BLACK, gpuReady, &req);
+        window.Ensure(req.width, req.height);
+        const auto extensions = windowExtensions(window.Handle());
+        const AgcDriver::PresentationWindow target{window.Handle(), extensions, &createWindowSurface, &windowDrawableSize, req.width, req.height, req.timing};
+        timing.Mark("window_prepare");
+        const auto gpuReady = [](void* context) {
+            auto& request = *static_cast<FlipRequest*>(context);
+            std::lock_guard lock(request.cfg->mutex);
+            request.cfg->CheckAlive();
+            if (request.cfg->Closed()) return;
+            require(!request.terminal && !request.gpuComplete, "invalid GPU completion transition");
+            request.gpuComplete = true;
+            request.cfg->vblankCond.notify_all();
+        };
+        if (req.index >= 0) {
+            const auto display = DescribeVideoOutBuffer(req.buffer, req.group);
+            AgcDriverPresentBuffer_nid_postfix(target, display, gpuReady, &req);
+        } else {
+            AgcDriverPresentClear_nid_postfix(target, req.index == VIDEO_OUT_BUFFER_INDEX_BLACK, gpuReady, &req);
+        }
+        timing.Mark("present");
+        window.UpdateTitle();
+        timing.Mark("window_title");
     }
-    timing.Mark("present");
-    window.UpdateTitle();
-    timing.Mark("window_title");
     std::lock_guard lock(req.cfg->mutex);
     timing.Mark("completion_mutex_wait");
     req.cfg->CheckAlive();

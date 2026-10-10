@@ -89,6 +89,7 @@ bool RunRequest(KernelAioRwRequest& req, bool write) {
         req.result->return_value = static_cast<std::int64_t>(SCE_KERNEL_ERROR_EIO);
         if (error == EBADF) req.result->return_value = static_cast<std::int64_t>(SCE_KERNEL_ERROR_EBADF);
         if (error == EFAULT) req.result->return_value = static_cast<std::int64_t>(SCE_KERNEL_ERROR_EFAULT);
+        if (error == EINVAL) req.result->return_value = static_cast<std::int64_t>(SCE_KERNEL_ERROR_EINVAL);
         req.result->state = AioAborted;
         return false;
     }

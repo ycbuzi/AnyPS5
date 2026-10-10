@@ -104,6 +104,10 @@ int main() {
     Require(remove_nid_postfix((file / "invalid").string().c_str()) == -1);
     Require(remove_nid_postfix("") == -1 && *__error_nid_postfix() == 2);
     Require(remove_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == 14);
+    const auto readOnly = root / "read-only.txt";
+    { std::ofstream stream(readOnly); stream << "removable"; }
+    Require(sceKernelChmod_nid_postfix(readOnly.string().c_str(), 0400) == 0);
+    Require(remove_nid_postfix(readOnly.string().c_str()) == 0 && !std::filesystem::exists(readOnly));
     const auto renamed = root / "renamed.txt";
     { std::ofstream stream(renamed); stream << "old contents"; }
     Require(rename_nid_postfix(file.string().c_str(), renamed.string().c_str()) == 0);
@@ -239,6 +243,19 @@ int main() {
     Require(flock_nid_postfix(kernelRecycled, 8 | 2) == 0);
     Require(flock_nid_postfix(other, 2 | 4) == 0 && flock_nid_postfix(other, 8) == 0);
     Require(sceKernelClose(kernelRecycled) == 0 && close_nid_postfix(other) == 0);
+    const int holder = open_nid_postfix(presentName.c_str(), 0, 0);
+    const int contender = open_nid_postfix(presentName.c_str(), 0, 0);
+    Require(holder >= 0 && contender >= 0 && flock_nid_postfix(holder, 2 | 4) == 0);
+    Require(flock_nid_postfix(contender, 2 | 4) == -1 && *__error_nid_postfix() == 35);
+    Require(flock_nid_postfix(contender, 1 | 4) == -1 && *__error_nid_postfix() == 35);
+    Require(flock_nid_postfix(holder, 1 | 4) == 0 && flock_nid_postfix(contender, 1 | 4) == 0);
+    Require(flock_nid_postfix(contender, 2 | 4) == -1 && *__error_nid_postfix() == 35);
+    Require(flock_nid_postfix(holder, 8) == 0 && flock_nid_postfix(contender, 2 | 4) == 0);
+    Require(flock_nid_postfix(contender, 8) == 0);
+    Require(flock_nid_postfix(holder, 1 | 2 | 4 | 0x10) == 0);
+    Require(flock_nid_postfix(contender, 1 | 4) == -1 && *__error_nid_postfix() == 35);
+    Require(flock_nid_postfix(holder, 8) == 0);
+    Require(close_nid_postfix(contender) == 0 && close_nid_postfix(holder) == 0);
     Require(open_nid_postfix(missingName.c_str(), 0, 0) == -1 && *__error_nid_postfix() == 2);
     Require(_open_nid_postfix(missingName.c_str(), 0) == -1 && *__error_nid_postfix() == 2);
     Require(sceKernelOpen(missingName.c_str(), 0, 0) == static_cast<int>(0x80020002u));

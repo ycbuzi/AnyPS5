@@ -368,7 +368,13 @@ std::vector<PreparedShaders::Entry> PrepareRegistered(const ShaderSnapshot& snap
     if (address < snapshot.codeAddress || address - snapshot.codeAddress >= snapshot.code.size() * 4u) throw std::runtime_error("AGC driver: registered entry point is outside shader code");
     const auto codeOffset = static_cast<std::size_t>((address - snapshot.codeAddress) / 4u);
     const auto code = std::span(snapshot.code).subspan(codeOffset);
-    const auto decoded = ShaderRecompiler::RdnaInstructionDecoder{}.Decode(code);
+    ShaderRecompiler::RdnaProgram decoded;
+    try {
+        decoded = ShaderRecompiler::RdnaInstructionDecoder{}.Decode(code);
+    } catch (const ShaderRecompiler::UnsupportedInstructionError& error) {
+        if (deferred == nullptr) throw;
+        return defer(error.what());
+    }
     std::optional<ShaderRecompiler::ShaderComputeStageInfo> compute;
     std::optional<ShaderRecompiler::ShaderPixelStageInfo> pixel;
     std::optional<ShaderRecompiler::ShaderVertexStageInfo> vertex;

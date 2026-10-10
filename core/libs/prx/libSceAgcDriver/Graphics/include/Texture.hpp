@@ -152,6 +152,7 @@ public:
     // overlapping pending image, as before).
     static bool FlushPending(std::uint64_t address, std::size_t bytes, const StorageTexture* except = nullptr, const char* reason = "memory access", PublishScope scope = PublishScope::Whole, bool* published = nullptr);
     static void FlushAllPending(const char* reason);
+    static bool StoreAtFlipRequested(const char* value);
     // See PendingSerial: a change of a surface's source outside the registry (a unit shadow
     // retile) moves it too.
     static void BumpPendingSerial();
