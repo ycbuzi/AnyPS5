@@ -231,17 +231,31 @@ void lowerPackedAncillary(IrProgram& program, IrBuilder& builder, IrValue& ancil
     for (const IrUse& use : forwarded) {
         collectReaders(*use.user, readers);
     }
-    for (const IrUse& use : readers) {
+    const auto extractsField = [](const IrUse& use) {
         const IrValue& user = *use.user;
         if ((user.Opcode() != IrOpcode::BitFieldUExtract && user.Opcode() != IrOpcode::BitFieldSExtract) || use.operand != 0u) {
-            return;
+            return false;
         }
         auto& offset = resolveArg(user, 1);
         auto& count = resolveArg(user, 2);
-        if (!isImmediate(offset, IrType::U32) || !isImmediate(count, IrType::U32) || count.ImmediateU32() == 0u ||
-            !packedField(offset.ImmediateU32(), count.ImmediateU32())) {
-            return;
-        }
+        return isImmediate(offset, IrType::U32) && isImmediate(count, IrType::U32) && count.ImmediateU32() != 0u &&
+               packedField(offset.ImmediateU32(), count.ImmediateU32()).has_value();
+    };
+    const bool whole = std::ranges::all_of(readers, extractsField);
+    if (!whole) {
+        std::vector<IrUse> extracts;
+        const auto collectExtracts = [&](const auto& self, IrValue& value) -> void {
+            for (const IrUse& use : value.OperandUses()) {
+                if (use.user->Opcode() == IrOpcode::Identity) {
+                    self(self, *use.user);
+                } else if (extractsField(use)) {
+                    extracts.push_back(use);
+                }
+            }
+        };
+        collectExtracts(collectExtracts, ancillary);
+        direct = std::move(extracts);
+        forwarded.clear();
     }
     std::array<IrValue*, 2> fields {};
     const auto field = [&](std::size_t index) -> IrValue& {

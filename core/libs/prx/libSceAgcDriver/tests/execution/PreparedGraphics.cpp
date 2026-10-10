@@ -182,6 +182,18 @@ void Check(AgcDriver::VulkanDevice& device, AgcDriver::Graphics::ShaderPath path
         ResolvePreparedGraphics(*front.snapshot, {}, 7, target);
         Require(front.snapshot->prepared->fragments.size() == 1, "expired helper link was not removed");
         Require(front.snapshot->prepared->rectangleProgress.size() == 1 && !front.snapshot->prepared->rectangleProgress.front().fragment.expired(), "expired rectangle progress was not removed");
+        auto drawOnly = prepared;
+        drawOnly.pixel.interpolatorSettings[0] = 0x405u;
+        const auto drawStages = PrepareGraphicsStages(drawOnly, target);
+        auto unlinked = std::make_shared<ShaderSnapshot>();
+        unlinked->type = 1;
+        unlinked->prepared->entries.push_back(drawStages.back().entry);
+        const auto drawPixelId = GetPreparedArtifact(*drawStages.back().entry.handle).variantId;
+        const auto drawVertexId = GetPreparedArtifact(*drawStages.front().entry.handle).variantId;
+        Require(drawVertexId == GetPreparedArtifact(*stages.front().entry.handle).variantId && drawPixelId != pixelArtifact.variantId && drawPixelId != newPixelId, "draw-only fragment test did not isolate a new fragment variant");
+        const auto drawRectangle = DrawRectangle(*front.snapshot, unlinked, drawVertexId, drawPixelId, target);
+        Require(!drawRectangle.control.spirv.empty() && !drawRectangle.evaluation.spirv.empty(), "a rect-list draw did not prepare the rectangle of a fragment variant prepared at draw");
+        static_cast<void>(PreparedRectangle(*front.snapshot, drawVertexId, drawPixelId));
     }
     if (!dump.empty()) {
         for (std::size_t index = 0; index < stages.size(); ++index) {

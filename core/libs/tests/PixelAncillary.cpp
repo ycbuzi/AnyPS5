@@ -59,6 +59,59 @@ static void Lower(IrProgram& program) {
     const ShaderPixelInputInfo pixel {};
     ShaderInfoCollector().Collect(program, ShaderStageInputInfo {nullptr, &pixel, nullptr});
 }
+static void ExtractVector(std::uint32_t offset, std::uint32_t count, StageInputKind kind, std::uint32_t fieldOffset) {
+    IrProgram program;
+    program.Resources().stage = IrShaderStage::Pixel;
+    program.Resources().resourceTrackingComplete = true;
+    auto& block = program.CreateBlock();
+    program.SetEntryBlock(block);
+    program.BlockOrder().push_back(&block);
+    IrBuilder builder(program);
+    builder.SetInsertionPoint(block);
+    auto& ancillary = builder.Emit(IrOpcode::GetBuiltin, IrType::U32, {&builder.Constant(static_cast<std::uint32_t>(StageInputKind::PackedAncillary)), &builder.Constant(0u)});
+    auto& maskedOffset = builder.BitwiseAnd(builder.Constant(offset), builder.Constant(31u));
+    auto& maskedCount = builder.BitwiseAnd(builder.Constant(count), builder.Constant(31u));
+    auto& available = builder.ISub(builder.Constant(32u), maskedOffset);
+    auto& clampedCount = builder.Emit(IrOpcode::UMin32, IrType::U32, {&maskedCount, &available});
+    auto& user = builder.Emit(IrOpcode::BitFieldUExtract, IrType::U32, {&ancillary, &maskedOffset, &clampedCount});
+    static_cast<void>(builder.Emit(IrOpcode::ReferenceU32, IrType::Void, {&user}));
+    static_cast<void>(builder.Emit(IrOpcode::Return, IrType::Void, {}));
+    Lower(program);
+    const IrValue* field = user.Argument(0)->Resolve();
+    Require(field->Opcode() == IrOpcode::GetBuiltin);
+    Require(static_cast<StageInputKind>(field->Argument(0)->Resolve()->ImmediateU32()) == kind);
+    Require(user.Argument(1)->Resolve()->ImmediateU32() == fieldOffset);
+    Require(user.Argument(2)->Resolve()->ImmediateU32() == count);
+}
+
+static void ExtractVectorMaskedCopy(std::uint32_t offset, std::uint32_t count, StageInputKind kind, std::uint32_t fieldOffset) {
+    IrProgram program;
+    program.Resources().stage = IrShaderStage::Pixel;
+    program.Resources().resourceTrackingComplete = true;
+    auto& block = program.CreateBlock();
+    program.SetEntryBlock(block);
+    program.BlockOrder().push_back(&block);
+    IrBuilder builder(program);
+    builder.SetInsertionPoint(block);
+    auto& ancillary = builder.Emit(IrOpcode::GetBuiltin, IrType::U32, {&builder.Constant(static_cast<std::uint32_t>(StageInputKind::PackedAncillary)), &builder.Constant(0u)});
+    auto& maskedOffset = builder.BitwiseAnd(builder.Constant(offset), builder.Constant(31u));
+    auto& maskedCount = builder.BitwiseAnd(builder.Constant(count), builder.Constant(31u));
+    auto& available = builder.ISub(builder.Constant(32u), maskedOffset);
+    auto& clampedCount = builder.Emit(IrOpcode::UMin32, IrType::U32, {&maskedCount, &available});
+    auto& user = builder.Emit(IrOpcode::BitFieldUExtract, IrType::U32, {&ancillary, &maskedOffset, &clampedCount});
+    static_cast<void>(builder.Emit(IrOpcode::ReferenceU32, IrType::Void, {&user}));
+    auto& lane = builder.Emit(IrOpcode::LaneId, IrType::U32, {});
+    auto& active = builder.Emit(IrOpcode::ULessThan32, IrType::Bool, {&lane, &builder.Constant(16u)});
+    auto& copy = builder.Emit(IrOpcode::SelectU32, IrType::U32, {&active, &ancillary, &builder.Constant(0u)});
+    static_cast<void>(builder.Emit(IrOpcode::ReferenceU32, IrType::Void, {&copy}));
+    static_cast<void>(builder.Emit(IrOpcode::Return, IrType::Void, {}));
+    ConstantFolder().Fold(program);
+    const IrValue* field = user.Argument(0)->Resolve();
+    Require(field->Opcode() == IrOpcode::GetBuiltin);
+    Require(static_cast<StageInputKind>(field->Argument(0)->Resolve()->ImmediateU32()) == kind);
+    Require(user.Argument(1)->Resolve()->ImmediateU32() == fieldOffset);
+    Require(user.Argument(2)->Resolve()->ImmediateU32() == count);
+}
 static void Extract(IrOpcode opcode, std::uint32_t offset, std::uint32_t count, StageInputKind kind, std::uint32_t fieldOffset) {
     IrProgram program;
     auto& user = Build(program, opcode, offset, count);
@@ -159,6 +212,10 @@ int main() {
     Values(IrOpcode::BitFieldUExtract, 8u, 4u, true);
     Values(IrOpcode::BitFieldUExtract, 16u, 13u, true);
     Values(IrOpcode::BitFieldSExtract, 20u, 9u, true);
+    ExtractVector(16u, 11u, StageInputKind::Layer, 0u);
+    ExtractVectorMaskedCopy(16u, 11u, StageInputKind::Layer, 0u);
+    ExtractVectorMaskedCopy(8u, 4u, StageInputKind::SampleId, 0u);
+    ExtractVector(8u, 4u, StageInputKind::SampleId, 0u);
     Refused(IrOpcode::BitwiseOr32, 1u, 0u);
     Refused(IrOpcode::BitwiseOr32, 1u, 0u, true);
     Refused(IrOpcode::BitFieldUExtract, 2u, 4u);

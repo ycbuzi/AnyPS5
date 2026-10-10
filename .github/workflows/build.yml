@@ -175,6 +175,19 @@ jobs:
       - run: cmake --build build/register-context --parallel
       - run: ctest --test-dir build/register-context --output-on-failure --repeat until-fail:3 --no-tests=error
 
+  write-watch:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: cmake -S core/libs/tests/write_watch -B build/write-watch -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build/write-watch --parallel
+      - run: ctest --test-dir build/write-watch --output-on-failure --repeat until-fail:3 --no-tests=error
+
   linux:
     needs: eligibility
     if: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.eligibility.outputs.full == 'true' }}

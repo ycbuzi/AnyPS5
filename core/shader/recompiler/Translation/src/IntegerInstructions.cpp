@@ -20,7 +20,7 @@ bool TranslationContext::integer16Shift(const RdnaInstruction& inst, IrOpcode op
 bool TranslationContext::integer16Binary(const RdnaInstruction& inst, IrOpcode opcode, bool sign) {
     const IrU32 lhs = readU16AsU32(sourceAt(inst, 0u), sign);
     const IrU32 rhs = readU16AsU32(sourceAt(inst, 1u), sign);
-    const IrU32 result(ir.Emit(opcode, IrType::U32, {&lhs.Value(), &rhs.Value()}));
+    const IrU32 result = saturateInteger16(inst.destination, IrU32(ir.Emit(opcode, IrType::U32, {&lhs.Value(), &rhs.Value()})), sign);
     write16Bits(inst.destination, IrU32(ir.BitwiseAnd(result.Value(), ir.Constant(0xffffu))));
     return true;
 }

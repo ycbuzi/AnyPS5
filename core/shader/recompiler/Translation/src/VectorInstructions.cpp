@@ -809,11 +809,13 @@ bool TranslationContext::emitVector(const RdnaInstruction& inst) {
     case RdnaOpcode::VAshrrevI16:
         return integer16Shift(inst, IrOpcode::ShiftRightArithmetic32, true);
     case RdnaOpcode::VAddNcU16:
-    case RdnaOpcode::VAddNcI16:
         return integer16Binary(inst, IrOpcode::IAdd32, false);
+    case RdnaOpcode::VAddNcI16:
+        return integer16Binary(inst, IrOpcode::IAdd32, true);
     case RdnaOpcode::VSubNcU16:
-    case RdnaOpcode::VSubNcI16:
         return integer16Binary(inst, IrOpcode::ISub32, false);
+    case RdnaOpcode::VSubNcI16:
+        return integer16Binary(inst, IrOpcode::ISub32, true);
     case RdnaOpcode::VMed3I16:
         return vMed3I16(inst);
     case RdnaOpcode::VMin3I16:

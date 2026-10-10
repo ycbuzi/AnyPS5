@@ -205,6 +205,17 @@ ShaderRecompiler::RectListShaders PreparedRectangle(const ShaderSnapshot& snapsh
     throw std::runtime_error("AGC driver: prepared rectangle artifacts are missing");
 }
 
+ShaderRecompiler::RectListShaders DrawRectangle(const ShaderSnapshot& front, const std::shared_ptr<const ShaderSnapshot>& fragment, std::uint64_t vertexId, std::uint64_t fragmentId, const ShaderRecompiler::SpirvTarget& target) {
+    const auto prepared = [&] {
+        std::lock_guard lock(front.prepared->mutex);
+        return std::ranges::any_of(front.prepared->rectangles, [&](const auto& entry) { return entry.vertexId == vertexId && entry.fragmentId == fragmentId; });
+    };
+    if (prepared()) return PreparedRectangle(front, vertexId, fragmentId);
+    APS5_LOG_ERR("Rect-list draw of shader 0x%llx has no rectangle for fragment shader 0x%llx; preparing it at draw", static_cast<unsigned long long>(front.codeAddress), static_cast<unsigned long long>(fragment->codeAddress));
+    ResolvePreparedGraphics(front, fragment, 17, target);
+    return PreparedRectangle(front, vertexId, fragmentId);
+}
+
 ShaderRecompiler::PreparedShaderInvocation InvocationFor(const ShaderSnapshot& snapshot, std::size_t codeOffset, const ShaderRecompiler::RecompileRequest& request) {
     require(codeOffset < snapshot.code.size(), "prepared shader code offset is outside the snapshot");
     const auto code = std::span(snapshot.code).subspan(codeOffset);

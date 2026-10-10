@@ -74,10 +74,10 @@ public:
     void Wait() override {
         std::unique_lock lock(_config->mutex);
         _config->vblankCond.wait(lock, _config->shutdownToken, [&] {
-            return _config->failure || _config->closing || !_config->opened ||
+            return _config->failure || _config->Closed() ||
                 _config->bufferReuse[_index].IsComplete(_ticket);
         });
-        checkConfig(*_config);
+        _config->CheckAlive();
     }
 };
 
@@ -166,15 +166,27 @@ private:
 FlipRequest::~FlipRequest() {
     if (!reserved) return;
     std::lock_guard lock(cfg->mutex);
-    if (!terminal) {
-        --cfg->flipStatus.flipPendingNum;
-        --queue->reservations;
-        if (index >= 0) {
-            --cfg->bufferPending[index];
-            cfg->bufferReuse[index].Complete(reuseTicket);
-        }
-        cfg->vblankCond.notify_all();
+    ReleaseLocked();
+}
+
+void FlipRequest::ReleaseLocked() noexcept {
+    if (!reserved || terminal) return;
+    --cfg->flipStatus.flipPendingNum;
+    --queue->reservations;
+    if (index >= 0) {
+        --cfg->bufferPending[index];
+        cfg->bufferReuse[index].Complete(reuseTicket);
     }
+    terminal = true;
+    cfg->vblankCond.notify_all();
+}
+
+void FlipRequest::Cancel() noexcept {
+    {
+        std::lock_guard lock(cfg->mutex);
+        ReleaseLocked();
+    }
+    queue->changed.notify_all();
 }
 
 void FlipRequest::GpuReady(const std::shared_ptr<AgcDriver::FrameTiming>& frameTiming) {
@@ -187,7 +199,11 @@ void FlipRequest::GpuReady(const std::shared_ptr<AgcDriver::FrameTiming>& frameT
         if (queue->failure) std::rethrow_exception(queue->failure);
         if (queue->stopping || cfg->shutdownToken.stop_requested()) throw ProcessShutdown{};
         std::lock_guard lock(cfg->mutex);
-        checkConfig(*cfg);
+        cfg->CheckAlive();
+        if (cfg->Closed()) {
+            ReleaseLocked();
+            return;
+        }
         require(reserved && !ready && !terminal && cfg->generation == generation, "invalid flip readiness transition");
         readiness.Mark("locks_validate");
         queuedAt = AgcDriver::FrameTiming::Clock::now();
@@ -212,16 +228,7 @@ void FlipRequest::Fail(std::exception_ptr error) noexcept {
     if (!error) std::terminate();
     std::lock_guard lock(cfg->mutex);
     if (!cfg->failure) cfg->failure = error;
-    if (reserved && !terminal) {
-        --cfg->flipStatus.flipPendingNum;
-        --queue->reservations;
-        if (index >= 0) {
-            --cfg->bufferPending[index];
-            cfg->bufferReuse[index].Complete(reuseTicket);
-        }
-        terminal = true;
-    }
-    cfg->vblankCond.notify_all();
+    ReleaseLocked();
     queue->changed.notify_all();
 }
 
@@ -437,7 +444,11 @@ void VideoOutDriver::processFlip(FlipRequest& req) {
     {
         std::unique_lock lock(req.cfg->mutex);
         timing.Mark("config_mutex_wait");
-        checkConfig(*req.cfg);
+        req.cfg->CheckAlive();
+        if (req.cfg->Closed()) {
+            req.ReleaseLocked();
+            return;
+        }
         require(req.ready && !req.terminal && req.generation == req.cfg->generation, "stale or incomplete flip request");
         const auto interval = static_cast<uint64_t>(req.flipRate + 1);
         require(req.cfg->lastFlipVblank <= std::numeric_limits<uint64_t>::max() - interval, "flip interval overflow");
@@ -445,7 +456,11 @@ void VideoOutDriver::processFlip(FlipRequest& req) {
         timing.Mark("validate");
         req.cfg->vblankCond.wait(lock, req.cfg->shutdownToken, [&] { return req.cfg->vblankStatus.count >= target || req.cfg->failure || req.cfg->closing; });
         timing.Mark("vblank_wait");
-        checkConfig(*req.cfg);
+        req.cfg->CheckAlive();
+        if (req.cfg->Closed()) {
+            req.ReleaseLocked();
+            return;
+        }
         req.cfg->lastFlipVblank = req.cfg->vblankStatus.count;
     }
     require(req.width != 0 && req.height != 0 && req.width <= static_cast<uint32_t>(std::numeric_limits<int>::max()) && req.height <= static_cast<uint32_t>(std::numeric_limits<int>::max()), "invalid window dimensions");
@@ -456,7 +471,8 @@ void VideoOutDriver::processFlip(FlipRequest& req) {
     const auto gpuReady = [](void* context) {
         auto& request = *static_cast<FlipRequest*>(context);
         std::lock_guard lock(request.cfg->mutex);
-        checkConfig(*request.cfg);
+        request.cfg->CheckAlive();
+        if (request.cfg->Closed()) return;
         require(!request.terminal && !request.gpuComplete, "invalid GPU completion transition");
         request.gpuComplete = true;
         request.cfg->vblankCond.notify_all();
@@ -472,7 +488,11 @@ void VideoOutDriver::processFlip(FlipRequest& req) {
     timing.Mark("window_title");
     std::lock_guard lock(req.cfg->mutex);
     timing.Mark("completion_mutex_wait");
-    checkConfig(*req.cfg);
+    req.cfg->CheckAlive();
+    if (req.cfg->Closed()) {
+        req.ReleaseLocked();
+        return;
+    }
     require(!req.terminal && req.cfg->generation == req.generation, "flip cancelled during presentation");
     require(req.gpuComplete, "flip submitted before GPU completion");
     require(req.cfg->flipStatus.count != std::numeric_limits<uint64_t>::max(), "flip counter overflow");

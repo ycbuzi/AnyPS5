@@ -142,10 +142,16 @@ struct VideoOutConfig {
     std::array<BufferReuseTracker, VIDEO_OUT_BUFFER_NUM_MAX> bufferReuse;
     std::array<BufferAttributeGroup, VIDEO_OUT_BUFFER_ATTRIBUTE_NUM_MAX> groups{};
 
-    void Check() const {
+    bool Closed() const { return !opened || closing; }
+
+    void CheckAlive() const {
         if (failure) std::rethrow_exception(failure);
         if (shutdownToken.stop_requested()) throw ProcessShutdown{};
-        if (!opened || closing) throw std::runtime_error("VideoOut: port is closed");
+    }
+
+    void Check() const {
+        CheckAlive();
+        if (Closed()) throw std::runtime_error("VideoOut: port is closed");
     }
 };
 
@@ -176,6 +182,8 @@ struct FlipRequest final : AgcDriver::IFlipRequest, std::enable_shared_from_this
     ~FlipRequest() override;
     void GpuReady(const std::shared_ptr<AgcDriver::FrameTiming>& frameTiming) override;
     void Fail(std::exception_ptr error) noexcept override;
+    void Cancel() noexcept;
+    void ReleaseLocked() noexcept;
 };
 
 struct FlipQueue {

@@ -99,24 +99,21 @@ void testLifetime(bool reopen) {
         check(replacement != cfg && replacement->generation > cfg->generation, "reopen reused old port state");
     }
     gate->Release();
-    std::exception_ptr failure;
     {
         std::unique_lock lock(cfg->mutex);
-        check(cfg->vblankCond.wait_for(lock, std::chrono::seconds(10), [&] { return cfg->failure != nullptr; }), "flip failure did not wake waiters");
-        failure = cfg->failure;
-        check(cfg->flipStatus.count == 0 && cfg->flipStatus.flipPendingNum == 0, "failed flip has successful or pending status");
+        check(cfg->vblankCond.wait_for(lock, std::chrono::seconds(10), [&] { return cfg->flipStatus.flipPendingNum == 0; }), "closed port kept its pending flip");
+        check(cfg->failure == nullptr, "closing a port failed the driver");
+        check(cfg->flipStatus.count == 0, "cancelled flip has successful status");
     }
-    const auto message = expectFailure([&] { std::rethrow_exception(failure); });
-    check(message.find("closed") != std::string::npos, "flip used a closed port");
     if (replacement) {
         std::lock_guard lock(replacement->mutex);
         check(replacement->flipStatus.flipPendingNum == 0 && replacement->flipStatus.count == 0, "old request changed new port counters");
+    } else {
+        check(expectFailure([&] { sceVideoOutWaitVblank(handle); }).find("closed") != std::string::npos, "closed port accepted a vblank wait");
     }
-    check(expectFailure([&] { sceVideoOutWaitVblank(handle); }).find("closed") != std::string::npos, "VideoOut lost worker failure");
     AgcDriverUnregisterVideoOutput_nid_postfix(7, gate);
     if (reopen) sceVideoOutClose(handle);
-    const auto shutdown = expectFailure([] { LibcRunShutdown_nid_postfix(); });
-    check(shutdown.find("closed") != std::string::npos, "shutdown lost asynchronous error");
+    LibcRunShutdown_nid_postfix();
 }
 
 std::size_t tiledOffset(uint32_t x, uint32_t y, uint32_t width) {
