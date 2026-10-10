@@ -157,7 +157,7 @@ Cloud can do (Linux, no GPU):
 5. Check the stack's own earlier functions for "counts as implemented but does nothing".
    The PC session said this was owed.
 6. Cycle 2 harvesting: the 38 cycle 1 candidates that conflicted (see
-   `handoff-tools/cloud/stack-run1-2026-10-10.log`), PRs opened after 2632, fix branches posted in
+   `handoff-tools/cloud/stack-run1-2026-10-10.txt`), PRs opened after 2632, fix branches posted in
    issue comments (MarcZX100 for 2601, elsi06 for 2599), Discussions, other forks.
    Older notes: more harvesting from every source above. Known leftovers: 1611, 1097, 1141, 1431, 1091, 1772
    are not merged upstream as of `4fbf6ca5`.

@@ -35,4 +35,4 @@ Paths point at the cloud session's scratchpad; adjust before reuse.
 | `dupcheck.py` | After a merge, find tests or exports that became duplicated. |
 | `extract_tools.py`, `conv.py`, `summaries.py` | Read another session's transcript pages: files it wrote, the conversation, its context summaries. |
 | `harvest-2026-10-10.tsv` | Scores of all 1063 unmerged upstream PRs against `81af6c0a`. |
-| `stack-run1-2026-10-10.log` | Result of stacking the 101 candidates. |
+| `stack-run1-2026-10-10.txt` | Result of stacking the 101 candidates. |
