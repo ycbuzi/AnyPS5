@@ -85,6 +85,12 @@ if(BUILD_TESTING)
     configure_windows_unwind(guest_rounding_tests)
     add_test(NAME guest_rounding COMMAND guest_rounding_tests)
         set_tests_properties(guest_rounding PROPERTIES ENVIRONMENT_MODIFICATION
+    add_test_executable(guest_math_exports_tests ${LIBS_INCLUDE_DIR}/tests/GuestMathExports.cpp)
+    target_include_directories(guest_math_exports_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_math_exports_tests PRIVATE libc)
+    configure_windows_unwind(guest_math_exports_tests)
+    add_test(NAME guest_math_exports COMMAND guest_math_exports_tests)
+        set_tests_properties(guest_math_exports PROPERTIES ENVIRONMENT_MODIFICATION
     add_test_executable(guest_time_conversion_tests ${LIBS_INCLUDE_DIR}/tests/GuestTimeConversion.cpp)
     target_include_directories(guest_time_conversion_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_time_conversion_tests PRIVATE libc)
