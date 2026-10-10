@@ -6,8 +6,44 @@
 #include "prx/libSceAgcDriver/Execution/include/VideoOutput.hpp"
 #include <cstdint>
 #include <cstddef>
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <stdexcept>
+#include <string>
+#include <vector>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+
+namespace {
+
+std::vector<std::uint32_t> resetQueueGroup(std::uint32_t bit, std::uint32_t state) {
+    const std::uint32_t stateThree = state == 3u ? 0x00840f80u : 0x00000000u;
+    switch (bit) {
+        case 0x001u:
+            return {0xc0039f00u, 0x00000000u, 0x00000000u, 0x80000000u, 0x00000000u};
+        case 0x002u:
+            return {0xc0036300u, 0x00000000u, 0x00000000u, 0x80000000u, 0x00000000u};
+        case 0x004u:
+            return {0xc0036400u, 0x00000000u, stateThree, 0x80000000u, 0x00000000u};
+        case 0x008u:
+            return {0xc0002f00u, 0x00000001u};
+        case 0x010u:
+            return {0xc0017a00u, 0x20000243u, 0x00000480u, 0xc0012600u, 0x00000000u, 0x00000000u, 0xc0001300u, 0xffffffffu};
+        case 0x020u:
+            return {0xc0021102u, 0x00000001u, 0x00000000u, 0x00000000u, 0xc0021100u, 0x00000001u, 0x00000000u, 0x00000000u};
+        case 0x080u:
+            return {0xc0004600u, 0x00000407u};
+        case 0x100u:
+            return {0xc0004600u, 0x00000410u};
+        case 0x800u:
+            return {0xc0036400u, 0x00000000u, stateThree, 0x80000000u, 0x00000000u};
+        default:
+            throw std::runtime_error(std::string("sceAgcDcbResetQueue: unsupported op bit ") + std::to_string(bit));
+    }
+}
+
+}
 
 
 extern "C" {
@@ -31,7 +67,34 @@ std::uint32_t APS5_VABI sceAgcDcbJumpGetSize() {
 std::uint32_t* APS5_VABI sceAgcDcbResetQueue(CommandBuffer* buf, std::uint32_t op, std::uint32_t state) {
     Agc::Command::CheckBits(op, 0xfffu, __func__);
     Agc::Command::CheckBits(state, 0xfu, __func__);
-    return Agc::Command::Emit(buf, 0x12u, {state}, __func__);
+
+    constexpr std::array<std::uint32_t, 3> unsupported{0x040u, 0x200u, 0x400u};
+    for (const auto bit : unsupported) {
+        if ((op & bit) != 0u) {
+            char message[64];
+            std::snprintf(message, sizeof(message), "unsupported op bit 0x%x", bit);
+            Agc::Command::Require(false, __func__, message);
+        }
+    }
+
+    const std::uint32_t envelopeFlag = state == 2u ? 0x00000008u : 0x00000000u;
+    std::vector<std::uint32_t> words{
+        0xffff1000u,
+        0xc0027904u, 0x00000342u, 0xce200000u | (op & 0xffffu), envelopeFlag};
+
+    constexpr std::array<std::uint32_t, 9> order{0x001u, 0x002u, 0x004u, 0x008u, 0x010u, 0x020u, 0x080u, 0x100u, 0x800u};
+    for (const auto bit : order) {
+        if ((op & bit) != 0u) {
+            const auto group = resetQueueGroup(bit, state);
+            words.insert(words.end(), group.begin(), group.end());
+        }
+    }
+
+    words.insert(words.end(), {0xc0017904u, 0x00000342u, 0xcea00000u});
+
+    auto* packet = Agc::Command::Allocate(buf, static_cast<std::uint32_t>(words.size()), __func__);
+    std::copy(words.begin(), words.end(), packet);
+    return packet;
 }
 
 std::uint32_t* APS5_VABI sceAgcDcbClearState(CommandBuffer* buf, std::uint32_t command) {

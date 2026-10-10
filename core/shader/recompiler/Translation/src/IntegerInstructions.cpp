@@ -625,7 +625,8 @@ bool TranslationContext::sQuadmask(const RdnaInstruction& inst, bool wide) {
 bool TranslationContext::bfmB32(const RdnaInstruction& inst) {
     const IrU32 count(ir.BitwiseAnd(readU32(sourceAt(inst, 0u)).Value(), ir.Constant(31u)));
     const IrU32 offset(ir.BitwiseAnd(readU32(sourceAt(inst, 1u)).Value(), ir.Constant(31u)));
-    const IrU32 result(ir.Emit(IrOpcode::BitFieldInsert, IrType::U32, {&ir.Constant(0u), &ir.Constant(0xffffffffu), &offset.Value(), &count.Value()}));
+    const IrU32 mask = rightMask32(count);
+    const IrU32 result(ir.ShiftLeftLogical(mask.Value(), offset.Value()));
     writeOperand(inst.destination, &result.Value());
     return true;
 }

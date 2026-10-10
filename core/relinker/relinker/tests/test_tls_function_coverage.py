@@ -234,6 +234,18 @@ REGISTER_LOAD_FOLLOWERS = (
     ("rax-rbx-rip-follower", bytes.fromhex("64 48 8b 03"), 0, True, {3: -8}, -8, b"", 0x0fedcba987654321),
     ("edx-rbx-nop-follower", bytes.fromhex("64 8b 13"), 2, False, {3: 0x10}, 0x10, b"\x90", None),
 )
+REGISTER_ALUS = (
+    ("xor-rax-rbx", bytes.fromhex("64 48 33 03"), 0x33, 0, True, {3: -8}, -8),
+    ("xor-rcx-rax", bytes.fromhex("64 48 33 08"), 0x33, 1, True, {0: 0x10}, 0x10),
+    ("xor-rbx-rax", bytes.fromhex("64 48 33 18"), 0x33, 3, True, {0: 0x28}, 0x28),
+    ("add-rax-rbx", bytes.fromhex("64 48 03 03"), 0x03, 0, True, {3: -8}, -8),
+    ("cmp-rax-rbx", bytes.fromhex("64 48 3b 03"), 0x3b, 0, True, {3: -8}, -8),
+    ("xor-r13-rbx-rcx-disp8", bytes.fromhex("64 4c 33 6c 0b f0"), 0x33, 13, True, {3: 0x18, 1: -0x10}, -8),
+    ("xor-edx-rbx", bytes.fromhex("64 33 13"), 0x33, 2, False, {3: 0x10}, 0x10),
+    ("cmp-ecx-rax", bytes.fromhex("64 3b 08"), 0x3b, 1, False, {0: 0x10}, 0x10),
+    ("adc-rax-rbx", bytes.fromhex("64 48 13 03"), 0x13, 0, True, {3: -8}, -8),
+    ("sbb-rcx-rax", bytes.fromhex("64 48 1b 08"), 0x1b, 1, True, {0: 0x10}, 0x10),
+)
 
 
 def register_load_body(instruction, register, wide, address, offset, flags, follower=b"", rip_constant=None):
@@ -321,6 +333,114 @@ def register_load_stub(instruction, register, wide):
     move = (bytes([(0x48 if wide else 0x40) | (register >> 3) << 2]) if wide or register >= 8 else b"") + bytes([0x8b, 0x04 | (register & 7) << 3, 0x08])
     restore = {0: bytes.fromhex("48 8d 64 24 08 59"), 1: bytes.fromhex("58 48 8d 64 24 08")}.get(register, bytes.fromhex("58 59"))
     return bytes.fromhex("48 8d 64 24 80 51 50") + address + b"\x50", b"\x59" + move + restore + bytes.fromhex("48 8d a4 24 80 00 00 00")
+
+
+def register_alu_body(instruction, opcode, register, wide, address, offset, flags, follower=b"\x90"):
+    saved = (3, 5, 6, 7, 12, 13, 14, 15)
+    mask = (1 << 64) - 1
+    code = bytearray()
+    failures = []
+
+    def emit(data):
+        code.extend(data)
+
+    def immediate(target, value):
+        emit(bytes([0x48 | (target >> 3), 0xb8 | (target & 7)]) + struct.pack("<Q", value & mask))
+
+    def check(slot):
+        emit(bytes.fromhex("48 39 84 24") + struct.pack("<i", slot * 8) + bytes.fromhex("0f 85 00 00 00 00"))
+        failures.append(len(code) - 4)
+
+    for target in saved:
+        emit((b"\x41" if target >= 8 else b"") + bytes([0x50 | (target & 7)]))
+    emit(bytes.fromhex("48 8d a4 24 00 ff ff ff"))
+    emit(fs_load(0, 0))
+    for displacement, value in REGISTER_VALUES.items():
+        immediate(1, value)
+        emit(bytes([0x48, 0x89, 0x48, displacement & 255]))
+    markers = [0x1020304050607000 + target * 0x101 for target in range(16)]
+    expected = list(markers)
+    for target in range(16):
+        if target != 4:
+            immediate(target, markers[target])
+    for target, value in address.items():
+        immediate(target, value)
+        expected[target] = value & mask
+    value = REGISTER_VALUES[offset]
+    base_val = expected[register] if wide else expected[register] & 0xffffffff
+    operand_val = value if wide else value & 0xffffffff
+    if opcode == 0x33:
+        res = base_val ^ operand_val
+    elif opcode == 0x23:
+        res = base_val & operand_val
+    elif opcode == 0x0b:
+        res = base_val | operand_val
+    elif opcode == 0x03:
+        res = (base_val + operand_val) & (mask if wide else 0xffffffff)
+    elif opcode == 0x2b:
+        res = (base_val - operand_val) & (mask if wide else 0xffffffff)
+    elif opcode == 0x3b:
+        res = base_val
+    elif opcode == 0x13:
+        res = (base_val + operand_val + (flags & 1)) & (mask if wide else 0xffffffff)
+    elif opcode == 0x1b:
+        res = (base_val - operand_val - (flags & 1)) & (mask if wide else 0xffffffff)
+    else:
+        raise ValueError(f"Unknown opcode: {opcode}")
+    if opcode != 0x3b:
+        expected[register] = res if wide else res & 0xffffffff
+    emit(b"\x68" + struct.pack("<I", flags) + b"\x9d")
+    load_offset = len(code)
+    emit(instruction)
+    emit(follower)
+    for target in range(16):
+        emit(bytes([0x48 | (target >> 3) << 2, 0x89, 0x84 | (target & 7) << 3, 0x24]) + struct.pack("<i", target * 8))
+    for target in range(16):
+        if target == 4:
+            emit(bytes.fromhex("48 8d 04 24"))
+        else:
+            immediate(0, expected[target])
+        check(target)
+    emit(bytes.fromhex("b8 2a 00 00 00 eb 05"))
+    failure = len(code)
+    emit(bytes.fromhex("b8 01 00 00 00 48 8d a4 24 00 01 00 00"))
+    for target in reversed(saved):
+        emit((b"\x41" if target >= 8 else b"") + bytes([0x58 | (target & 7)]))
+    emit(b"\xc3")
+    for position in failures:
+        struct.pack_into("<i", code, position, failure - position - 4)
+    return load_offset, bytes(code)
+
+
+def register_alu_cases():
+    follower = b"\x90"
+    for name, instruction, opcode, register, wide, address, offset in REGISTER_ALUS:
+        for flags in (0x202, 0xad7):
+            load_offset, body = register_alu_body(instruction, opcode, register, wide, address, offset, flags, follower)
+            moved = follower if len(instruction) < 5 else b""
+            yield f"register-alu-{name}-{flags:x}", make_image("register", "unwind", body=body), 0x1240 + load_offset, instruction, opcode, register, wide, moved
+
+
+def register_alu_stub(instruction, opcode, register, wide):
+    position = 1
+    while instruction[position] != opcode:
+        position += 1
+    rex = instruction[position - 1] if 0x40 <= instruction[position - 1] <= 0x4f else 0
+    address = bytes([0x48 | (rex & 3), 0x8d, instruction[position + 1] & 0xc7]) + instruction[position + 2:]
+    if register == 0:
+        load = (b"\x48" if wide else b"") + bytes.fromhex("8b 14 08")
+        alu = bytes([0x48, opcode, 0xc2]) if wide else bytes([opcode, 0xc2])
+        return bytes.fromhex("48 8d 64 24 80 51 52 50") + address + b"\x50", b"\x59" + load + b"\x58" + alu + bytes.fromhex("5a 59 48 8d a4 24 80 00 00 00")
+    elif register == 1:
+        load = (b"\x48" if wide else b"") + bytes.fromhex("8b 04 08")
+        restore_rcx = bytes.fromhex("48 8b 4c 24 08 48") + bytes([opcode, 0xc8]) if wide else bytes.fromhex("48 8b 4c 24 08") + bytes([opcode, 0xc8])
+        return bytes.fromhex("48 8d 64 24 80 51 50") + address + b"\x50", b"\x59" + load + restore_rcx + bytes.fromhex("58 48 8d 64 24 08 48 8d a4 24 80 00 00 00")
+    else:
+        load = (b"\x48" if wide else b"") + bytes.fromhex("8b 04 08")
+        rex_alu = (bytes([(0x48 if wide else 0x40) | (register >> 3) << 2]) if wide or register >= 8 else b"")
+        alu = rex_alu + bytes([opcode, 0xc0 | (register & 7) << 3])
+        return bytes.fromhex("48 8d 64 24 80 51 50") + address + b"\x50", b"\x59" + load + alu + bytes.fromhex("58 59 48 8d a4 24 80 00 00 00")
+
 
 
 def make_image(transfer, metadata, extent=None, body=None):
@@ -534,10 +654,18 @@ def main():
             stub = pe_bytes_at(pe, 0x10000 + address + 5 + struct.unpack_from("<i", patched, 1)[0], 96)
             head, tail = register_load_stub(instruction, register, wide)
             assert stub.startswith(head) and tail + moved in stub, (name, head.hex(), (tail + moved).hex(), stub.hex())
+        for name, image, address, instruction, opcode, register, wide, moved in register_alu_cases():
+            convert(name, image, tls_address=address)
+            pe = (work / (name + ".exe")).read_bytes()
+            patched = pe_bytes_at(pe, 0x10000 + address, 5)
+            stub = pe_bytes_at(pe, 0x10000 + address + 5 + struct.unpack_from("<i", patched, 1)[0], 96)
+            head, tail = register_alu_stub(instruction, opcode, register, wide)
+            assert stub.startswith(head) and tail + moved in stub, (name, head.hex(), (tail + moved).hex(), stub.hex())
         for name, instruction in {
             "short-before-return": bytes.fromhex("64 48 8b 03 c3"),
             "short-before-call": bytes.fromhex("64 48 8b 03 e8 00 00 00 00 c3"),
             "short-before-tls": bytes.fromhex("64 48 8b 03 64 48 8b 03 c3"),
+            "short-alu-before-return": bytes.fromhex("64 48 33 03 c3"),
         }.items():
             convert(name, make_image("register", "unwind", body=instruction),
                     "Short guest TLS instruction is followed by an instruction that cannot move", error_offset=0x1244)
@@ -552,7 +680,6 @@ def main():
             "rip-relative-load": bytes.fromhex("64 48 8b 05 00 00 00 00"),
             "word-register-address": bytes.fromhex("66 64 8b 00"),
             "register-address-store": bytes.fromhex("64 48 89 03"),
-            "register-address-alu": bytes.fromhex("64 48 33 03"),
         }
         for name, instruction in rejected.items():
             convert(name, make_image("register", "unwind", body=instruction + b"\xc3"),

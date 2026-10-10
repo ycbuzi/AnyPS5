@@ -7,6 +7,7 @@
 #include "CacheKey.hpp"
 #include "CompiledVariant.hpp"
 #include "VertexInputSpecialization.hpp"
+#include "FragmentOutputSpecialization.hpp"
 #include "SpirvBackend/SpirvSpecialization.hpp"
 #include "RdnaDecoder/RdnaDescriptorFormat.hpp"
 #include "ShaderDiskCache.hpp"
@@ -415,6 +416,7 @@ std::shared_ptr<const SpecializedModule> buildSpecializedModule(const CompiledSh
         if (!supplied.emplace(constant.id, constant.value).second) throw std::runtime_error("duplicate prepared specialization ID");
     }
     std::map<std::uint32_t, std::uint32_t> values;
+    std::set<std::uint32_t> specializedIds;
     const auto& words = source.Words();
     if (words.size() < 5u || words[0] != spv::MagicNumber) throw std::runtime_error("invalid prepared specialization module");
     for (std::size_t cursor = 5; cursor < words.size();) {
@@ -424,6 +426,7 @@ std::shared_ptr<const SpecializedModule> buildSpecializedModule(const CompiledSh
         if (op == spv::OpDecorate && count == 4u && words[cursor + 2u] == spv::DecorationSpecId) {
             const auto found = supplied.find(words[cursor + 3u]);
             if (found == supplied.end() || !values.emplace(words[cursor + 1u], found->second).second) throw std::runtime_error("missing or duplicate prepared specialization value");
+            specializedIds.insert(found->first);
         }
         cursor += count;
     }
@@ -439,7 +442,7 @@ std::shared_ptr<const SpecializedModule> buildSpecializedModule(const CompiledSh
         }
         cursor += count;
     }
-    materialized = SpecializeSpirv(materialized);
+    materialized = SpecializeFragmentOutputs(SpecializeSpirv(materialized), constants, specializedIds);
 #if ANYPS5_ENABLE_SPIRV_TOOLS
     materialized = ValidateAndOptimizeSpirv(materialized, target.vulkanVersion, target.spirvVersion, target.nonConstantImageOffsets, true, true);
 #endif
@@ -495,11 +498,13 @@ std::shared_ptr<const SpecializedModule> buildSpecializedModule(const CompiledSh
 
 struct SpecializedModuleEntry {
     std::once_flag ready;
+    std::exception_ptr failure;
     std::shared_ptr<const SpecializedModule> module;
 };
 
 struct PreparedModuleEntry {
     std::once_flag ready;
+    std::exception_ptr failure;
     std::shared_ptr<const SpecializedModule> module;
     DescriptorBindingPlan bindings;
 };
@@ -580,7 +585,14 @@ std::shared_ptr<const SpecializedModule> specializeModule(const CompiledShaderAr
         const auto found = modules.find(key);
         entry = found != modules.end() ? found->second : modules.emplace(key, std::make_shared<SpecializedModuleEntry>()).first->second;
     }
-    std::call_once(entry->ready, [&] { entry->module = buildSpecializedModule(artifact, classes, constants, target); });
+    std::call_once(entry->ready, [&] {
+        try {
+            entry->module = buildSpecializedModule(artifact, classes, constants, target);
+        } catch (...) {
+            entry->failure = std::current_exception();
+        }
+    });
+    if (entry->failure) std::rethrow_exception(entry->failure);
     return entry->module;
 }
 
@@ -614,6 +626,9 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
     auto& moduleKey = HostThreadLocal<std::vector<std::uint32_t>, LocalModuleKeyStorage>();
     moduleKey.clear();
     if (variant.bindings.layout.UsesPushData()) moduleKey.push_back(request.layout.pushConstantOffsetBytes / 4u);
+    if (request.context.pixel) {
+        for (const auto packing : request.context.pixel->targetExportPacking) moduleKey.push_back(static_cast<std::uint32_t>(packing));
+    }
     result.vertexAttributes.reserve(result.vertexInputs.size());
     std::array<std::uint32_t, ShaderVertexStageInfo::MaxResources> vertexClasses{};
     for (const auto& input : result.vertexInputs) {
@@ -639,7 +654,7 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
             moduleKey.push_back(selectors);
         }
     }
-    if (!plan->bindings.specialization.empty() || variant.bindings.layout.UsesPushData() || !artifact.vertexInputPatches.empty()) {
+    if (!plan->bindings.specialization.empty() || variant.bindings.layout.UsesPushData() || !artifact.vertexInputPatches.empty() || request.context.pixel) {
         {
             std::shared_lock lock(plan->mutex);
             if (const auto found = plan->modules.find(moduleKey); found != plan->modules.end()) entry = found->second;
@@ -649,10 +664,13 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
             const auto found = plan->modules.find(moduleKey);
             entry = found != plan->modules.end() ? found->second : plan->modules.emplace(moduleKey, std::make_shared<PreparedModuleEntry>()).first->second;
         }
-        std::call_once(entry->ready, [&] {
+        const auto prepare = [&] {
             auto constants = plan->bindings.specialization;
             std::size_t index = 0;
             if (variant.bindings.layout.UsesPushData()) constants.push_back({PipelineSpecialization::PushDataOffset, moduleKey[index++]});
+            if (request.context.pixel) {
+                for (std::uint32_t target = 0; target < request.context.pixel->targetExportPacking.size(); ++target) constants.push_back({PipelineSpecialization::ExportPackingBase + target, moduleKey[index++]});
+            }
             if (!artifact.vertexInputPatches.empty()) {
                 for (const auto& input : result.vertexInputs) {
                     const auto selectors = moduleKey[index++];
@@ -668,7 +686,15 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
             auto selected = DescriptorBindingBuilder{}.Select(plan->bindings, module->bindings);
             entry->bindings = std::move(selected);
             entry->module = module;
+        };
+        std::call_once(entry->ready, [&] {
+            try {
+                prepare();
+            } catch (...) {
+                entry->failure = std::current_exception();
+            }
         });
+        if (entry->failure) std::rethrow_exception(entry->failure);
         const auto& module = entry->module;
         result.specializationId = module->specializationId;
         result.spirv = module->spirv;
@@ -828,6 +854,7 @@ std::uint64_t snapshotHash(const RecompileRequest& request, const ResourceSnapsh
     mix(request.layout.pushConstantOffsetBytes);
     if (request.context.pixel) {
         for (const auto mapping : request.context.pixel->targetExportMapping) mix(mapping);
+        for (const auto packing : request.context.pixel->targetExportPacking) mix(static_cast<std::uint64_t>(packing));
     }
     if (request.context.vertex) {
         const auto& vertex = *request.context.vertex;

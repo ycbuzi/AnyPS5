@@ -81,14 +81,46 @@ bool APS5_VABI growReserved(CommandBuffer* buffer, std::uint32_t count, void* us
 
 void testPackets() {
     Storage storage;
-    sceAgcDcbResetQueue(&storage.buffer, 0, 3);
+    auto* reset = sceAgcDcbResetQueue(&storage.buffer, 0, 3);
     sceAgcDcbDrawIndexAuto(&storage.buffer, 17, 0);
-    const std::array<std::uint32_t, 5> expected{0xc0001200u, 3, 0xc0012d00u, 17, 2};
-    check(std::equal(expected.begin(), expected.end(), storage.words.begin()), "reset or draw packet mismatch");
+    const std::array<std::uint32_t, 11> expected{0xffff1000u, 0xc0027904u, 0x00000342u, 0xce200000u, 0x00000000u, 0xc0017904u, 0x00000342u, 0xcea00000u, 0xc0012d00u, 17, 2};
+    check(reset == storage.words.data() && std::equal(expected.begin(), expected.end(), storage.words.begin()), "reset or draw packet mismatch");
     check(storage.buffer.cursor_up == storage.words.data() + expected.size(), "incorrect packet cursor advance");
+
+    Storage base;
+    const auto* baseReset = sceAgcDcbResetQueue(&base.buffer, 0, 0);
+    const std::array<std::uint32_t, 8> baseEnvelope{0xffff1000u, 0xc0027904u, 0x00000342u, 0xce200000u, 0x00000000u, 0xc0017904u, 0x00000342u, 0xcea00000u};
+    check(baseReset == base.words.data() && std::equal(baseEnvelope.begin(), baseEnvelope.end(), baseReset), "op=0 state=0 envelope mismatch");
+    check(base.buffer.cursor_up == base.words.data() + baseEnvelope.size(), "op=0 state=0 cursor advance mismatch");
+
+    Storage single;
+    sceAgcDcbResetQueue(&single.buffer, 0x001u, 0);
+    const std::array<std::uint32_t, 13> singleExpected{0xffff1000u, 0xc0027904u, 0x00000342u, 0xce200001u, 0x00000000u, 0xc0039f00u, 0x00000000u, 0x00000000u, 0x80000000u, 0x00000000u, 0xc0017904u, 0x00000342u, 0xcea00000u};
+    check(std::equal(singleExpected.begin(), singleExpected.end(), single.words.begin()), "op=0x001 group mismatch");
+    check(single.buffer.cursor_up == single.words.data() + singleExpected.size(), "op=0x001 cursor advance mismatch");
+
+    Storage flagged;
+    sceAgcDcbResetQueue(&flagged.buffer, 0, 2);
+    check(flagged.words[4] == 0x00000008u, "state=2 did not set the envelope flag dword");
+
+    Storage stated;
+    sceAgcDcbResetQueue(&stated.buffer, 0x004u, 3);
+    const std::array<std::uint32_t, 13> statedExpected{0xffff1000u, 0xc0027904u, 0x00000342u, 0xce200004u, 0x00000000u, 0xc0036400u, 0x00000000u, 0x00840f80u, 0x80000000u, 0x00000000u, 0xc0017904u, 0x00000342u, 0xcea00000u};
+    check(std::equal(statedExpected.begin(), statedExpected.end(), stated.words.begin()), "state=3 did not set the 0x004 group payload dword");
+
+    Storage upper;
+    sceAgcDcbResetQueue(&upper.buffer, 0x800u, 0);
+    const std::array<std::uint32_t, 13> upperExpected{0xffff1000u, 0xc0027904u, 0x00000342u, 0xce200800u, 0x00000000u, 0xc0036400u, 0x00000000u, 0x00000000u, 0x80000000u, 0x00000000u, 0xc0017904u, 0x00000342u, 0xcea00000u};
+    check(std::equal(upperExpected.begin(), upperExpected.end(), upper.words.begin()), "op=0x800 group mismatch");
+    check(upper.buffer.cursor_up == upper.words.data() + upperExpected.size(), "op=0x800 cursor advance mismatch");
+
     const auto before = storage.words;
     expectFailure([&] { sceAgcDcbResetQueue(&storage.buffer, 0, 16); });
-    check(storage.words == before, "invalid reset modified packet memory");
+    expectFailure([&] { sceAgcDcbResetQueue(&storage.buffer, 0x040u, 0); });
+    expectFailure([&] { sceAgcDcbResetQueue(&storage.buffer, 0x200u, 0); });
+    expectFailure([&] { sceAgcDcbResetQueue(&storage.buffer, 0x400u, 0); });
+    expectFailure([&] { sceAgcDcbResetQueue(&storage.buffer, 0x1000u, 0); });
+    check(storage.words == before && storage.buffer.cursor_up == storage.words.data() + expected.size(), "invalid reset modified packet memory");
     Storage destination;
     CommandBuffer empty{nullptr, nullptr, nullptr, nullptr, grow, &destination, 0};
     Agc::Command::Emit(&empty, 0x15u, {1, 1, 1, 0x41u}, __func__);

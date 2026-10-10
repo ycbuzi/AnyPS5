@@ -1,4 +1,5 @@
 #include "SpirvBackend/SpirvModuleEmitter.hpp"
+#include "SpirvBackend/SpirvBufferFormat.hpp"
 #include "SpirvBackend/SpirvEmitterHelpers.hpp"
 #include "SpirvBackend/SpirvEmitterInstructions.hpp"
 #include "SpirvBackend/SpirvFlowEmitter.hpp"
@@ -240,6 +241,35 @@ std::uint32_t MrtOutputMode(const SpirvEmitterState& state, const ExportInfo& ex
         return 0u;
     }
     return state.inputInfo.pixel->targetOutputMode[exp.index];
+}
+
+std::uint32_t PackUnorm10_11_11(SpirvEmitterState& state, std::uint32_t color) {
+    const auto info = GetFormatInfo(IrBufferFormat::Format11_11_10UNorm);
+    auto packed = ConstantU32(state, 0u);
+    for (std::uint32_t component = 0; component < info.componentCount; component++) {
+        const auto value = state.module.AllocateId();
+        state.module.AddFunction(spv::OpCompositeExtract, TypeF32(state), value, color, component);
+        const auto bits = state.module.AllocateId();
+        state.module.AddFunction(spv::OpBitcast, TypeU32(state), bits, value);
+        const auto field = EmitFormatStoreComponent(state, info, component, bits);
+        packed = EmitOrU32(state, packed, info.componentBitOffset[component] == 0u ? field : EmitBinaryU32(state, spv::OpShiftLeftLogical, field, ConstantU32(state, info.componentBitOffset[component])));
+    }
+    return packed;
+}
+
+std::uint32_t SelectExportPacking(SpirvEmitterState& state, std::uint32_t target, std::uint32_t color) {
+    const auto packing = state.module.SpecializationConstant(TypeU32(state), PipelineSpecialization::ExportPackingBase + target, static_cast<std::uint32_t>(ColorExportPacking::None));
+    const auto packed = EmitCompareU32Constant(state, spv::OpIEqual, packing, static_cast<std::uint32_t>(ColorExportPacking::Unorm10_11_11));
+    const auto word = PackUnorm10_11_11(state, color);
+    std::array<std::uint32_t, 4> components{};
+    for (std::uint32_t component = 0; component < components.size(); ++component) {
+        const auto unpacked = state.module.AllocateId();
+        state.module.AddFunction(spv::OpCompositeExtract, TypeF32(state), unpacked, color, component);
+        components[component] = Select(state, TypeF32(state), packed, component == 0u ? Unary(state, spv::OpBitcast, TypeF32(state), word) : ConstantF32(state, 0u), unpacked);
+    }
+    const auto result = state.module.AllocateId();
+    state.module.AddFunction(spv::OpCompositeConstruct, TypeF32Vector(state, 4u), result, components[0], components[1], components[2], components[3]);
+    return result;
 }
 
 std::uint32_t ExportRawComponent(SpirvValueEmitContext& ctx, std::uint32_t vector, std::uint32_t component) {
@@ -1180,6 +1210,8 @@ void EmitSetAttribute(SpirvValueEmitContext& ctx, const IrValue& inst) {
             const auto mapped = state.module.AllocateId();
             state.module.AddFunction(spv::OpCompositeConstruct, vectorType, mapped, components[0], components[1], components[2], components[3]);
             value = mapped;
+            const auto mode = MrtOutputMode(state, exp);
+            if (!uintOutput && mode != 5u && mode != 6u) value = SelectExportPacking(state, exp.index, value);
         }
         if (exp.kind == ExportTargetKind::Position) {
             if (state.inputInfo.vertex == nullptr) {
