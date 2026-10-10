@@ -776,9 +776,18 @@ int APS5_VABI _ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(Value* out, const char*
 }
 
 
-int APS5_VABI _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+struct InitParameterRtti {
+    void* allocParam;
+    void* userData;
+    std::size_t fileBufferSize;
+};
+static_assert(sizeof(InitParameterRtti) <= 40);
+
+void APS5_VABI _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(InitParameterRtti* self, void* allocParam, void* userData, std::size_t fileBufferSize) {
+    if (self == nullptr) throw std::invalid_argument("sce::Json::InitParameterRtti: null object");
+    self->allocParam = allocParam;
+    self->userData = userData;
+    self->fileBufferSize = fileBufferSize;
 }
 
 enum SpecialFloatFormatType : std::int32_t {
