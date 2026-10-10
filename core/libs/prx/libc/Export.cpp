@@ -101,4 +101,9 @@ std::uint64_t APS5_VABI _Cnd_wait_nid_postfix() {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
+
+int APS5_VABI swscanf_s_nid_postfix(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 }
