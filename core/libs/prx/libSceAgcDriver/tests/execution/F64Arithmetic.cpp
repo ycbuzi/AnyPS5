@@ -182,7 +182,11 @@ void Check() {
     for (std::uint32_t tid = 0; tid < Threads; ++tid) {
         const std::uint32_t* in = &Input[tid * Inputs];
         const std::uint32_t* out = &Output[tid * Results];
-        for (std::uint32_t i = 0; i < 16; ++i) Expect(tid, out[i], !Ieee && i >= 8u && i < 12u ? MinMaxNoIeee[tid][i - 8u] : Expected[tid][i], Names[i]);
+        for (std::uint32_t i = 0; i < 16; ++i) {
+            std::uint32_t expected = !Ieee && i >= 8u && i < 12u ? MinMaxNoIeee[tid][i - 8u] : Expected[tid][i];
+            if (!Ieee && i == 13u && tid == 13u) expected = in[1];
+            Expect(tid, out[i], expected, Names[i]);
+        }
     }
 }
 

@@ -339,6 +339,10 @@ IrU32 TranslationContext::quietNan16(IrU32 bits) {
     return ieeeMode ? IrU32(ir.BitwiseOr(bits.Value(), ir.Constant(0x0200u))) : bits;
 }
 
+std::array<IrU32, 2> TranslationContext::quietNan64(const std::array<IrU32, 2>& bits) {
+    return ieeeMode ? std::array<IrU32, 2>{bits[0], IrU32(ir.BitwiseOr(bits[1].Value(), ir.Constant(0x00080000u)))} : bits;
+}
+
 IrF32 TranslationContext::applyF32ResultModifiers(const RdnaOperand& operand, IrF32 value) {
     if (operand.omod != 0u && outputModifierApplies(4u)) {
         IrValue& bits = ir.BitCastU32(value.Value());

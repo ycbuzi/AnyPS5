@@ -66,6 +66,7 @@ private:
     IrU32 quietNan16(IrU32 bits);
     IrValue* nanResultF32(std::initializer_list<IrValue*> sources, IrValue* result, IrValue* invalidProduct = nullptr);
     IrValue& invalidProductF32(IrValue* lhs, IrValue* rhs);
+    std::array<IrU32, 2> quietNan64(const std::array<IrU32, 2>& bits);
     std::array<IrU32, 2> readU32Pair(const RdnaOperand& operand);
     IrU64 readU64(const RdnaOperand& operand);
     std::array<IrU32, 2> readF64Bits(const RdnaOperand& operand);
@@ -204,6 +205,8 @@ private:
     void emitFloat16ClassCompare(const RdnaInstruction& inst, bool cmpx);
     bool float64Operation(const RdnaInstruction& inst, IrOpcode opcode);
     bool nonIeeeMinMaxF64(const RdnaInstruction& inst, IrOpcode opcode);
+    bool float64Unary(const RdnaInstruction& inst, IrOpcode opcode);
+    bool vCvtF64F32(const RdnaInstruction& inst);
     void writeF64Result(const RdnaOperand& operand, IrValue& value);
     bool vDivScaleF64(const RdnaInstruction& inst);
     bool vDivFmasF64(const RdnaInstruction& inst);
