@@ -4,6 +4,7 @@
 #include "prx/libSceAgc/Command/include/Memory.hpp"
 #include "prx/libSceAgc/Command/include/Packet.hpp"
 #include "prx/libSceAgc/DcbState/include/Marker.hpp"
+#include "prx/libSceAgcDriver/Execution/include/VideoOutput.hpp"
 #include <cstdint>
 #include <cstddef>
 #include "SceTypes.hpp"
@@ -46,21 +47,23 @@ std::uint32_t APS5_VABI sceAgcAcbRewindGetSize() {
 }
 
 std::uint32_t* APS5_VABI sceAgcAcbWaitUntilSafeForRendering(CommandBuffer* buf, std::uint32_t videoOutHandle, std::uint32_t displayBufferIndex) {
-    (void)buf;
-    (void)videoOutHandle;
-    (void)displayBufferIndex;
-    NotImplemented_nid_no_patch(__func__);
-    return nullptr;
+    auto* packet = Agc::Command::Allocate(buf, AgcDriver::RenderingWaitPacketWords, __func__);
+    packet[0] = AgcDriver::RenderingWaitPacketHeader;
+    packet[1] = videoOutHandle;
+    packet[2] = displayBufferIndex;
+    packet[3] = 0;
+    return packet;
 }
 
 std::uint32_t* APS5_VABI sceAgcAcbSetFlip(CommandBuffer* buf, std::uint32_t videoOutHandle, std::int32_t displayBufferIndex, std::uint32_t flipMode, std::int64_t flipArg) {
-    (void)buf;
-    (void)videoOutHandle;
-    (void)displayBufferIndex;
-    (void)flipMode;
-    (void)flipArg;
-    NotImplemented_nid_no_patch(__func__);
-    return nullptr;
+    auto* packet = Agc::Command::Allocate(buf, AgcDriver::FlipPacketWords, __func__);
+    packet[0] = AgcDriver::FlipPacketHeader;
+    packet[1] = videoOutHandle;
+    packet[2] = static_cast<std::uint32_t>(displayBufferIndex);
+    packet[3] = flipMode;
+    packet[4] = static_cast<std::uint32_t>(static_cast<std::uint64_t>(flipArg));
+    packet[5] = static_cast<std::uint32_t>(static_cast<std::uint64_t>(flipArg) >> 32u);
+    return packet;
 }
 
 uint32_t* APS5_VABI sceAgcAcbPushMarker(CommandBuffer* buf, const char* str, uint32_t color) {

@@ -13,6 +13,9 @@
 extern "C" std::uint32_t* APS5_VABI sceAgcDcbResetQueue(CommandBuffer* buf, std::uint32_t op, std::uint32_t state);
 extern "C" std::uint32_t* APS5_VABI sceAgcDcbClearState(CommandBuffer* buf, std::uint32_t command);
 extern "C" std::uint32_t* APS5_VABI sceAgcDcbSetFlip(CommandBuffer* buf, std::uint32_t handle, std::int32_t index, std::uint32_t mode, std::int64_t argument);
+extern "C" std::uint32_t* APS5_VABI sceAgcAcbSetFlip(CommandBuffer* buf, std::uint32_t handle, std::int32_t index, std::uint32_t mode, std::int64_t argument);
+extern "C" std::uint32_t* APS5_VABI sceAgcAcbWaitUntilSafeForRendering(CommandBuffer* buf, std::uint32_t videoOutHandle, std::uint32_t displayBufferIndex);
+extern "C" std::uint32_t* APS5_VABI sceAgcDcbWaitUntilSafeForRendering(CommandBuffer* buf, std::uint32_t videoOutHandle, std::uint32_t displayBufferIndex);
 extern "C" int APS5_VABI sceAgcSuspendPoint();
 extern "C" int APS5_VABI sceAgcInit(std::uint32_t version);
 extern "C" void* APS5_VABI sceAgcGetRegisterDefaults();
@@ -286,7 +289,49 @@ void testFlip() {
     exhausted.buffer.cursor_down = exhausted.words.data() + 5;
     expectFailure([&] { sceAgcDcbSetFlip(&exhausted.buffer, 1, 0, 1, 0); });
     check(exhausted.buffer.cursor_up == exhausted.words.data(), "failed flip allocation advanced cursor");
+
+    storage.words.fill(0xdeadbeefu);
+    storage.buffer.cursor_up = storage.words.data();
+    storage.buffer.cursor_down = storage.words.data() + storage.words.size();
+    auto* acbPacket = sceAgcAcbSetFlip(&storage.buffer, 0xfedcba98u, -2, 0x12345678u, -0x123456789abcdefLL);
+    check(acbPacket == storage.words.data(), "acb flip returned wrong packet address");
+    check(std::equal(expected.begin(), expected.end(), acbPacket), "acb flip packet lost argument bits");
+    check(storage.buffer.cursor_up == acbPacket + 6 && acbPacket[6] == 0xdeadbeefu, "acb flip packet overran allocation");
+    expectFailure([] { sceAgcAcbSetFlip(nullptr, 1, 0, 1, 0); });
+    exhausted.buffer.cursor_up = exhausted.words.data();
+    exhausted.buffer.cursor_down = exhausted.words.data() + 5;
+    expectFailure([&] { sceAgcAcbSetFlip(&exhausted.buffer, 1, 0, 1, 0); });
+    check(exhausted.buffer.cursor_up == exhausted.words.data(), "failed acb flip allocation advanced cursor");
+
     check(sceAgcSuspendPoint() == 0, "empty suspend failed");
+}
+
+void testWaitUntilSafeForRendering() {
+    Storage storage;
+    storage.words.fill(0xdeadbeefu);
+    auto* dcbPacket = sceAgcDcbWaitUntilSafeForRendering(&storage.buffer, 0x12345678u, 3);
+    const std::array<std::uint32_t, 4> expected{0xc0021018u, 0x12345678u, 3, 0};
+    check(dcbPacket == storage.words.data(), "dcb wait returned wrong packet address");
+    check(std::equal(expected.begin(), expected.end(), dcbPacket), "dcb wait packet corrupted");
+    check(storage.buffer.cursor_up == dcbPacket + 4 && dcbPacket[4] == 0xdeadbeefu, "dcb wait packet overran allocation");
+    expectFailure([] { sceAgcDcbWaitUntilSafeForRendering(nullptr, 1, 0); });
+    Storage exhausted;
+    exhausted.buffer.cursor_down = exhausted.words.data() + 3;
+    expectFailure([&] { sceAgcDcbWaitUntilSafeForRendering(&exhausted.buffer, 1, 0); });
+    check(exhausted.buffer.cursor_up == exhausted.words.data(), "failed dcb wait allocation advanced cursor");
+
+    storage.words.fill(0xdeadbeefu);
+    storage.buffer.cursor_up = storage.words.data();
+    storage.buffer.cursor_down = storage.words.data() + storage.words.size();
+    auto* acbPacket = sceAgcAcbWaitUntilSafeForRendering(&storage.buffer, 0x12345678u, 3);
+    check(acbPacket == storage.words.data(), "acb wait returned wrong packet address");
+    check(std::equal(expected.begin(), expected.end(), acbPacket), "acb wait packet corrupted");
+    check(storage.buffer.cursor_up == acbPacket + 4 && acbPacket[4] == 0xdeadbeefu, "acb wait packet overran allocation");
+    expectFailure([] { sceAgcAcbWaitUntilSafeForRendering(nullptr, 1, 0); });
+    exhausted.buffer.cursor_up = exhausted.words.data();
+    exhausted.buffer.cursor_down = exhausted.words.data() + 3;
+    expectFailure([&] { sceAgcAcbWaitUntilSafeForRendering(&exhausted.buffer, 1, 0); });
+    check(exhausted.buffer.cursor_up == exhausted.words.data(), "failed acb wait allocation advanced cursor");
 }
 
 void testRegisters() {
@@ -436,6 +481,7 @@ int main(int argc, char** argv) {
         testIndexBuffer();
         testContextState();
         testFlip();
+        testWaitUntilSafeForRendering();
         testRegisters();
         testRegisterRange();
         testPacketPayloadAddress();
