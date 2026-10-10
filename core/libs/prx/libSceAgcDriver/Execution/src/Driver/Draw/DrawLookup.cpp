@@ -89,6 +89,7 @@ void Driver::lookupDraw(const Submission& submission, const std::shared_ptr<Vulk
                 for (std::size_t i = 0; !miss && i < programs.size(); ++i) {
                     if (roles[i] == Role::GeometryBack) continue;
                     ++stageValidations;
+                    cursor = Graphics::StagePushOffset(cursor, programs[i].binary.stage, localDevice->GraphicsPipelineLibraries());
                     const auto& variants = entry->stages[i];
                     auto outcome = EntryOutcome::Differing;
                     bool anyLayout = false;
