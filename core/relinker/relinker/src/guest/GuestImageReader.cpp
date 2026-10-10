@@ -247,7 +247,8 @@ GuestImage GuestImageReader::Read(const std::filesystem::path& path, std::vector
     std::set<std::string> dependencies;
     for (const auto offset : needed) {
         const auto name = string(offset);
-        if (name.empty() || name.find_first_of("\\:$\r\n") != std::string::npos || !dependencies.insert(name).second) fail("Invalid or duplicate dependency: " + name);
+        if (name.empty() || name.find_first_of("\\:$\r\n") != std::string::npos) fail("Invalid dependency: " + name);
+        if (!dependencies.insert(name).second) continue;
         image.Dependencies.push_back(name);
     }
     std::map<std::uint64_t, std::uint64_t> relocationTargets;
