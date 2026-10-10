@@ -25,7 +25,9 @@
 #include "Optimization/include/Optimization/BindingAllocator.hpp"
 #include "Optimization/include/Optimization/ConstantFolder.hpp"
 #include "Optimization/include/Optimization/DeadCodeEliminator.hpp"
+#include "Optimization/include/Optimization/DenormalFlushEliminator.hpp"
 #include "Optimization/include/Optimization/DescriptorBindingBuilder.hpp"
+#include "Optimization/include/Optimization/HostInterpolationChecker.hpp"
 #include "Optimization/include/Optimization/MaskedSelectEliminator.hpp"
 #include "Optimization/include/Optimization/ReadLaneEliminator.hpp"
 #include "Optimization/include/Optimization/RequestMemoryView.hpp"
@@ -143,32 +145,45 @@ IrProgram PrepareResourceProgram(const RecompileRequest& request) {
         if (list != "all" && list.find(address) == std::string::npos) return;
         std::fprintf(stderr, "==== IR 0x%s after %s\n%s\n", address, pass, ProgramToString(program).c_str());
     };
-    dumpIr("translate");
 
     constexpr SsaBuilder ssaBuilder;
-    ssaBuilder.Rewrite(program);
-    dumpIr("ssa");
-
     constexpr ConstantFolder constantFolder;
     constexpr DeadCodeEliminator deadCodeEliminator;
-
-    constantFolder.Fold(program);
-    ResolveControlFlowIdentities(program);
-    deadCodeEliminator.RemoveIdentities(program);
-    deadCodeEliminator.Eliminate(program);
-    dumpIr("fold");
-
     constexpr ReadLaneEliminator readLaneEliminator;
-    const auto readLaneStats = readLaneEliminator.Eliminate(program, translateOptions.waveSize);
-    if (readLaneStats.rewrittenReads != 0u) {
+    constexpr MaskedSelectEliminator maskedSelectEliminator;
+    const auto simplify = [&] {
+        dumpIr("translate");
+        ssaBuilder.Rewrite(program);
+        dumpIr("ssa");
+
         constantFolder.Fold(program);
         ResolveControlFlowIdentities(program);
         deadCodeEliminator.RemoveIdentities(program);
         deadCodeEliminator.Eliminate(program);
+        dumpIr("fold");
+
+        const auto readLaneStats = readLaneEliminator.Eliminate(program, translateOptions.waveSize);
+        if (readLaneStats.rewrittenReads != 0u) {
+            constantFolder.Fold(program);
+            ResolveControlFlowIdentities(program);
+            deadCodeEliminator.RemoveIdentities(program);
+            deadCodeEliminator.Eliminate(program);
+        }
+
+        if (maskedSelectEliminator.Eliminate(program).removedSelects != 0u) {
+            deadCodeEliminator.Eliminate(program);
+        }
+    };
+    simplify();
+    if (stageKind == ShaderStageKind::Pixel && !translateOptions.fragmentShaderBarycentricEnabled && !HostInterpolationChecker{}.Lower(program, *inputInfo.pixel)) {
+        translateOptions.fragmentShaderBarycentricEnabled = true;
+        program = translator.Translate(decoded, cfg, translateOptions);
+        program.Metadata().barycentricEmulation = true;
+        simplify();
     }
 
-    constexpr MaskedSelectEliminator maskedSelectEliminator;
-    if (maskedSelectEliminator.Eliminate(program).removedSelects != 0u) {
+    constexpr DenormalFlushEliminator denormalFlushEliminator;
+    if (denormalFlushEliminator.Eliminate(program).removedFlushes != 0u) {
         deadCodeEliminator.Eliminate(program);
     }
 
@@ -363,7 +378,12 @@ CompiledVariant compileVariant(const RecompileRequest& request, IrProgram progra
     for (const auto& output : program.Info().outputs) {
         if (output.kind == StageOutputKind::Parameter) result.parameterExports.push_back(output.location);
     }
-    if (request.shader.stage == ShaderStage::Fragment) result.fragmentParameters = DescribeFragmentParameters(program, inputInfo);
+    if (request.shader.stage == ShaderStage::Fragment) {
+        result.fragmentParameters = DescribeFragmentParameters(program, inputInfo);
+        const auto& inputs = program.Info().inputs;
+        const auto reads = [&](StageInputKind kind) { return std::any_of(inputs.begin(), inputs.end(), [&](const auto& input) { return input.kind == kind; }); };
+        if (program.Metadata().barycentricEmulation) result.barycentricEmulation = {true, reads(StageInputKind::BaryCoordSmooth), reads(StageInputKind::BaryCoordNoPerspective)};
+    }
     if (request.shader.stage == ShaderStage::Vertex || request.shader.stage == ShaderStage::Local) {
         if (inputInfo.vertex == nullptr) throw std::runtime_error("vertex input metadata is missing");
         for (const auto& input : program.Info().inputs) {
@@ -617,6 +637,7 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
         .hostSubgroupSize = artifact.hostSubgroupSize,
         .parameterExports = artifact.parameterExports,
         .fragmentParameters = artifact.fragmentParameters,
+        .barycentricEmulation = artifact.barycentricEmulation,
         .variantId = artifact.variantId
     };
     const auto plan = preparedBindingPlan(variant, snapshot, request.context.pixel ? std::span<const std::uint8_t>(request.context.pixel->targetExportMapping) : std::span<const std::uint8_t>{});

@@ -35,6 +35,7 @@ public:
     VulkanDevice& operator=(const VulkanDevice&) = delete;
     std::string DeviceName() const;
     ShaderRecompiler::SpirvTarget Target() const;
+    std::optional<ShaderRecompiler::GeometryStageLimits> GeometryLimits() const;
     ShaderRecompiler::SpirvTarget ComputeTarget(std::uint32_t waveSize) const;
     // Distinguishes this device from every earlier one in the process (a memo keyed by the device
     // cannot rely on the pointer, which a replacement may reuse).

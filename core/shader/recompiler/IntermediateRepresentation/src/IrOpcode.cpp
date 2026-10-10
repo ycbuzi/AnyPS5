@@ -265,6 +265,7 @@ constexpr std::array<OpcodeMeta, static_cast<std::size_t>(IrOpcode::Count)> Meta
     makeMeta("FPFma32", F32, F32, F32, F32),
     makeMeta("FPMad32", F32, F32, F32, F32),
     makeMeta("FPMul32", F32, F32, F32),
+    makeMeta("FPNanResultFma32", F32, F32, F32, F32, F32),
     makeMeta("FPMin32", F32, F32, F32),
     makeMeta("FPMax32", F32, F32, F32),
     makeMeta("FPMinTri32", F32, F32, F32, F32),
@@ -501,6 +502,8 @@ constexpr std::array<OpcodeMeta, static_cast<std::size_t>(IrOpcode::Count)> Meta
     makeMeta("GetAttribute", U32, U32, U32),
     makeMeta("GetInterpolationParameter", U32, U32, U32, U32),
     makeMeta("GetInterpolationParameterF16", F32, U32, U32, U32, U32),
+    makeMeta("InterpolateHostP1", F32, U32, U32, F32),
+    makeMeta("InterpolateHostP2", Void, U32, U32, F32, F32, U1),
     makeMeta("SetAttribute", Void, U32x4, U1),
     makeMeta("ControlNop", Void),
     makeMeta("Waitcnt", Void),
@@ -873,6 +876,7 @@ bool IrOpcodeHasSideEffects(IrOpcode opcode) {
         case IrOpcode::Reference:
         case IrOpcode::ReferenceU32:
         case IrOpcode::SetTessellationAttribute:
+        case IrOpcode::InterpolateHostP2:
         case IrOpcode::SetThreadBitScalarRegister:
         case IrOpcode::SetScalarMaskTag:
         case IrOpcode::SetScalarRegister:

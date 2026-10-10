@@ -136,12 +136,12 @@ void stateTests() {
     Require(AgcDriver::Graphics::DrawRejection(queue, false).find("sample iteration") != std::string::npos, "per-sample shading was accepted");
     expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "sample iteration");
     queue.context[0x293] = 0;
-    for (const auto disabled : {0x6000u, 0x00100000u, 0u}) {
+    for (const auto disabled : {0x6000u, 0x00100000u, 0u, 0x000e6000u}) {
         queue.context[0x313] = disabled;
         Require(AgcDriver::Graphics::DecodeState(queue).conservativeRasterization == VK_CONSERVATIVE_RASTERIZATION_MODE_DISABLED_EXT, "disabled conservative rasterization decoded as enabled");
         Require(AgcDriver::Graphics::DrawRejection(queue, false).find("PA_SC_CONSERVATIVE") == std::string::npos, "disabled conservative rasterization was rejected");
     }
-    for (const auto enabled : {0x00e00001u, 0x01e00022u}) {
+    for (const auto enabled : {0x00e00001u, 0x01e00022u, 0x000e6001u, 0x000e6020u}) {
         queue.context[0x313] = enabled;
         Require(AgcDriver::Graphics::DrawRejection(queue, false).find("PA_SC_CONSERVATIVE") != std::string::npos, "conservative rasterization was accepted");
         expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "PA_SC_CONSERVATIVE");
@@ -2335,6 +2335,112 @@ std::vector<std::uint32_t> makeModule(const ModuleShape& shape) {
     return words;
 }
 
+void barycentricEmulationTests() {
+    using namespace ShaderRecompiler;
+    using namespace AgcDriver::Graphics;
+    const std::array<FragmentParameter, 3> parameters{{{0u, 0u, false, false}, {1u, 1u, false, true}, {2u, 2u, true, false}}};
+    const auto layout = LayoutBarycentricEmulation(parameters, {true, true, true});
+    Require(layout.smoothLocation == 1u && layout.linearLocation == 3u && layout.perVertexLocations == std::vector<std::pair<std::uint32_t, std::uint32_t>>{{1u, 4u}}, "emulated barycentrics did not take the free locations in order");
+    Require(LayoutBarycentricEmulation(parameters, {}).perVertexLocations.empty() && LayoutBarycentricEmulation(parameters, {}).smoothLocation == BarycentricEmulationLayout::NoLocation, "an inactive emulation was given locations");
+    std::vector<FragmentParameter> crowded;
+    for (std::uint32_t location = 0; location < 11u; ++location) crowded.push_back({location, location, false, true});
+    expectFailure([&] { static_cast<void>(LayoutBarycentricEmulation(crowded, {true, false, false})); }, "exceed 32 locations");
+
+    const auto compile = [&](std::span<const std::uint32_t> code, bool barycentric, std::uint32_t secondInput = 0xffffffffu) {
+        auto queue = makeState();
+        queue.context[0x1b3] = 0x2u;
+        queue.context[0x1b4] = 0x2u;
+        queue.context[0x1b6] = secondInput == 0xffffffffu ? 1u : 2u;
+        queue.context[0x191] = 0u;
+        if (secondInput != 0xffffffffu) queue.context[0x192] = secondInput;
+        RecompileRequest request{};
+        request.shader = {ShaderStage::Fragment, 0x30000u, code, 0, {}};
+        request.context.waveSize = 64;
+        request.context.pixel = DecodePixelStageInfo(queue.context, IdentityExports);
+        request.target.vulkanVersion = 0x00401000u;
+        request.target.spirvVersion = 0x00010300u;
+        request.target.subgroupSize = 64;
+        request.target.fragmentShaderBarycentricEnabled = barycentric;
+        request.layout.pushConstantSizeBytes = 128;
+        request.useCache = false;
+        return Recompile(request);
+    };
+    const auto decorations = [](const RecompileResult& result, spv::Decoration decoration) {
+        const auto& words = result.spirv.Words();
+        std::set<std::uint32_t> inputs;
+        for (std::size_t at = 5; at < words.size() && (words[at] >> 16u) != 0; at += words[at] >> 16u) {
+            if (static_cast<spv::Op>(words[at] & 0xffffu) == spv::OpVariable && words[at + 3] == spv::StorageClassInput) inputs.insert(words[at + 2]);
+        }
+        std::vector<std::uint32_t> values;
+        for (std::size_t at = 5; at < words.size() && (words[at] >> 16u) != 0; at += words[at] >> 16u) {
+            if (static_cast<spv::Op>(words[at] & 0xffffu) == spv::OpDecorate && words[at + 2] == decoration && inputs.contains(words[at + 1])) values.push_back((words[at] >> 16u) > 3u ? words[at + 3] : words[at + 1]);
+        }
+        return values;
+    };
+    const auto barycentricCapability = [](const RecompileResult& result) {
+        const auto& words = result.spirv.Words();
+        for (std::size_t at = 5; at < words.size() && (words[at] >> 16u) != 0; at += words[at] >> 16u) {
+            if (static_cast<spv::Op>(words[at] & 0xffffu) == spv::OpCapability && words[at + 1] == spv::CapabilityFragmentBarycentricKHR) return true;
+        }
+        return false;
+    };
+    static constexpr std::array<std::uint32_t, 3> readsIj{0xf800180fu, 0x01000100u, 0xbf810000u};
+    static constexpr std::array<std::uint32_t, 5> interpolates{0xc8080000u, 0xc8090001u, 0xf800180fu, 0x02020202u, 0xbf810000u};
+    static constexpr std::array<std::uint32_t, 4> readsVertex{0xc80a0000u, 0xf800180fu, 0x02020202u, 0xbf810000u};
+    static constexpr std::array<std::uint32_t, 6> shiftsIj{0x060000f0u, 0xc8080000u, 0xc8090001u, 0xf800180fu, 0x02020202u, 0xbf810000u};
+    auto fragment = compile(readsIj, false);
+    Require(fragment.barycentricEmulation.active && fragment.barycentricEmulation.smooth && !fragment.barycentricEmulation.linear, "reading the I/J VGPRs without the extension did not emulate barycentrics");
+    const auto builtins = decorations(fragment, spv::DecorationBuiltIn);
+    Require(std::find(builtins.begin(), builtins.end(), static_cast<std::uint32_t>(spv::BuiltInBaryCoordKHR)) == builtins.end() && !barycentricCapability(fragment), "emulated barycentrics still need VK_KHR_fragment_shader_barycentric");
+    Require(decorations(fragment, spv::DecorationLocation) == std::vector<std::uint32_t>{0u}, "the emulated barycentrics were not read from location 0");
+    Require(!compile(readsIj, true).barycentricEmulation.active, "a device with the extension emulated barycentrics");
+    Require(!compile(interpolates, false).barycentricEmulation.active, "plain v_interp_p1/p2 lost host interpolation");
+    Require(compile(shiftsIj, false).barycentricEmulation.active, "v_interp_p1/p2 through a changed I lost exact barycentrics");
+    static constexpr std::array<std::uint32_t, 6> overwritesI{0xc8080000u, 0xc8090001u, 0x7e0002f2u, 0xf800180fu, 0x02020002u, 0xbf810000u};
+    static constexpr std::array<std::uint32_t, 5> accumulatesInI{0xc8000000u, 0xc8010001u, 0xf800180fu, 0x00000000u, 0xbf810000u};
+    for (const auto& code : {std::span<const std::uint32_t>(overwritesI), std::span<const std::uint32_t>(accumulatesInI)}) {
+        const auto reused = compile(code, false);
+        const auto reusedBuiltins = decorations(reused, spv::DecorationBuiltIn);
+        Require(!reused.barycentricEmulation.active && !barycentricCapability(reused) && std::find(reusedBuiltins.begin(), reusedBuiltins.end(), static_cast<std::uint32_t>(spv::BuiltInBaryCoordKHR)) == reusedBuiltins.end(), "reusing the I/J VGPRs after v_interp_p1/p2 lost host interpolation");
+    }
+    static constexpr std::array<std::uint32_t, 7> widensExec{0xbefe0381u, 0xc8080000u, 0xbefe03c1u, 0xc8090001u, 0xf800180fu, 0x02020202u, 0xbf810000u};
+    Require(compile(widensExec, false).barycentricEmulation.active, "v_interp_p2_f32 under a wider EXEC than its v_interp_p1_f32 lost exact barycentrics");
+    static constexpr std::array<std::uint32_t, 6> sharedSlot{0xc8080000u, 0xc8090001u, 0xc80e0402u, 0xf800180fu, 0x03030202u, 0xbf810000u};
+    const auto shared = compile(sharedSlot, false, 0x400u);
+    Require(shared.barycentricEmulation.active && !barycentricCapability(shared), "inputs sharing a slot with different interpolation did not emulate per-vertex parameters");
+    fragment = compile(readsVertex, false);
+    Require(fragment.barycentricEmulation.active && !fragment.barycentricEmulation.smooth && fragment.fragmentParameters.size() == 1u && fragment.fragmentParameters[0].perVertex, "v_interp_mov of P10 did not emulate per-vertex parameters");
+    Require(decorations(fragment, spv::DecorationLocation) == std::vector<std::uint32_t>{0u} && decorations(fragment, spv::DecorationPerVertexKHR).empty() && !decorations(fragment, spv::DecorationFlat).empty() && !barycentricCapability(fragment), "the emulated per-vertex parameter was not a flat array at the first free location");
+
+    RecompileResult vertex;
+    vertex.spirv = makeModule({.parameterOutput = true});
+    vertex.parameterExports = {0u};
+    const std::array<std::uint32_t, 2> capabilities{spv::CapabilityShader, spv::CapabilityGeometry};
+    SpirvTarget target{};
+    target.vulkanVersion = VK_API_VERSION_1_1;
+    target.spirvVersion = 0x00010300u;
+    target.supportedCapabilities = capabilities;
+    const GeometryStageLimits limits{64u, 128u, 256u, 1024u, 128u};
+    auto geometry = BuildBarycentricGeometryShader(vertex, fragment, target, limits);
+    const std::array<CompiledShader, 3> shaders{{{ShaderStage::Vertex, &vertex, 0}, {ShaderStage::Geometry, &geometry, 0}, {ShaderStage::Fragment, &fragment, 0}}};
+    const VkPhysicalDeviceSubgroupProperties subgroup{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
+    auto state = DecodeState(makeState());
+    Require(state.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, "the reference state is not a triangle list");
+    ValidateShaders(shaders, state, subgroup, false, false, false, true);
+    state.topology = VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+    expectFailure([&] { ValidateShaders(shaders, state, subgroup, false, false, false, true); }, "triangle primitives");
+    state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    ValidateShaders(shaders, state, subgroup, false, false, false, true);
+    const auto plain = compile(interpolates, false);
+    const std::array<CompiledShader, 3> plainShaders{{{ShaderStage::Vertex, &vertex, 0}, {ShaderStage::Geometry, &geometry, 0}, {ShaderStage::Fragment, &plain, 0}}};
+    expectFailure([&] { ValidateShaders(plainShaders, state, subgroup, false, false, false, true); }, "only for emulated barycentrics");
+    expectFailure([&] { static_cast<void>(BuildBarycentricGeometryShader(vertex, plain, target, limits)); }, "does not emulate barycentrics");
+    expectFailure([&] { static_cast<void>(BuildBarycentricGeometryShader(vertex, fragment, target, std::nullopt)); }, "geometry shaders are unavailable");
+    expectFailure([&] { static_cast<void>(BuildBarycentricGeometryShader(vertex, fragment, target, GeometryStageLimits{64u, 12u, 256u, 1024u, 128u})); }, "exceeds device limits");
+    vertex.parameterExports.clear();
+    expectFailure([&] { static_cast<void>(BuildBarycentricGeometryShader(vertex, fragment, target, limits)); }, "not exported by the vertex shader");
+}
+
 void rectListTests() {
     using namespace ShaderRecompiler;
     using namespace AgcDriver::Graphics;
@@ -2348,6 +2454,10 @@ void rectListTests() {
     target.spirvVersion = 0x00010300u;
     target.supportedCapabilities = capabilities;
     target.tessellation = TessellationTargetLimits{32, 128, 128, 120, 4096, 128, 128};
+    vertex.bindings = {{DescriptorKind::StorageBuffer, DescriptorRole::GuestBuffers, 0, 0, 1, {}}};
+    const auto faultAuxiliary = BuildRectListShaders(vertex, fragment, target);
+    Require(faultAuxiliary.control.bindings.size() == 1 && faultAuxiliary.control.bindings[0].role == DescriptorRole::FaultBuffer && faultAuxiliary.control.bindings[0].binding == RuntimeAbi::BindingNumber(RuntimeAbi::Stage::TessellationControl, RuntimeAbi::Binding::FaultBuffer), "the rect-list control shader's fault buffer is not in the tessellation control binding group");
+    vertex.bindings.clear();
     for (const auto version : {0x00010300u, 0x00010400u}) {
         target.spirvVersion = version;
         auto auxiliary = BuildRectListShaders(vertex, fragment, target);
@@ -2957,6 +3067,17 @@ void validationTests() {
         Require(AgcDriver::Graphics::DecodeVertexFormat(attribute).format == VK_FORMAT_A2B10G10R10_SINT_PACK32 && std::string_view(AgcDriver::Graphics::DecodeVertexFormat(attribute).scalar) == "i32", "2_10_10_10 sint vertex format was not decoded");
         attribute.resource.fields[3] = 36u << 12u;
         Require(AgcDriver::Graphics::DecodeVertexFormat(attribute).format == VK_FORMAT_B10G11R11_UFLOAT_PACK32, "10_11_11 float vertex format was not decoded");
+        for (std::uint32_t format = 1; format < 128u; ++format) {
+            attribute.resource.fields[3] = format << 12u;
+            std::string_view scalar;
+            try {
+                scalar = AgcDriver::Graphics::DecodeVertexFormat(attribute).scalar;
+            } catch (const std::exception&) {
+                continue;
+            }
+            const auto numeric = ShaderRecompiler::VertexInputNumericClass(static_cast<ShaderRecompiler::IrBufferFormat>(format));
+            Require((scalar == "u32") == (numeric == ShaderRecompiler::IrTextureNumericClass::Uint) && (scalar == "i32") == (numeric == ShaderRecompiler::IrTextureNumericClass::Sint), "vertex format " + std::to_string(format) + " declares a shader input of another numeric type than its attribute");
+        }
         attribute.resource.fields[3] = 43u << 12u;
         expectFailure([&] { AgcDriver::Graphics::DecodeVertexFormat(attribute); }, "unsupported vertex format");
         attribute.resource.fields = {0x1000, 32u << 16u, 3, 77u << 12u};
@@ -3196,6 +3317,12 @@ void vertexCopyTests() {
         const auto plan = PlanVertexCopies(fetches);
         Require(plan.copies.size() == 1 && plan.copies[0].first == 0x1000 && plan.copies[0].second == 0x1018 + 32 * 9 + 8, "interleaved attributes were not copied as one union");
         Require(plan.copyOf == std::vector<std::size_t>{0, 0, 0} && plan.offsets == std::vector<std::uint64_t>{0x18, 0, 0xc}, "interleaved attribute offsets are wrong");
+        Require(plan.alignments == std::vector<std::uint32_t>{4}, "the union's alignment is not its attributes'");
+    }
+    {
+        const std::array<VertexFetch, 2> fetches{{{0x4000, 0x4100, 16, 0, 2}, {0x4004, 0x4104, 16, 0, 4}}};
+        const auto plan = PlanVertexCopies(fetches);
+        Require(plan.copies.size() == 1 && plan.alignments == std::vector<std::uint32_t>{4}, "a union did not take its strictest attribute alignment");
     }
     {
         const std::array<VertexFetch, 6> fetches{{
@@ -3307,6 +3434,7 @@ int main() {
         pixelParameterSlotTests();
         rectListTests();
         floatControlsModeTests();
+        barycentricEmulationTests();
         mock = MockVulkan{};
         auto bdaContext = mockContext();
         bdaContext.bufferDeviceAddress = true;

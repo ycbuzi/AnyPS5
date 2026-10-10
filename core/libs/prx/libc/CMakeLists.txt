@@ -9,6 +9,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AllocatingStrings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WideConversion.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Multibyte.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/RuneLocale.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StringExtensions.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Math.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Time.cpp
@@ -423,6 +424,18 @@ if(BUILD_TESTING)
     add_test(NAME guest_locale COMMAND guest_locale_tests)
     if(WIN32)
         set_tests_properties(guest_locale PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+endif()
+
+add_test_executable(guest_rune_locale_tests EXCLUDE_FROM_ALL ${LIBS_INCLUDE_DIR}/tests/GuestRuneLocale.cpp)
+target_include_directories(guest_rune_locale_tests PRIVATE ${LIBS_INCLUDE_DIR})
+target_link_libraries(guest_rune_locale_tests PRIVATE libc)
+configure_windows_unwind(guest_rune_locale_tests)
+if(BUILD_TESTING)
+    set_target_properties(guest_rune_locale_tests PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME guest_rune_locale COMMAND guest_rune_locale_tests)
+    if(WIN32)
+        set_tests_properties(guest_rune_locale PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 endif()
 

@@ -20,6 +20,7 @@ struct FormatEntry {
 
 constexpr FormatEntry kFormatLookup[] = {
     {1, VK_FORMAT_R8_UNORM, 1, false},
+    {2, VK_FORMAT_R8_SNORM, 1, false},
     {5, VK_FORMAT_R8_UINT, 1, false},
     {6, VK_FORMAT_R8_SINT, 1, false},
     {7, VK_FORMAT_R16_UNORM, 2, false},

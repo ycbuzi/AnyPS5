@@ -181,6 +181,7 @@ struct VertexCopyPlan {
     std::vector<std::pair<std::uint64_t, std::uint64_t>> copies;
     std::vector<std::size_t> copyOf;
     std::vector<std::uint64_t> offsets;
+    std::vector<std::uint32_t> alignments;
 };
 
 inline VertexCopyPlan PlanVertexCopies(std::span<const VertexFetch> fetches) {
@@ -204,7 +205,9 @@ inline VertexCopyPlan PlanVertexCopies(std::span<const VertexFetch> fetches) {
         if (!joins) {
             lead = i;
             plan.copies.emplace_back(fetch.begin, fetch.end);
+            plan.alignments.push_back(fetch.alignment);
         }
+        plan.alignments.back() = std::max(plan.alignments.back(), fetch.alignment);
         auto& copy = plan.copies.back();
         copy.second = std::max(copy.second, fetch.end);
         plan.copyOf[i] = plan.copies.size() - 1;

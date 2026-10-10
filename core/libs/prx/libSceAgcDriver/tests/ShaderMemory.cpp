@@ -921,6 +921,20 @@ void verifyMeshConfiguration() {
     other.graphics = GraphicsCompileContext{0u, {}, otherMesh, std::nullopt, {}};
     RecompileCacheKey::Build(other, key);
     require(key != first && RecompileCacheKey::ContextHash(request) != RecompileCacheKey::ContextHash(other), "the cache keys ignore the mesh configuration");
+    const std::array<std::uint32_t, 8> users{};
+    request.context.waveSize = 32u;
+    request.context.userData = users;
+    request.context.vertex = ShaderVertexStageInfo{};
+    request.target.subgroupSize = 32u;
+    request.graphics->mesh = MeshConfiguration{1u, 1u, 1u, 1u, 1u, 32u, 256u, 0u, 4u};
+    for (const std::uint32_t threads : {32u, 64u, 128u, 480u}) {
+        request.graphics->mesh->threadsPerGroup = threads;
+        require(PrepareResourceProgram(request).WaveSize() == 32u, "a wave32 mesh program did not preserve its guest wave size");
+    }
+    for (const std::uint32_t threads : {31u, 512u}) {
+        request.graphics->mesh->threadsPerGroup = threads;
+        expectFailure([&] { static_cast<void>(PrepareResourceProgram(request)); }, "mesh shader translation configuration is not supported", "mesh translation accepted a partial wave or overflowing wave count");
+    }
 }
 
 ShaderRecompiler::ShaderPixelStageInfo twoParameterPixel() {

@@ -58,11 +58,8 @@ constexpr Vop2OpcodeInfo vop2Opcodes[] = {
     {0x12u, RdnaOpcode::VMaxI32, Vop2SdwaProfile::Integer},
     {0x13u, RdnaOpcode::VMinU32, Vop2SdwaProfile::Integer},
     {0x14u, RdnaOpcode::VMaxU32, Vop2SdwaProfile::Integer},
-    {0x15u, RdnaOpcode::VLshrB32},
     {0x16u, RdnaOpcode::VLshrrevB32, Vop2SdwaProfile::Integer},
-    {0x17u, RdnaOpcode::VAshrI32},
     {0x18u, RdnaOpcode::VAshrrevI32, Vop2SdwaProfile::Integer},
-    {0x19u, RdnaOpcode::VLshlB32},
     {0x1au, RdnaOpcode::VLshlrevB32, Vop2SdwaProfile::Integer},
     {0x1bu, RdnaOpcode::VAndB32, Vop2SdwaProfile::Integer},
     {0x1cu, RdnaOpcode::VOrB32, Vop2SdwaProfile::Integer},
@@ -71,9 +68,6 @@ constexpr Vop2OpcodeInfo vop2Opcodes[] = {
     {0x1fu, RdnaOpcode::VMacF32},
     {0x20u, RdnaOpcode::VMadmkF32},
     {0x21u, RdnaOpcode::VMadakF32},
-    {0x22u, RdnaOpcode::VBcntU32B32},
-    {0x23u, RdnaOpcode::VMbcntLoU32B32},
-    {0x24u, RdnaOpcode::VMbcntHiU32B32},
     {0x25u, RdnaOpcode::VAddNcU32, Vop2SdwaProfile::Integer},
     {0x28u, RdnaOpcode::VAddcU32, Vop2SdwaProfile::Integer},
     {0x29u, RdnaOpcode::VSubCoCiU32, Vop2SdwaProfile::Integer},
@@ -630,11 +624,11 @@ RdnaOpcode lookupVectorOpcode(const TEntry (&table)[Size], std::uint32_t encodin
 }
 
 bool isVop2LiteralMadOpcode(std::uint32_t opcode) {
-    return opcode == 0x20u || opcode == 0x21u || opcode == 0x2cu || opcode == 0x2du;
+    return opcode == 0x20u || opcode == 0x21u || opcode == 0x2cu || opcode == 0x2du || opcode == 0x37u || opcode == 0x38u;
 }
 
 bool isUnsupportedVop3EncodedVop2Alias(std::uint32_t opcode) {
-    return isVop2LiteralMadOpcode(opcode) || opcode == 0x02u || opcode == 0x0du;
+    return isVop2LiteralMadOpcode(opcode) || opcode == 0x02u || opcode == 0x0du || opcode == 0x3cu;
 }
 
 bool isVop3EncodedVopc(std::uint32_t opcode) {
@@ -1126,7 +1120,7 @@ constexpr Vop1SdwaRule vop1SdwaRules[] = {
     {RdnaOpcode::VCvtF32U32, sdwaSelAll(), 0, 0, false},
     {RdnaOpcode::VCvtF32I32, sdwaSelAll(), 0, 0, false},
     {RdnaOpcode::VCvtF32Ubyte0, sdwaSelAll(), 0, 0, false},
-    {RdnaOpcode::VNotB32, sdwaSelAll(), 0, 0, false},
+    {RdnaOpcode::VNotB32, sdwaSelAll(), sdwaSelBytes() | sdwaSelWords(), sdwaSelAll(), false},
     {RdnaOpcode::VFfblB32, sdwaSelAll(), 0, 0, false},
     {RdnaOpcode::VFfbhU32, sdwaSelAll(), 0, 0, false},
     {RdnaOpcode::VBfrevB32, sdwaSelAll(), 0, 0, false},

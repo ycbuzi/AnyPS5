@@ -172,6 +172,7 @@ std::uint32_t EmitPackHalf2x16(SpirvEmitterState& state, std::uint32_t arg0);
 std::uint32_t EmitF32ToF16BitsRte(SpirvEmitterState& state, std::uint32_t value);
 std::uint32_t EmitFPFma32(SpirvEmitterState& state, std::uint32_t arg0, std::uint32_t arg1, std::uint32_t arg2);
 std::uint32_t EmitFPMad32(SpirvEmitterState& state, std::uint32_t arg0, std::uint32_t arg1, std::uint32_t arg2);
+std::uint32_t EmitFPNanResultFma32(SpirvEmitterState& state, const IrValue& inst, std::uint32_t result, std::uint32_t lhs, std::uint32_t rhs, std::uint32_t addend);
 std::uint32_t EmitFPRoundEven32(SpirvEmitterState& state, std::uint32_t arg0);
 std::uint32_t EmitFPFloor32(SpirvEmitterState& state, std::uint32_t arg0);
 std::uint32_t EmitFPCeil32(SpirvEmitterState& state, std::uint32_t arg0);

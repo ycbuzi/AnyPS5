@@ -688,14 +688,29 @@ std::uint32_t EmitFPMaxTri32(SpirvEmitterState& state, std::uint32_t arg0, std::
 }
 
 std::uint32_t EmitFPMedTri32(SpirvEmitterState& state, std::uint32_t arg0, std::uint32_t arg1, std::uint32_t arg2) {
-    const auto minAb = EmitMinMaxF32Value(state, arg0, arg1, false);
-    const auto min3 = EmitMinMaxF32Value(state, minAb, arg2, false);
-    const auto maxAb = EmitMinMaxF32Value(state, arg0, arg1, true);
-    const auto highMin = EmitMinMaxF32Value(state, maxAb, arg2, false);
-    const auto median = EmitMinMaxF32Value(state, minAb, highMin, true);
-    const auto nanAb = Binary(state, spv::OpLogicalOr, TypeBool(state), EmitClassifyF32(state, arg0).nan, EmitClassifyF32(state, arg1).nan);
-    const auto anyNan = Binary(state, spv::OpLogicalOr, TypeBool(state), nanAb, EmitClassifyF32(state, arg2).nan);
-    return Select(state, TypeF32(state), anyNan, min3, median);
+    const auto u32 = TypeU32(state);
+    const auto boolean = TypeBool(state);
+    const auto bits = [&](std::uint32_t value) { return Unary(state, spv::OpBitcast, u32, value); };
+    const auto value = [&](std::uint32_t valueBits) { return Unary(state, spv::OpBitcast, TypeF32(state), valueBits); };
+    const auto isNan = [&](std::uint32_t valueBits) { return EmitCompareU32Constant(state, spv::OpUGreaterThan, EmitAndConstant(state, valueBits, 0x7fffffffu), 0x7f800000u); };
+    const auto numeric = [&](std::uint32_t lhs, std::uint32_t rhs, bool maxValue) {
+        const auto either = Binary(state, spv::OpBitwiseOr, u32, lhs, rhs);
+        const auto bothZero = EmitCompareU32Constant(state, spv::OpIEqual, EmitAndConstant(state, either, 0x7fffffffu), 0u);
+        const auto zeroBits = maxValue ? Binary(state, spv::OpBitwiseAnd, u32, lhs, rhs) : either;
+        const auto ordered = Select(state, u32, Binary(state, maxValue ? spv::OpFOrdGreaterThanEqual : spv::OpFOrdLessThan, boolean, value(lhs), value(rhs)), lhs, rhs);
+        return Select(state, u32, bothZero, zeroBits, ordered);
+    };
+    const auto a = bits(arg0);
+    const auto b = bits(arg1);
+    const auto c = bits(arg2);
+    const auto nanA = isNan(a);
+    const auto nanB = isNan(b);
+    const auto nanC = isNan(c);
+    const auto minAb = Select(state, u32, nanB, a, numeric(a, b, false));
+    const auto min3 = Select(state, u32, nanC, minAb, numeric(minAb, c, false));
+    const auto median = numeric(minAb, numeric(numeric(a, b, true), c, false), true);
+    const auto anyNan = Binary(state, spv::OpLogicalOr, boolean, Binary(state, spv::OpLogicalOr, boolean, nanA, nanB), nanC);
+    return value(Select(state, u32, anyNan, min3, median));
 }
 
 std::uint32_t EmitFPRecip32(SpirvEmitterState& state, std::uint32_t arg0) {
@@ -1259,6 +1274,25 @@ std::uint32_t EmitFPFma32(SpirvEmitterState& state, std::uint32_t arg0, std::uin
 
 std::uint32_t EmitFPMad32(SpirvEmitterState& state, std::uint32_t arg0, std::uint32_t arg1, std::uint32_t arg2) {
     return EmitFPAdd32(state, EmitFPMul32(state, arg0, arg1), arg2);
+}
+
+std::uint32_t EmitFPNanResultFma32(SpirvEmitterState& state, const IrValue& inst, std::uint32_t result, std::uint32_t lhs, std::uint32_t rhs, std::uint32_t addend) {
+    const auto u32 = TypeU32(state);
+    const auto boolean = TypeBool(state);
+    const auto bits = [&](std::uint32_t value) { return Unary(state, spv::OpBitcast, u32, value); };
+    const auto magnitude = [&](std::uint32_t value) { return Binary(state, spv::OpBitwiseAnd, u32, bits(value), ConstantU32(state, 0x7fffffffu)); };
+    const auto isNan = [&](std::uint32_t value) { return Binary(state, spv::OpUGreaterThan, boolean, magnitude(value), ConstantU32(state, 0x7f800000u)); };
+    const bool quiet = (inst.Flags<std::uint64_t>() & 1u) != 0u;
+    return EmitValueOrDefaultIfCondition(state, isNan(result), TypeF32(state), result, [&] {
+        const auto equals = [&](std::uint32_t value, std::uint32_t constant) { return Binary(state, spv::OpIEqual, boolean, value, ConstantU32(state, constant)); };
+        const auto infZero = [&](std::uint32_t inf, std::uint32_t zero) { return Binary(state, spv::OpLogicalAnd, boolean, equals(magnitude(inf), 0x7f800000u), equals(magnitude(zero), 0u)); };
+        const auto invalidProduct = Binary(state, spv::OpLogicalOr, boolean, infZero(lhs, rhs), infZero(rhs, lhs));
+        const auto quieted = [&](std::uint32_t value) { return quiet ? Binary(state, spv::OpBitwiseOr, u32, bits(value), ConstantU32(state, 0x00400000u)) : bits(value); };
+        auto chosen = Select(state, u32, Binary(state, spv::OpLogicalAnd, boolean, isNan(addend), Unary(state, spv::OpLogicalNot, boolean, invalidProduct)), quieted(addend), ConstantU32(state, 0xffc00000u));
+        chosen = Select(state, u32, isNan(rhs), quieted(rhs), chosen);
+        chosen = Select(state, u32, isNan(lhs), quieted(lhs), chosen);
+        return Unary(state, spv::OpBitcast, TypeF32(state), chosen);
+    });
 }
 
 std::uint32_t EmitFPRoundEven32(SpirvEmitterState& state, std::uint32_t arg0) {

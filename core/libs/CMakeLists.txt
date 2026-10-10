@@ -10,6 +10,7 @@ add_executable(nid_patcher
         ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/ExportExclusions.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/ElfNidPatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/PeNidPatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/MachONidPatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/BinaryPatcherFactory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/nid/src/main.cpp
 )
@@ -131,6 +132,11 @@ endforeach()
 add_custom_target(libs DEPENDS ${PATCHED_OUTPUTS})
 
 if(BUILD_TESTING)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME nid_patcher_macho COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/nid/tests/test_macho_nids.py $<TARGET_FILE:nid_patcher>)
+    endif()
     add_test_executable(patched_libraries_tests tests/PatchedLibraries.cpp)
     add_dependencies(patched_libraries_tests libs)
     if(MINGW)

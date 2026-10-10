@@ -10,6 +10,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <utility>
 #include <string_view>
 #include <vector>
 
@@ -377,6 +378,21 @@ struct FragmentParameter {
     bool custom = false;
 };
 
+struct BarycentricEmulation {
+    bool active = false;
+    bool smooth = false;
+    bool linear = false;
+};
+
+struct BarycentricEmulationLayout {
+    static constexpr std::uint32_t NoLocation = 0xffffffffu;
+    std::uint32_t smoothLocation = NoLocation;
+    std::uint32_t linearLocation = NoLocation;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> perVertexLocations;
+};
+
+[[nodiscard]] BarycentricEmulationLayout LayoutBarycentricEmulation(std::span<const FragmentParameter> parameters, const BarycentricEmulation& emulation);
+
 // Compiled SPIR-V shared between a cached variant and every result materialized from it: results
 // are copied per dispatch and draw, so the words are reference counted and only duplicated when a
 // holder writes to them (tests and tools patch modules in place). Reads look like a vector.
@@ -459,6 +475,7 @@ struct CompiledShaderArtifact {
     std::uint32_t hostSubgroupSize = 0;
     std::vector<std::uint32_t> parameterExports;
     std::vector<FragmentParameter> fragmentParameters;
+    BarycentricEmulation barycentricEmulation;
     std::uint64_t variantId = 0;
 };
 
@@ -495,6 +512,16 @@ struct RectListShaders {
 };
 
 [[nodiscard]] RectListShaders BuildRectListShaders(const RecompileResult& vertex, const RecompileResult& fragment, const SpirvTarget& target);
+
+struct GeometryStageLimits {
+    std::uint32_t maxGeometryInputComponents;
+    std::uint32_t maxGeometryOutputComponents;
+    std::uint32_t maxGeometryOutputVertices;
+    std::uint32_t maxGeometryTotalOutputComponents;
+    std::uint32_t maxFragmentInputComponents;
+};
+
+[[nodiscard]] RecompileResult BuildBarycentricGeometryShader(const RecompileResult& vertex, const RecompileResult& fragment, const SpirvTarget& target, const std::optional<GeometryStageLimits>& limits);
 
 }
 

@@ -64,9 +64,9 @@ std::filesystem::path ShaderCacheDirectory() {
 namespace ShaderRecompiler::ShaderDiskCache {
 
 #if defined(__linux__) && defined(__x86_64__) && defined(__GLIBCXX__)
-static_assert(sizeof(CompiledShaderArtifact) == 184, "CompiledShaderArtifact changed: update the artifact encoder");
+static_assert(sizeof(CompiledShaderArtifact) == 192, "CompiledShaderArtifact changed: update the artifact encoder");
 static_assert(sizeof(ShaderInvocation) == 112, "ShaderInvocation changed: update the invocation encoder");
-static_assert(sizeof(RecompileResult) == 296, "RecompileResult changed: update EncodeResult and DecodeResult");
+static_assert(sizeof(RecompileResult) == 304, "RecompileResult changed: update EncodeResult and DecodeResult");
 static_assert(sizeof(DescriptorBinding) == 448, "DescriptorBinding changed: update the binding encoder");
 static_assert(sizeof(VertexAttribute) == 32, "VertexAttribute changed: update the attribute encoder");
 static_assert(sizeof(VertexInput) == 16, "VertexInput changed: update the vertex input encoder");
@@ -317,6 +317,9 @@ void encodeArtifact(Writer& writer, const CompiledShaderArtifact& result) {
         out.Value(parameter.perVertex);
         out.Value(parameter.custom);
     });
+    writer.Value(result.barycentricEmulation.active);
+    writer.Value(result.barycentricEmulation.smooth);
+    writer.Value(result.barycentricEmulation.linear);
 }
 
 void decodeArtifact(Reader& reader, CompiledShaderArtifact& result) {
@@ -356,6 +359,9 @@ void decodeArtifact(Reader& reader, CompiledShaderArtifact& result) {
         in.Value(parameter.perVertex);
         in.Value(parameter.custom);
     });
+    reader.Value(result.barycentricEmulation.active);
+    reader.Value(result.barycentricEmulation.smooth);
+    reader.Value(result.barycentricEmulation.linear);
     result.variantId = 0;
 }
 

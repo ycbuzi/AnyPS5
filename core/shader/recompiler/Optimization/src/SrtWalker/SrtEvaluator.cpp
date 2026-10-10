@@ -284,6 +284,26 @@ bool Evaluator::EvaluateInst(IrValue& inst, std::uint64_t& result) {
                 return true;
             }
             return false;
+        case IrOpcode::FPNanResultFma32: {
+            std::uint64_t values[4] = {};
+            const std::size_t count = inst.ArgumentCount();
+            for (std::size_t index = 0; index < count; ++index) {
+                if (!Arg(inst, index, values[index])) return false;
+            }
+            const auto bits = [&](std::size_t index) { return static_cast<std::uint32_t>(values[index]); };
+            const auto isNan = [&](std::size_t index) { return (bits(index) & 0x7fffffffu) > 0x7f800000u; };
+            result = bits(0);
+            if (!isNan(0)) return true;
+            const auto infZero = [&](std::size_t inf, std::size_t zero) { return (bits(inf) & 0x7fffffffu) == 0x7f800000u && (bits(zero) & 0x7fffffffu) == 0u; };
+            const bool invalidProduct = count == 4u && (infZero(1, 2) || infZero(2, 1));
+            const std::uint32_t quiet = (inst.Flags<std::uint64_t>() & 1u) != 0u ? 0x00400000u : 0u;
+            std::uint32_t chosen = 0xffc00000u;
+            for (std::size_t index = count; index-- > 1u;) {
+                if (isNan(index) && !(index == 3u && invalidProduct)) chosen = bits(index) | quiet;
+            }
+            result = chosen;
+            return true;
+        }
         case IrOpcode::FPTrunc32:
             if (Arg(inst, 0, a)) {
                 result = Float32Bits(std::trunc(Float32(a)));

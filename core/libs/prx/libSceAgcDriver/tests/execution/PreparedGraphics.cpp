@@ -125,6 +125,7 @@ void Check(AgcDriver::VulkanDevice& device, AgcDriver::Graphics::ShaderPath path
         target.supportedCapabilities = capabilities;
         target.supportedExtensions = extensions;
         target.mesh = MeshTargetLimits{{128, 1, 1}, 128, 32768, 256, 256, 128, 32768, 1, 1};
+        target.spirvVersion = 0x00010400u;
     }
     const auto stages = PrepareGraphicsStages(prepared, target);
     Require(stages.size() == (tessellation ? 4u : 2u), "graphics preparation compiled the wrong stages");

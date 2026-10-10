@@ -463,15 +463,13 @@ bool TranslationContext::vDivFmasF32(const RdnaInstruction& inst) {
     const IrU1 up(ir.Emit(IrOpcode::UGreaterThanEqual32, IrType::U1, {&exponent(*addend).Value(), &ir.Constant(128u)}));
     IrValue& power = ir.Emit(IrOpcode::SelectF32, IrType::F32, {&up.Value(), &ir.ConstantF32(18446744073709551616.0f), &ir.ConstantF32(5.42101086242752217e-20f)});
     IrValue& plain = ir.Emit(IrOpcode::FPFma32, IrType::F32, {lhs, rhs, addend});
-    const IrU32 plainExponent = exponent(plain);
     const IrU1 plainInfinite(ir.IEqual(ir.BitwiseAnd(ir.BitCastU32(plain), ir.Constant(0x7fffffffu)), ir.Constant(0x7f800000u)));
-    const IrU1 rescale(ir.LogicalOr(ir.LogicalAnd(up.Value(), ir.IEqual(plainExponent.Value(), ir.Constant(0u))), ir.LogicalAnd(ir.LogicalNot(up.Value()), plainInfinite.Value())));
+    const IrU1 rescale(ir.LogicalAnd(ir.LogicalNot(up.Value()), plainInfinite.Value()));
     IrValue& lhsMagnitude = ir.BitwiseAnd(ir.BitCastU32(*lhs), ir.Constant(0x7fffffffu));
     IrValue& rhsMagnitude = ir.BitwiseAnd(ir.BitCastU32(*rhs), ir.Constant(0x7fffffffu));
     const IrU1 lhsLarger(ir.UGreaterThan(lhsMagnitude, rhsMagnitude));
-    const IrU1 scaleLhs(ir.LogicalOr(ir.LogicalAnd(up.Value(), ir.LogicalNot(lhsLarger.Value())), ir.LogicalAnd(ir.LogicalNot(up.Value()), lhsLarger.Value())));
-    IrValue& scaled = ir.Emit(IrOpcode::SelectF32, IrType::F32, {&scaleLhs.Value(), lhs, rhs});
-    IrValue& other = ir.Emit(IrOpcode::SelectF32, IrType::F32, {&scaleLhs.Value(), rhs, lhs});
+    IrValue& scaled = ir.Emit(IrOpcode::SelectF32, IrType::F32, {&lhsLarger.Value(), lhs, rhs});
+    IrValue& other = ir.Emit(IrOpcode::SelectF32, IrType::F32, {&lhsLarger.Value(), rhs, lhs});
     IrValue& rescaled = ir.Emit(IrOpcode::FPFma32, IrType::F32, {&ir.Emit(IrOpcode::FPMul32, IrType::F32, {&scaled, &power}), &other,
         &ir.Emit(IrOpcode::FPMul32, IrType::F32, {addend, &power})});
     IrValue& afterwards = ir.Emit(IrOpcode::FPMul32, IrType::F32, {&plain, &power});
@@ -488,9 +486,9 @@ bool TranslationContext::vDivFmasF32(const RdnaInstruction& inst) {
 }
 
 bool TranslationContext::vDivFixupF32(const RdnaInstruction& inst) {
-    const IrU32 quotient(ir.BitCastU32(*readOperand(sourceAt(inst, 0u), IrType::F32)));
-    const IrU32 denominator(ir.BitCastU32(*readOperand(sourceAt(inst, 1u), IrType::F32)));
-    const IrU32 numerator(ir.BitCastU32(*readOperand(sourceAt(inst, 2u), IrType::F32)));
+    const IrU32 quotient = readU32(sourceAt(inst, 0u));
+    const IrU32 denominator = flushF32Denormal(readU32(sourceAt(inst, 1u)));
+    const IrU32 numerator = flushF32Denormal(readU32(sourceAt(inst, 2u)));
     const auto magnitude = [&](IrU32 word) { return IrU32(ir.BitwiseAnd(word.Value(), ir.Constant(0x7fffffffu))); };
     const auto isNan = [&](IrU32 word) { return IrU1(ir.UGreaterThan(magnitude(word).Value(), ir.Constant(0x7f800000u))); };
     const auto isInf = [&](IrU32 word) { return IrU1(ir.IEqual(magnitude(word).Value(), ir.Constant(0x7f800000u))); };
@@ -553,7 +551,7 @@ bool TranslationContext::floatTernary(const RdnaInstruction& inst, IrOpcode opco
     IrValue* result = &ir.Emit(opcode, IrOpcodeType(opcode), {args[0], args[1], args[2]});
     if (opcode == IrOpcode::FPFma32) result = &flushTinyProduct(args[0], args[1], result, args[2]).Value();
     const bool f32Sources = !mix || !(sourceAt(inst, 0u).opSelHi || sourceAt(inst, 1u).opSelHi || (!accumulator && sourceAt(inst, 2u).opSelHi));
-    if (opcode == IrOpcode::FPFma32 && f32Sources) result = nanResultF32({args[0], args[1], args[2]}, result, &invalidProductF32(args[0], args[1]));
+    if (opcode == IrOpcode::FPFma32 && f32Sources) result = nanResultF32({args[0], args[1], args[2]}, result);
     writeOperand(inst.destination, result);
     return true;
 }
@@ -598,7 +596,7 @@ bool TranslationContext::vFmaLegacyF32(const RdnaInstruction& inst) {
     const auto factor = [&](IrValue* value) { return &ir.Emit(IrOpcode::SelectF32, IrType::F32, {&zero.Value(), &ir.ConstantF32(0.0f), value}); };
     IrValue* lhsFactor = factor(lhs);
     IrValue* rhsFactor = factor(rhs);
-    writeOperand(inst.destination, nanResultF32({lhsFactor, rhsFactor, addend}, &ir.Emit(IrOpcode::FPFma32, IrType::F32, {lhsFactor, rhsFactor, addend}), &invalidProductF32(lhsFactor, rhsFactor)));
+    writeOperand(inst.destination, nanResultF32({lhsFactor, rhsFactor, addend}, &ir.Emit(IrOpcode::FPFma32, IrType::F32, {lhsFactor, rhsFactor, addend})));
     return true;
 }
 
