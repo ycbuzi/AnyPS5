@@ -145,6 +145,13 @@ IrU32 TranslationContext::packHalf2x16(IrF32 low, IrF32 high) {
     return IrU32(ir.Emit(IrOpcode::PackHalf2x16, IrType::U32, {&pair}));
 }
 
+// Packs two f32 results as f16 with the rounding FLOAT_MODE selects for 16-bit results: nearest
+// even, or toward zero through the bit-exact PackFloat2x16Rtz path v_cvt_pkrtz uses.
+IrU32 TranslationContext::packHalf2x16Mode(IrF32 low, IrF32 high) {
+    if (f16RoundTowardZero()) return IrU32(ir.Emit(IrOpcode::PackFloat2x16Rtz, IrType::U32, {&low.Value(), &high.Value()}));
+    return packHalf2x16(low, high);
+}
+
 void TranslationContext::write16Bits(const RdnaOperand& operand, IrU32 value) {
     if (operand.sdwaSel != 6u || operand.explicitSdwaDst) {
         writeRawU32(operand, value);
@@ -157,6 +164,11 @@ void TranslationContext::write16Bits(const RdnaOperand& operand, IrU32 value) {
 }
 
 void TranslationContext::writeF16(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources) {
+    if (f16RoundTowardZero()) {
+        const IrU32 packed = packHalf2x16Mode(applyF16ResultModifiers(operand, clampF16Overflow(value, sources)), IrF32(ir.ConstantF32(0.0f)));
+        write16Bits(operand, IrU32(ir.BitwiseAnd(packed.Value(), ir.Constant(0xffffu))));
+        return;
+    }
     const IrF16 half(ir.Emit(IrOpcode::ConvertF16F32, IrType::F16, {&applyF16ResultModifiers(operand, clampF16Overflow(value, sources)).Value()}));
     const IrU16 bits(ir.Emit(IrOpcode::BitCastU16F16, IrType::U16, {&half.Value()}));
     write16Bits(operand, IrU32(ir.Emit(IrOpcode::ConvertU32U16, IrType::U32, {&bits.Value()})));

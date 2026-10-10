@@ -52,11 +52,19 @@ private:
     bool outputModifierApplies(std::uint32_t denormalShift) const;
     bool dx10Clamp() const { return !floatMode.has_value() || floatMode->dx10Clamp; }
     bool fp16Overflow() const { return floatMode.has_value() && floatMode->fp16Overflow; }
+    // FLOAT_MODE[3:2] (FP_ROUND_16_64): 0 nearest even, 1 +inf, 2 -inf, 3 toward zero.
+    std::uint32_t f16RoundMode() const { return floatMode.has_value() ? (floatMode->floatMode >> 2u) & 3u : 0u; }
+    bool f16RoundTowardZero() const { return f16RoundMode() == 3u; }
+    // FLOAT_MODE[7:6] (FP_DENORM_16_64) == 3: 16-bit denormals are kept on input and output.
+    bool f16DenormalsKept() const { return !floatMode.has_value() || (floatMode->floatMode & 0xc0u) == 0xc0u; }
     IrF32 clampF16Overflow(IrF32 value, std::initializer_list<IrValue*> sources);
     void rejectHalfOrDoubleOutputModifier(const RdnaOperand& operand) const;
     IrU32 clampF16Bits(const RdnaOperand& operand, IrU32 bits);
     void writeOperand(const RdnaOperand& operand, IrValue* value);
     IrU32 packHalf2x16(IrF32 low, IrF32 high);
+    IrU32 packHalf2x16Mode(IrF32 low, IrF32 high);
+    IrF32 binaryF16InF32(IrOpcode opcode, IrF32 lhs, IrF32 rhs);
+    IrF32 addF16RoundedToOdd(IrF32 lhs, IrF32 rhs);
     void write16Bits(const RdnaOperand& operand, IrU32 value);
     void writeF16(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources);
     IrU32 readU32(const RdnaOperand& operand);

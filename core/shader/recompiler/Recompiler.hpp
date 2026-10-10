@@ -175,6 +175,8 @@ struct ShaderFloatMode {
 inline constexpr std::uint32_t InterpolationQuiet = 1u;
 inline constexpr std::uint32_t InterpolationFlush32 = 2u;
 inline constexpr std::uint32_t InterpolationFlush16 = 4u;
+// FLOAT_MODE rounds 16-bit results toward zero (FP_ROUND_16_64 == 3); only used with a half result.
+inline constexpr std::uint32_t InterpolationRoundTowardZero = 8u;
 
 struct GuestContext {
     std::uint32_t waveSize;

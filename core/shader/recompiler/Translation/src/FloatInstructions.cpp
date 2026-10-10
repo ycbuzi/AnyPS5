@@ -1,5 +1,6 @@
 #include "Translation/FloatInstructions.hpp"
 #include "Translation/TranslationContext.hpp"
+#include "Recompiler.hpp"
 #include <array>
 #include <cstdint>
 #include <stdexcept>
@@ -11,8 +12,8 @@ void TranslateFloatInstruction(IrBuilder& builder, const RdnaInstruction& instru
 }
 
 bool TranslationContext::packedFloat16(const RdnaInstruction& inst, IrOpcode opcode, bool accumulator, bool quietSnan) {
-    if (floatMode.has_value() && (floatMode->floatMode & 0xccu) != 0xc0u) {
-        throw std::runtime_error("packed f16 at pc " + std::to_string(inst.programCounter) + " in FLOAT_MODE " + std::to_string(floatMode->floatMode) + " (f16 denormals not kept or rounding not to nearest even) is not implemented");
+    if (!f16DenormalsKept() || (f16RoundMode() == 1u || f16RoundMode() == 2u)) {
+        throw std::runtime_error("packed f16 at pc " + std::to_string(inst.programCounter) + " in FLOAT_MODE " + std::to_string(floatMode->floatMode) + " (f16 denormals not kept or rounding toward an infinity) is not implemented");
     }
     const auto translateLane = [&](bool high) -> IrF32 {
         const IrF32 lhs = readF16LaneAsF32(sourceAt(inst, 0u), high, true);
@@ -29,9 +30,9 @@ bool TranslationContext::packedFloat16(const RdnaInstruction& inst, IrOpcode opc
             const IrF32 third = readF16LaneAsF32(sourceAt(inst, 2u), high, true);
             return applyF32ResultModifiers(inst.destination, clampF16Overflow(ternary(third), {&lhs.Value(), &rhs.Value(), &third.Value()}));
         }
-        return applyF32ResultModifiers(inst.destination, clampF16Overflow(IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value()})), {&lhs.Value(), &rhs.Value()}));
+        return applyF32ResultModifiers(inst.destination, clampF16Overflow(binaryF16InF32(opcode, lhs, rhs), {&lhs.Value(), &rhs.Value()}));
     };
-    IrU32 result = packHalf2x16(translateLane(false), translateLane(true));
+    IrU32 result = packHalf2x16Mode(translateLane(false), translateLane(true));
     if (!inst.destination.clamp || !dx10Clamp() || quietSnan) {
         const auto laneBits = [&](const RdnaOperand& operand, bool high) {
             const IrU32 source = readF16SourceBits(operand);
@@ -90,7 +91,7 @@ bool TranslationContext::float16Unary(const RdnaInstruction& inst, IrOpcode opco
     const RdnaOperand& operand = sourceAt(inst, 0u);
     const IrF32 argument = readF16AsF32(operand);
     const auto [result, invalid] = unaryFloatSpecials(opcode, argument, IrF32(ir.Emit(opcode, IrType::F32, {&argument.Value()})));
-    IrU32 bits = packHalf2x16(applyF16ResultModifiers(inst.destination, clampF16Overflow(result, {&argument.Value()})), IrF32(ir.ConstantF32(0.0f)));
+    IrU32 bits = packHalf2x16Mode(applyF16ResultModifiers(inst.destination, clampF16Overflow(result, {&argument.Value()})), IrF32(ir.ConstantF32(0.0f)));
     if (opcode == IrOpcode::FPFract32) {
         bits = IrU32(ir.Select(ir.IEqual(bits.Value(), ir.Constant(0x3c00u)), ir.Constant(0x3bffu), bits.Value()));
     }
@@ -213,13 +214,39 @@ bool TranslationContext::vDivFixupF16(const RdnaInstruction& inst) {
 bool TranslationContext::float16Binary(const RdnaInstruction& inst, IrOpcode opcode, bool reverse) {
     const IrF32 lhs = readF16AsF32(sourceAt(inst, reverse ? 1u : 0u));
     const IrF32 rhs = readF16AsF32(sourceAt(inst, reverse ? 0u : 1u));
-    writeF16(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value()})), {&lhs.Value(), &rhs.Value()});
+    writeF16(inst.destination, binaryF16InF32(opcode, lhs, rhs), {&lhs.Value(), &rhs.Value()});
     return true;
 }
 
+// An f16 sum computed in f32 can be inexact when the exponents differ by more than 13, and rounding
+// that f32 to nearest even before a final rounding toward zero can land on the wrong side of an
+// f16 boundary. Rounding the intermediate to odd instead keeps the truncation exact, as the fma
+// path does; products and min/max are exact in f32 and need nothing.
+IrF32 TranslationContext::binaryF16InF32(IrOpcode opcode, IrF32 lhs, IrF32 rhs) {
+    if (f16RoundTowardZero() && (opcode == IrOpcode::FPAdd32 || opcode == IrOpcode::FPSub32)) {
+        const IrF32 addend = opcode == IrOpcode::FPSub32 ? IrF32(ir.Emit(IrOpcode::FPNeg32, IrType::F32, {&rhs.Value()})) : rhs;
+        return addF16RoundedToOdd(lhs, addend);
+    }
+    return IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value()}));
+}
+
+IrF32 TranslationContext::addF16RoundedToOdd(IrF32 lhs, IrF32 rhs) {
+    IrValue& sum = ir.Emit(IrOpcode::FPAdd32, IrType::F32, {&lhs.Value(), &rhs.Value()});
+    IrValue& rhsPart = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&sum, &lhs.Value()});
+    IrValue& lhsPart = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&sum, &rhsPart});
+    IrValue& lhsError = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&lhs.Value(), &lhsPart});
+    IrValue& rhsError = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&rhs.Value(), &rhsPart});
+    IrValue& error = ir.Emit(IrOpcode::FPAdd32, IrType::F32, {&lhsError, &rhsError});
+    IrValue& inexact = ir.Emit(IrOpcode::FPOrdNotEqual32, IrType::U1, {&error, &ir.ConstantF32(0.0f)});
+    IrValue& sumBits = ir.BitCastU32(sum);
+    IrValue& sameSign = ir.IEqual(ir.BitwiseAnd(ir.BitwiseXor(sumBits, ir.BitCastU32(error)), ir.Constant(0x80000000u)), ir.Constant(0u));
+    IrValue& towardZero = ir.Select(sameSign, sumBits, ir.ISub(sumBits, ir.Constant(1u)));
+    return IrF32(ir.BitCastF32(ir.Select(inexact, ir.BitwiseOr(towardZero, ir.Constant(1u)), sumBits)));
+}
+
 bool TranslationContext::float16Ternary(const RdnaInstruction& inst, IrOpcode opcode, bool accumulator, bool mix) {
-    if (mix && floatMode.has_value() && (floatMode->floatMode & 0xccu) != 0xc0u) {
-        throw std::runtime_error("v_fma_mixlo/mixhi_f16 at pc " + std::to_string(inst.programCounter) + " in FLOAT_MODE " + std::to_string(floatMode->floatMode) + " (f16 denormals not kept or rounding not to nearest even) is not implemented");
+    if (mix && (!f16DenormalsKept() || (f16RoundMode() == 1u || f16RoundMode() == 2u))) {
+        throw std::runtime_error("v_fma_mixlo/mixhi_f16 at pc " + std::to_string(inst.programCounter) + " in FLOAT_MODE " + std::to_string(floatMode->floatMode) + " (f16 denormals not kept or rounding toward an infinity) is not implemented");
     }
     std::array<IrValue*, 3> args{};
     for (std::uint32_t index = 0u; index < args.size(); ++index) {
@@ -231,7 +258,7 @@ bool TranslationContext::float16Ternary(const RdnaInstruction& inst, IrOpcode op
         return true;
     }
     if (mix) {
-        writeF16(inst.destination, IrF32(ir.Emit(IrOpcode::FPInterpolateF16, IrType::F32, {args[0], args[1], args[2], &ir.Constant(0u)})), {args[0], args[1], args[2]});
+        writeF16(inst.destination, IrF32(ir.Emit(IrOpcode::FPInterpolateF16, IrType::F32, {args[0], args[1], args[2], &ir.Constant(f16RoundTowardZero() ? InterpolationRoundTowardZero : 0u)})), {args[0], args[1], args[2]});
         return true;
     }
     writeF16(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {args[0], args[1], args[2]})), {args[0], args[1], args[2]});

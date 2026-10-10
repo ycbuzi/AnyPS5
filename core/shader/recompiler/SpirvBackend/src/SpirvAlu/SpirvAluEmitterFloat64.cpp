@@ -223,6 +223,27 @@ std::uint32_t RoundToPrecision(SpirvEmitterState& state, std::uint32_t value, st
     return ToF64(state, Join(state, {rounded.low, Binary(state, spv::OpBitwiseOr, u32, Binary(state, spv::OpBitwiseAnd, u32, rounded.high, ConstantU32(state, 0x7fffffffu)), sign)}));
 }
 
+// Drops the fraction bits of an f64 value below the step RoundToPrecision would round at: the
+// rounding toward zero of an exact or round-to-odd value. A magnitude below one step becomes zero.
+std::uint32_t TruncateToPrecision(SpirvEmitterState& state, std::uint32_t value, std::uint32_t fractionBits, std::uint32_t smallestStep) {
+    const auto u32 = TypeU32(state);
+    const auto i32 = TypeI32(state);
+    const auto bits = Split(state, FromF64(state, value));
+    const auto exponent = Unary(state, spv::OpBitcast, i32, ExponentField(state, bits.high));
+    const auto step = Glsl(state, i32, GLSLstd450SMax, Binary(state, spv::OpISub, i32, exponent, ConstantI32(state, static_cast<std::int32_t>(fractionBits))), ConstantI32(state, static_cast<std::int32_t>(smallestStep)));
+    const auto kept = Binary(state, spv::OpISub, i32, exponent, step);
+    const auto belowStep = Binary(state, spv::OpSLessThan, TypeBool(state), kept, ConstantI32(state, 0));
+    const auto cleared = Unary(state, spv::OpBitcast, u32, Glsl(state, i32, GLSLstd450SClamp, Binary(state, spv::OpISub, i32, ConstantI32(state, 52), kept), ConstantI32(state, 0), ConstantI32(state, 52)));
+    const auto mask = [&](std::uint32_t count) { return Unary(state, spv::OpNot, u32, Binary(state, spv::OpISub, u32, Binary(state, spv::OpShiftLeftLogical, u32, ConstantU32(state, 1u), count), ConstantU32(state, 1u))); };
+    const auto clearsHigh = Binary(state, spv::OpUGreaterThanEqual, TypeBool(state), cleared, ConstantU32(state, 32u));
+    const auto lowCount = Glsl(state, u32, GLSLstd450UMin, cleared, ConstantU32(state, 31u));
+    const auto highCount = Glsl(state, u32, GLSLstd450UMin, Binary(state, spv::OpISub, u32, Glsl(state, u32, GLSLstd450UMax, cleared, ConstantU32(state, 32u)), ConstantU32(state, 32u)), ConstantU32(state, 20u));
+    const auto low = Select(state, u32, clearsHigh, ConstantU32(state, 0u), Binary(state, spv::OpBitwiseAnd, u32, bits.low, mask(lowCount)));
+    const auto high = Select(state, u32, clearsHigh, Binary(state, spv::OpBitwiseAnd, u32, bits.high, mask(highCount)), bits.high);
+    const auto sign = Binary(state, spv::OpBitwiseAnd, u32, bits.high, ConstantU32(state, 0x80000000u));
+    return ToF64(state, Join(state, SelectBits(state, belowStep, {ConstantU32(state, 0u), sign}, {low, high})));
+}
+
 std::uint32_t F32BitsOfRounded(SpirvEmitterState& state, std::uint32_t value) {
     const auto u32 = TypeU32(state);
     const auto bits = Split(state, FromF64(state, value));
@@ -265,12 +286,15 @@ std::uint32_t Interpolate(SpirvEmitterState& state, std::uint32_t delta, std::ui
     base = halfResult ? FlushDenormal32(state, base, flush32, 0x00800000u) : FlushDenormal32(state, base, flush16, 0x38800000u);
     const auto product = Exact(state, spv::OpFMul, FromF32Exact(state, delta), FromF32Exact(state, coordinate));
     const auto sum = AddRoundToOdd(state, product, FromF32Exact(state, base));
-    auto rounded = halfResult ? RoundToPrecision(state, sum, 10u, 999u) : RoundToPrecision(state, sum, 23u, 874u);
+    const bool towardZero = halfResult && (mode & InterpolationRoundTowardZero) != 0u;
+    auto rounded = halfResult ? (towardZero ? TruncateToPrecision(state, sum, 10u, 999u) : RoundToPrecision(state, sum, 10u, 999u)) : RoundToPrecision(state, sum, 23u, 874u);
     if (halfResult) {
+        // Nearest even overflows past 2^16 to infinity; toward zero stops at the largest finite f16, 65504.
+        const std::uint32_t limit = towardZero ? 0x40effc00u : 0x40f00000u;
         const auto bits = Split(state, FromF64(state, rounded));
         const auto sign = Binary(state, spv::OpBitwiseAnd, u32, bits.high, ConstantU32(state, 0x80000000u));
-        const auto overflow = Binary(state, spv::OpUGreaterThan, TypeBool(state), Binary(state, spv::OpBitwiseAnd, u32, bits.high, ConstantU32(state, 0x7fffffffu)), ConstantU32(state, 0x40f00000u));
-        rounded = ToF64(state, Join(state, SelectBits(state, overflow, {ConstantU32(state, 0u), Binary(state, spv::OpBitwiseOr, u32, sign, ConstantU32(state, 0x40f00000u))}, bits)));
+        const auto overflow = Binary(state, spv::OpUGreaterThan, TypeBool(state), Binary(state, spv::OpBitwiseAnd, u32, bits.high, ConstantU32(state, 0x7fffffffu)), ConstantU32(state, limit));
+        rounded = ToF64(state, Join(state, SelectBits(state, overflow, {ConstantU32(state, 0u), Binary(state, spv::OpBitwiseOr, u32, sign, ConstantU32(state, limit))}, bits)));
     }
     const auto finite = F32BitsOfRounded(state, rounded);
     const auto inputs = std::array{Unary(state, spv::OpBitcast, u32, delta), Unary(state, spv::OpBitcast, u32, coordinate), Unary(state, spv::OpBitcast, u32, base)};
