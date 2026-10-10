@@ -10,6 +10,7 @@
 
 namespace {
 
+constexpr int ErrorAlreadyOpened = static_cast<int>(0x80bc0001u);
 constexpr int ErrorNotOpened = static_cast<int>(0x80bc0002u);
 constexpr int ErrorConnectionFailed = static_cast<int>(0x80bc0004u);
 constexpr int ErrorInvalidUserId = static_cast<int>(0x80bc0010u);
@@ -27,12 +28,18 @@ constexpr int32_t UserIdInvalid = -1;
 std::mutex g_keyboardMutex;
 std::set<int32_t> g_openKeyboards;
 
+std::mutex g_panelMutex;
+bool g_panelOpened = false;
+
 }
 
 extern "C" {
 
 int APS5_VABI sceImeClose_nid_postfix(void) {
- return ErrorNotOpened;
+    std::lock_guard lock(g_panelMutex);
+    if (!g_panelOpened) return ErrorNotOpened;
+    g_panelOpened = false;
+    return 0;
 }
 
 int APS5_VABI sceImeGetPanelPositionAndForm(PositionAndForm* form) {
@@ -87,33 +94,43 @@ int APS5_VABI sceImeKeyboardSetMode(int32_t user_id, uint32_t mode) {
 }
 
 int APS5_VABI sceImeOpen_nid_postfix(const Param* param, const ExtendedParam* extended) {
- (void)param;
- (void)extended;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    (void)extended;
+    if (!param) return ErrorInvalidAddress;
+    if (param->type > TypeNumber) return ErrorInvalidType;
+    if ((param->option & ~ValidOptions) != 0) return ErrorInvalidOption;
+    std::lock_guard lock(g_panelMutex);
+    if (g_panelOpened) return ErrorAlreadyOpened;
+    g_panelOpened = true;
+    return 0;
 }
 
 void APS5_VABI sceImeParamInit(Param* param) {
- if (!param) return;
- std::memset(param, 0, sizeof(*param));
- param->user_id = -1;
+    if (!param) return;
+    std::memset(param, 0, sizeof(*param));
+    param->user_id = -1;
 }
 
 int APS5_VABI sceImeSetCaret(const Caret* caret) {
- (void)caret;
- return ErrorNotOpened;
+    (void)caret;
+    std::lock_guard lock(g_panelMutex);
+    if (!g_panelOpened) return ErrorNotOpened;
+    return 0;
 }
 
 int APS5_VABI sceImeSetText(const char16_t* text, uint32_t length) {
- (void)text;
- (void)length;
- return ErrorNotOpened;
+    (void)text;
+    (void)length;
+    std::lock_guard lock(g_panelMutex);
+    if (!g_panelOpened) return ErrorNotOpened;
+    return 0;
 }
 
 int APS5_VABI sceImeSetTextGeometry(TextAreaMode mode, const TextGeometry* geometry) {
- (void)mode;
- (void)geometry;
- return ErrorNotOpened;
+    (void)mode;
+    (void)geometry;
+    std::lock_guard lock(g_panelMutex);
+    if (!g_panelOpened) return ErrorNotOpened;
+    return 0;
 }
 
 int APS5_VABI sceImeUpdate(EventHandler handler) {
