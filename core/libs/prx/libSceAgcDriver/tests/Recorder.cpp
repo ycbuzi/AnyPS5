@@ -1912,6 +1912,91 @@ void storageRefreshTests(const Device& device, Recorder& recorder, bool watched)
     recorder.Sync();
 }
 
+void hostImportUnmapTests(const Device& device, Recorder& recorder) {
+    const auto& context = device.GetContext();
+    if (context.hostImportAlignment == 0) {
+        std::cout << "host imports unavailable: import unmap lifetime not tested\n";
+        return;
+    }
+    const auto alignment = static_cast<std::size_t>(std::max<VkDeviceSize>(65536u, context.hostImportAlignment));
+    constexpr std::size_t RequestedBytes = 17u << 20u;
+    const auto bytes = ((RequestedBytes + alignment - 1u) / alignment) * alignment;
+#ifdef _WIN32
+    void* block = VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+#else
+    void* block = std::aligned_alloc(alignment, bytes);
+#endif
+    Require(block != nullptr, "cannot allocate the host import unmap block");
+    struct Block {
+        void* address;
+        std::size_t bytes;
+        bool registered = true;
+        bool released = false;
+        void Release() {
+#ifdef _WIN32
+            Require(VirtualFree(address, 0, MEM_RELEASE) != 0, "cannot release the host import unmap block");
+#else
+            std::free(address);
+#endif
+            released = true;
+        }
+        ~Block() {
+            if (registered) {
+                try {
+                    GuestAllocations::Mutation mutation;
+                    mutation.Remove(address);
+                } catch (...) {
+                    return;
+                }
+            }
+            if (!released) {
+#ifdef _WIN32
+                VirtualFree(address, 0, MEM_RELEASE);
+#else
+                std::free(address);
+#endif
+            }
+        }
+    } allocation{block, bytes};
+    const auto address = reinterpret_cast<std::uint64_t>(block);
+    {
+        GuestAllocations::Mutation mutation;
+        mutation.Add(block, bytes, true, true);
+    }
+    const HostImport* imported = nullptr;
+    {
+        std::lock_guard gpu(GpuMutex());
+        imported = HostImportFor(context, address, bytes);
+    }
+    if (imported == nullptr) {
+        GuestAllocations::Mutation mutation;
+        mutation.Remove(block);
+        allocation.registered = false;
+        allocation.Release();
+        std::cout << "host import refused: import unmap lifetime not tested\n";
+        return;
+    }
+    bool retiredBeforeRelease = false;
+    {
+        GuestAllocations::Mutation mutation;
+        mutation.Unmap(block, bytes, [&](const void*, std::size_t, const void*, bool) {
+            retiredBeforeRelease = !HostImportCovers(context, address, bytes);
+            if (retiredBeforeRelease) allocation.Release();
+        });
+        allocation.registered = false;
+    }
+    if (!retiredBeforeRelease) {
+        {
+            std::lock_guard gpu(GpuMutex());
+            static_cast<void>(HostImportFor(context, address, bytes));
+            recorder.Sync();
+        }
+        allocation.Release();
+    }
+    Require(retiredBeforeRelease, "guest unmap released pages before retiring their host import");
+    std::cout << "host import unmap lifetime: ok\n";
+}
+
 void importWatchTests(const Device& device) {
     using namespace AgcDriver::GuestMemory;
     const auto& context = device.GetContext();
@@ -3585,7 +3670,7 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        std::lock_guard gpu(GpuMutex());
+        std::unique_lock gpu(GpuMutex());
         std::cout << "host imports " << (PrepareImportWatch(device.GetContext()) == ImportWatch::Unwatch ? "are compared" : "stay watched") << '\n';
         Recorder recorder(device.GetContext());
         recorder.Activate();
@@ -3606,6 +3691,11 @@ int main(int argc, char** argv) {
             lateLabelTests(recorder);
             largeLabelTests(recorder);
             std::cout << "Completion label storage and ordering tests passed\n";
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--host-import-unmap-only") {
+            gpu.unlock();
+            hostImportUnmapTests(device, recorder);
             return 0;
         }
         readTrackingTests(device, recorder);
@@ -3652,6 +3742,9 @@ int main(int argc, char** argv) {
         metadataPassTests(device, recorder);
         pendingKeyStoreTests(device, recorder);
         sampleDumpTests(device, recorder);
+        gpu.unlock();
+        hostImportUnmapTests(device, recorder);
+        gpu.lock();
         std::cout << "Recorder read tracking and label tests passed\n";
         return 0;
     } catch (const std::exception& error) {

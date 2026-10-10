@@ -891,9 +891,9 @@ bool TranslationContext::emitVector(const RdnaInstruction& inst) {
     case RdnaOpcode::VMulF16:
         return float16Binary(inst, IrOpcode::FPMul32, false);
     case RdnaOpcode::VMinF16:
-        return float16Binary(inst, IrOpcode::FPMin32, false);
+        return minMaxF16(inst, IrOpcode::FPMin32);
     case RdnaOpcode::VMaxF16:
-        return float16Binary(inst, IrOpcode::FPMax32, false);
+        return minMaxF16(inst, IrOpcode::FPMax32);
     case RdnaOpcode::VFmacF16:
         return float16Ternary(inst, IrOpcode::FPFma32, true, false);
     case RdnaOpcode::VFmamkF16:
@@ -928,11 +928,11 @@ bool TranslationContext::emitVector(const RdnaInstruction& inst) {
     case RdnaOpcode::VCosF16:
         return float16Unary(inst, IrOpcode::FPCos);
     case RdnaOpcode::VMin3F16:
-        return float16Ternary(inst, IrOpcode::FPMinTri32, false, false);
+        return minMaxF16(inst, IrOpcode::FPMinTri32);
     case RdnaOpcode::VMax3F16:
-        return float16Ternary(inst, IrOpcode::FPMaxTri32, false, false);
+        return minMaxF16(inst, IrOpcode::FPMaxTri32);
     case RdnaOpcode::VMed3F16:
-        return float16Ternary(inst, IrOpcode::FPMedTri32, false, false);
+        return minMaxF16(inst, IrOpcode::FPMedTri32);
     case RdnaOpcode::VDivFixupF16:
         return vDivFixupF16(inst);
     case RdnaOpcode::VFrexpMantF32:
@@ -944,9 +944,9 @@ bool TranslationContext::emitVector(const RdnaInstruction& inst) {
     case RdnaOpcode::VFmaF64:
         return float64Operation(inst, IrOpcode::FPFma64);
     case RdnaOpcode::VMinF64:
-        return float64Operation(inst, IrOpcode::FPMin64);
+        return ieeeMode ? float64Operation(inst, IrOpcode::FPMin64) : nonIeeeMinMaxF64(inst, IrOpcode::FPMin64);
     case RdnaOpcode::VMaxF64:
-        return float64Operation(inst, IrOpcode::FPMax64);
+        return ieeeMode ? float64Operation(inst, IrOpcode::FPMax64) : nonIeeeMinMaxF64(inst, IrOpcode::FPMax64);
     case RdnaOpcode::VLdexpF64:
         return float64Operation(inst, IrOpcode::FPLdexp64);
     case RdnaOpcode::VTruncF64:

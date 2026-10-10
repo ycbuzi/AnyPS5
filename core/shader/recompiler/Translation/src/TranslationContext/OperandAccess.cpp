@@ -374,6 +374,21 @@ IrF32 TranslationContext::applyF16ResultModifiers(const RdnaOperand& operand, Ir
     return dx10Clamp() ? clamped : selectF32(IrU1(ir.Emit(IrOpcode::FPIsNan32, IrType::U1, {&value.Value()})), value, clamped);
 }
 
+IrF32 TranslationContext::clampF16Overflow(IrF32 value, std::initializer_list<IrValue*> sources) {
+    if (!fp16Overflow()) {
+        return value;
+    }
+    const IrU32 bits(ir.BitCastU32(value.Value()));
+    const IrU32 magnitude(ir.BitwiseAnd(bits.Value(), ir.Constant(0x7fffffffu)));
+    IrU1 overflow(ir.LogicalAnd(ir.LogicalNot(ir.ULessThan(magnitude.Value(), ir.Constant(0x477ff000u))), ir.ULessThan(magnitude.Value(), ir.Constant(0x7f800001u))));
+    for (IrValue* source : sources) {
+        const IrU1 infinite(ir.IEqual(ir.BitwiseAnd(ir.BitCastU32(*source), ir.Constant(0x7fffffffu)), ir.Constant(0x7f800000u)));
+        overflow = IrU1(ir.LogicalAnd(overflow.Value(), ir.LogicalNot(infinite.Value())));
+    }
+    const IrU32 largest(ir.BitwiseOr(ir.BitwiseAnd(bits.Value(), ir.Constant(0x80000000u)), ir.Constant(0x477fe000u)));
+    return IrF32(ir.BitCastF32(ir.Select(overflow.Value(), largest.Value(), bits.Value())));
+}
+
 IrU32 TranslationContext::clampF16Bits(const RdnaOperand& operand, IrU32 bits) {
     rejectHalfOrDoubleOutputModifier(operand);
     if (!operand.clamp) {

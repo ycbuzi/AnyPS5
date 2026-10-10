@@ -158,7 +158,7 @@ ShaderRecompiler::ShaderPixelStageInfo DecodePixelStageInfo(const Registers& con
         .conservativeZExport = static_cast<ShaderRecompiler::ConservativeZExport>(conservativeZExport),
         .orderedPixelShader = ((shaderControl >> 16u) & 0x1u) != 0,
         .targetOutputMode = targetOutputMode,
-        .targetExportMapping = exportMappings
+        .targetExportMapping = nullProgram ? std::array<std::uint8_t, 8>{} : exportMappings
     };
 }
 

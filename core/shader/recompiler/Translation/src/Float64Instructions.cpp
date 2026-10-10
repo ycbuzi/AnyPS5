@@ -33,6 +33,24 @@ bool TranslationContext::float64Operation(const RdnaInstruction& inst, IrOpcode 
     return true;
 }
 
+bool TranslationContext::nonIeeeMinMaxF64(const RdnaInstruction& inst, IrOpcode opcode) {
+    const std::array<std::array<IrU32, 2>, 2> bits{readF64Bits(sourceAt(inst, 0u)), readF64Bits(sourceAt(inst, 1u))};
+    const auto isNan = [&](const std::array<IrU32, 2>& value) {
+        IrValue& magnitude = ir.BitwiseAnd(value[1].Value(), ir.Constant(0x7fffffffu));
+        return &ir.LogicalOr(ir.UGreaterThan(magnitude, ir.Constant(0x7ff00000u)), ir.LogicalAnd(ir.IEqual(magnitude, ir.Constant(0x7ff00000u)), ir.INotEqual(value[0].Value(), ir.Constant(0u))));
+    };
+    IrValue& plain = ir.Emit(opcode, IrType::U64, {&ir.ConstructU64(bits[0][0].Value(), bits[0][1].Value()), &ir.ConstructU64(bits[1][0].Value(), bits[1][1].Value())});
+    IrValue* lhsNan = isNan(bits[0]);
+    IrValue* rhsNan = isNan(bits[1]);
+    std::array<IrValue*, 2> words{};
+    for (std::uint32_t index = 0u; index < 2u; ++index) {
+        IrValue& lhsChecked = ir.Select(*lhsNan, bits[1][index].Value(), ir.CompositeExtract(plain, index));
+        words[index] = &ir.Select(*rhsNan, bits[0][index].Value(), lhsChecked);
+    }
+    writeF64Result(inst.destination, ir.ConstructU64(*words[0], *words[1]));
+    return true;
+}
+
 void TranslationContext::writeF64Result(const RdnaOperand& operand, IrValue& value) {
     rejectHalfOrDoubleOutputModifier(operand);
     RdnaOperand destination = operand;

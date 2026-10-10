@@ -1076,7 +1076,7 @@ DrawInputs prepareDrawInputs(const Context& context, const State& state, const P
     std::vector<std::shared_ptr<Buffer>> zeroed(attributes.size());
     for (std::size_t i = 0; i < attributes.size(); ++i) {
         const auto& attribute = attributes[i];
-        if (VertexFetchOutOfRange(attribute)) {
+        if (NullVertexDescriptor(attribute) || VertexFetchOutOfRange(attribute)) {
             zeroed[i] = zeroVertexBuffer(context, attribute);
             continue;
         }

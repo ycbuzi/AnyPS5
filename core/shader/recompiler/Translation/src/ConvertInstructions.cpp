@@ -79,7 +79,7 @@ void TranslationContext::vCvtI32F32(const RdnaInstruction& inst) {
 
 void TranslationContext::vCvtF16F32(const RdnaInstruction& inst) {
     const IrF32 value(*readOperand(sourceAt(inst, 0u), IrType::F32));
-    writeF16(inst.destination, value);
+    writeF16(inst.destination, value, {&value.Value()});
 }
 
 void TranslationContext::vCvtF32F16(const RdnaInstruction& inst) {
@@ -91,7 +91,7 @@ void TranslationContext::vCvtF1616(const RdnaInstruction& inst, bool signedValue
     const IrU32 source = readU16AsU32(sourceAt(inst, 0u), signedValue);
     const IrOpcode opcode = signedValue ? IrOpcode::ConvertF32S32 : IrOpcode::ConvertF32U32;
     const IrF32 value(ir.Emit(opcode, IrType::F32, {&source.Value()}));
-    writeF16(inst.destination, value);
+    writeF16(inst.destination, value, {});
 }
 
 void TranslationContext::vCvt16F16(const RdnaInstruction& inst, bool signedValue) {

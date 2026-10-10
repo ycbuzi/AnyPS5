@@ -128,7 +128,9 @@ void TranslationContext::vInterpP1F16(const RdnaInstruction& inst) {
 void TranslationContext::vInterpP2F16(const RdnaInstruction& inst) {
     const auto mode = interpolationModeF16(inst);
     const IrF32 delta = interpolationParameterF16(inst, 1u);
-    writeF16(inst.destination, IrF32(ir.Emit(IrOpcode::FPInterpolateF16, IrType::F32, {&delta.Value(), readOperand(inst.source0, IrType::F32), readOperand(inst.source3, IrType::F32), &ir.Constant(mode)})));
+    IrValue* coordinate = readOperand(inst.source0, IrType::F32);
+    IrValue* partial = readOperand(inst.source3, IrType::F32);
+    writeF16(inst.destination, IrF32(ir.Emit(IrOpcode::FPInterpolateF16, IrType::F32, {&delta.Value(), coordinate, partial, &ir.Constant(mode)})), {&delta.Value(), coordinate, partial});
 }
 
 void TranslationContext::eXP(const RdnaInstruction& inst) {

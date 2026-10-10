@@ -288,6 +288,16 @@ int main() {
     Require(closable >= 0 && sceKernelClose(closable) == 0);
     Require(sceKernelClose(closable) == static_cast<int>(0x80020009u));
     Require(sceKernelClose(-1) == static_cast<int>(0x80020009u));
+    for (const char* device : {"/dev/urandom", "/dev/random"}) {
+        const int random = open_nid_postfix(device, 0, 0);
+        Require(random >= 0);
+        unsigned char first[64]{};
+        unsigned char second[64]{};
+        Require(read_nid_postfix(random, first, sizeof(first)) == sizeof(first));
+        Require(read_nid_postfix(random, second, 3) == 3);
+        Require(std::memcmp(first, second, sizeof(first)) != 0 && second[3] == 0);
+        Require(close_nid_postfix(random) == 0);
+    }
     Require(unlink_nid_postfix(presentName.c_str()) == 0 && !std::filesystem::exists(present));
     const auto empty = root / "empty";
     Require(std::filesystem::create_directory(empty));

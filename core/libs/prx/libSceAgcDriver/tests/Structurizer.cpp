@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <exception>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -103,6 +104,108 @@ void requireExactPostDominators(const ControlFlowGraph& graph, const char* name)
     }
 }
 
+std::vector<std::vector<std::uint32_t>> originalPostDominators(const ControlFlowGraph& graph) {
+    std::vector<std::uint32_t> all;
+    for (std::uint32_t id = 0; id < graph.blocks.size(); ++id) all.push_back(id);
+    std::vector<std::vector<std::uint32_t>> result;
+    for (const auto& block : graph.blocks) result.push_back(block.successors.empty() ? std::vector<std::uint32_t>{block.id} : all);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& block : graph.blocks) {
+            std::vector<std::uint32_t> next;
+            if (block.successors.empty()) {
+                next = {block.id};
+            } else {
+                next = result[block.successors.front()];
+                for (std::size_t index = 1; index < block.successors.size(); ++index) {
+                    std::vector<std::uint32_t> intersection;
+                    const auto& successor = result[block.successors[index]];
+                    std::set_intersection(next.begin(), next.end(), successor.begin(), successor.end(), std::back_inserter(intersection));
+                    next = std::move(intersection);
+                }
+                if (std::find(next.begin(), next.end(), block.id) == next.end()) next.push_back(block.id);
+                std::sort(next.begin(), next.end());
+                next.erase(std::unique(next.begin(), next.end()), next.end());
+            }
+            if (next != result[block.id]) {
+                result[block.id] = std::move(next);
+                changed = true;
+            }
+        }
+    }
+    return result;
+}
+
+std::vector<std::vector<std::uint32_t>> originalDominators(const ControlFlowGraph& graph) {
+    std::vector<std::uint32_t> all;
+    for (std::uint32_t id = 0; id < graph.blocks.size(); ++id) all.push_back(id);
+    std::vector<std::vector<std::uint32_t>> result;
+    for (const auto& block : graph.blocks) result.push_back(block.id == graph.entryBlock ? std::vector<std::uint32_t>{block.id} : all);
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& block : graph.blocks) {
+            if (block.id == graph.entryBlock) continue;
+            std::vector<std::uint32_t> next;
+            if (block.predecessors.empty()) {
+                next = {block.id};
+            } else {
+                next = result[block.predecessors.front()];
+                for (std::size_t index = 1; index < block.predecessors.size(); ++index) {
+                    std::vector<std::uint32_t> intersection;
+                    const auto& predecessor = result[block.predecessors[index]];
+                    std::set_intersection(next.begin(), next.end(), predecessor.begin(), predecessor.end(), std::back_inserter(intersection));
+                    next = std::move(intersection);
+                }
+                if (std::find(next.begin(), next.end(), block.id) == next.end()) next.push_back(block.id);
+                std::sort(next.begin(), next.end());
+                next.erase(std::unique(next.begin(), next.end()), next.end());
+            }
+            if (next != result[block.id]) {
+                result[block.id] = std::move(next);
+                changed = true;
+            }
+        }
+    }
+    return result;
+}
+
+void requireOriginalDominanceSets(ControlFlowGraph graph, const char* name) {
+    for (auto& block : graph.blocks) {
+        block.dominators.clear();
+        block.postDominators.clear();
+    }
+    const auto expected = originalPostDominators(graph);
+    const auto expectedDominators = originalDominators(graph);
+    const auto original = graph;
+    const std::string stopAfterAnalyses = "dominance differential fixture: stop before CFG rewrites";
+    graph.unsupported = true;
+    graph.unsupportedReason = stopAfterAnalyses;
+    bool stopped = false;
+    try {
+        Structurizer{}.Structurize(graph);
+    } catch (const std::runtime_error& error) {
+        if (error.what() != stopAfterAnalyses) throw;
+        stopped = true;
+    }
+    if (!stopped || graph.blocks.size() != original.blocks.size() || graph.entryBlock != original.entryBlock) {
+        throw std::runtime_error(std::string(name) + ": differential fixture did not stop before CFG rewrites");
+    }
+    for (std::size_t id = 0; id < graph.blocks.size(); ++id) {
+        const auto& block = graph.blocks[id];
+        if (block.id != original.blocks[id].id || block.successors != original.blocks[id].successors || block.predecessors != original.blocks[id].predecessors) {
+            throw std::runtime_error(std::string(name) + ": differential fixture changed the CFG");
+        }
+        if (block.postDominators != expected[id]) {
+            throw std::runtime_error(std::string(name) + ": block " + std::to_string(id) + " differs from the original post-dominator fixed point");
+        }
+        if (block.dominators != expectedDominators[id]) {
+            throw std::runtime_error(std::string(name) + ": block " + std::to_string(id) + " differs from the original dominator fixed point");
+        }
+    }
+}
+
 }
 
 int main() {
@@ -165,6 +268,14 @@ int main() {
         }
         Structurizer{}.Structurize(sharedDiscard);
         requireStructuredBranches(sharedDiscard, "early discards that share one ending block");
+        requireOriginalDominanceSets(makeGraph(diamonds), "raw diamond chain");
+        requireOriginalDominanceSets(makeGraph({{1}, {2, 3}, {1}, {}}), "a loop with an exit");
+        requireOriginalDominanceSets(makeGraph({{1}, {2}, {1}}), "a non-exiting SCC");
+        requireOriginalDominanceSets(makeGraph({{1, 3}, {2}, {1}, {}}), "an exit-or-spin branch");
+        requireOriginalDominanceSets(makeGraph({{1}, {}, {3}, {}, {5}, {4}}), "unreachable exit and non-exiting islands");
+        auto reordered = makeGraph({{1}, {}, {2}, {0, 4}, {1}});
+        reordered.entryBlock = 3;
+        requireOriginalDominanceSets(std::move(reordered), "a nonzero entry with permuted block IDs");
     } catch (const std::exception& error) {
         std::fprintf(stderr, "%s\n", error.what());
         return 1;

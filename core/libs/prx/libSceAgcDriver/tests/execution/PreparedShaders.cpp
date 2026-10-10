@@ -2,6 +2,7 @@
 #include "Optimization/ResourceProgram.hpp"
 #include "ControlFlow/RequestSerializer.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp"
+#include "prx/libSceAgcDriver/Graphics/include/ShaderInputState.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver.hpp"
 #include "prx/libSceAgcDriver/Submit/include/Acb.hpp"
 #include <spirv/unified1/spirv.hpp>
@@ -65,7 +66,24 @@ void RunUnregistered(AgcDriver::VulkanDevice& device, ShaderRecompiler::Recompil
     }
 }
 
+void NullPixelAtDraw(AgcDriver::VulkanDevice& device) {
+    std::vector<std::uint32_t> code(64, 0);
+    code.front() = 0xbf810000u;
+    AgcDriver::DriverDetail::ShaderSnapshot snapshot{AgcDriver::DriverDetail::NullPixelProgramAddress(), 0, 1, code, {}};
+    snapshot.header.resize(sizeof(Shader));
+    std::array<std::uint32_t, 4> users{};
+    const auto pixel = AgcDriver::Graphics::DecodePixelStageInfo({}, {}, true);
+    const ShaderRecompiler::RecompileRequest registered{{ShaderRecompiler::ShaderStage::Fragment, snapshot.codeAddress, snapshot.code, 0, {}}, {64, 0, {}, {}, pixel, {}, {}}, device.Target(), {0, 0, 0, 128}};
+    snapshot.prepared->entries.push_back({0, ShaderRecompiler::PrepareShader(registered)});
+    ShaderRecompiler::RecompileRequest request{{ShaderRecompiler::ShaderStage::Fragment, snapshot.codeAddress, snapshot.code, 0, {}}, {32, 0, users, {}, pixel, {}, {}}, device.Target(), {0, 0, 20, 108}};
+    static_cast<void>(AgcDriver::DriverDetail::InvocationFor(snapshot, 0, request));
+    Require(snapshot.prepared->entries.size() == 2, "the null pixel program was not prepared at draw");
+    static_cast<void>(AgcDriver::DriverDetail::InvocationFor(snapshot, 0, request));
+    Require(AgcDriver::DriverDetail::SourceHandleFor(snapshot, 0, request) == snapshot.prepared->entries.back().handle && snapshot.prepared->entries.size() == 2, "the null pixel program was prepared again for the same draw");
+}
+
 void Run(AgcDriver::VulkanDevice& device) {
+    NullPixelAtDraw(device);
     alignas(256) std::array<std::uint32_t, 1> code{0xbf810000u};
     std::array<std::uint32_t, 4> users{};
     const ShaderRecompiler::ShaderComputeStageInfo compute{{1, 1, 1}, 0, {false, false, false}, false, 1, {}};

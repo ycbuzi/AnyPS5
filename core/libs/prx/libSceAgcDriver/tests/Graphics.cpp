@@ -3609,6 +3609,21 @@ void storeAtFlipTests() {
     for (const char* value : {"0", "", "true", "11"}) expectFailure([&] { StorageTexture::StoreAtFlipRequested(value); }, "expected 1");
 }
 
+void nullVertexDescriptorTests() {
+    using AgcDriver::Graphics::DecodeVertexFormat;
+    constexpr std::array formats{VK_FORMAT_R32_SFLOAT, VK_FORMAT_R32G32_SFLOAT, VK_FORMAT_R32G32B32_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT};
+    ShaderRecompiler::VertexAttribute attribute{};
+    attribute.formatComponents = 1;
+    for (std::uint32_t components = 1; components <= 4; ++components) {
+        attribute.components = components;
+        const auto format = DecodeVertexFormat(attribute);
+        Require(format.format == formats[components - 1] && format.bytes == components * 4u && std::string_view(format.scalar) == "f32", "a null V# did not read as zero floats of the attribute's width");
+        Require(AgcDriver::Graphics::VertexBufferReadSize(attribute, 100000, 3, 2) == format.bytes && AgcDriver::Graphics::VertexBufferExtent(attribute) == format.bytes, "a null V# was sized as a guest range");
+    }
+    attribute.resource.fields = {0x1000, 0, 0, 0};
+    expectFailure([&] { DecodeVertexFormat(attribute); }, "unsupported vertex format");
+}
+
 void vertexCopyTests() {
     using AgcDriver::Graphics::PlanVertexCopies;
     using AgcDriver::Graphics::VertexFetch;
@@ -3736,6 +3751,7 @@ int main() {
         vertexCopyTests();
         highestDrawIndexTests();
         storeAtFlipTests();
+        nullVertexDescriptorTests();
         pixelParameterSlotTests();
         rectListTests();
         floatControlsModeTests();
