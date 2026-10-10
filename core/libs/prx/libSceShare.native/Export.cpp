@@ -1,9 +1,16 @@
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 
 // Capture and sharing are not emulated; policy and parameter calls are accepted.
+
+namespace {
+
+constexpr std::int32_t ERROR_INVALID_PARAM = static_cast<std::int32_t>(0x81960002);
+
+}
 
 extern "C" {
 
@@ -32,10 +39,11 @@ int APS5_VABI sceShareFeatureProhibit(uint32_t feature_flags) {
 }
 
 int APS5_VABI sceShareGetCurrentStatus(uint32_t feature_flag, ShareCurrentStatus* status) {
- (void)feature_flag;
- (void)status;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    if (feature_flag == 0 || status == nullptr) {
+        return ERROR_INVALID_PARAM;
+    }
+    std::memset(status, 0, sizeof(*status));
+    return 0;
 }
 
 int APS5_VABI sceShareInitialize(size_t heap_size, int thread_priority, uint64_t affinity_mask) {
