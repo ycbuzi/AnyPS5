@@ -193,9 +193,14 @@ int APS5_VABI sceKernelStat(const char* path, FileStat* sb) {
     }
     const auto native = ResolvePath_nid_no_patch(path);
     std::error_code error;
-    if (!std::filesystem::exists(native, error)) {
+    constexpr int GuestEnotdir = 20;
+    const auto status = std::filesystem::status(native, error);
+    if (error == std::errc::not_a_directory) return SceErrorFromErrno(GuestEnotdir);
+    if (!std::filesystem::exists(status)) {
         return SceErrorFromErrno(2);
     }
+    const std::string_view guestPath(path);
+    if (!guestPath.empty() && guestPath.back() == '/' && !std::filesystem::is_directory(status)) return SceErrorFromErrno(GuestEnotdir);
     File::FillFileStat(native, sb);
     return 0;
 }
