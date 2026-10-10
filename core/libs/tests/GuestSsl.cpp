@@ -5,6 +5,7 @@
 
 extern "C" {
 int APS5_VABI sceSslInit_nid_postfix(std::size_t);
+int APS5_VABI sceSslTerm_nid_postfix(int);
 int APS5_VABI sceSslGetCaCerts(int, void*);
 int APS5_VABI sceSslFreeCaCerts(int, void*);
 }
@@ -43,7 +44,8 @@ int main() {
     Require(sceSslGetCaCerts(context, &certs) == notFound);
     Require(certs.certs == nullptr && certs.num == 0 && certs.pool == nullptr);
 
-    certs = {&marker, 3, &marker};
+    certs = {};
     Require(sceSslFreeCaCerts(context, &certs) == 0);
     Require(certs.certs == nullptr && certs.num == 0 && certs.pool == nullptr);
+    Require(sceSslTerm_nid_postfix(context) == 0);
 }

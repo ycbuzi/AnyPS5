@@ -31,3 +31,6 @@
 [submodule "3rdparty/libjpeg-turbo"]
 	path = 3rdparty/libjpeg-turbo
 	url = https://github.com/libjpeg-turbo/libjpeg-turbo.git
+[submodule "3rdparty/mbedtls"]
+	path = 3rdparty/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git
