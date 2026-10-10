@@ -157,11 +157,7 @@ public:
     const std::vector<std::pair<std::uint64_t, std::uint64_t>>& GpuWrites() const { return guestMemory.Writes(); }
     std::vector<std::pair<std::uint64_t, std::uint64_t>> InPlaceReads() const { return guestMemory.InPlaceReads(); }
     std::vector<std::pair<VkImage, bool>> StorageImages() const;
-    // Whether a use writes guest memory beyond a draw's attachments (storage images, written or
-    // copied buffers, an address-based build's unknown writes), or reads `image` (a view of it
-    // sampled, or the image itself bound): a recorded draw's render pass may only be continued by
-    // a draw for which neither holds (Draw.cpp).
-    bool WritesMemory() const;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> DeviceReads() const { return guestMemory.DeviceReads(); }
     bool ReadsImage(const StorageTexture* image) const;
     const std::vector<std::uint32_t>& LayoutKey() const { return layoutKey; }
     // Debug aid: each bound guest resource with the fraction of sampled bytes that are nonzero.
@@ -188,6 +184,8 @@ public:
     // ranges are fixed by the build), so a Revalidate's collects on the same worker are memo hits.
     void PrecollectSurfaces() const;
     bool Reusable() const { return reusable; }
+    static bool NeverReusable(std::span<const CompiledShader> shaders);
+    const std::vector<std::shared_ptr<Texture>>& SampledTextures() const { return textures; }
     // `shaders` are the stages the object was built from, in build order (a recorded draw's vertex
     // and fragment stages, or one compute stage): their bindings are walked like the build did.
     // How a Revalidate proved (or refused) the object, for the [recipe] line: the proof path taken
@@ -337,6 +335,12 @@ private:
         std::uint64_t entryGeneration = 0;
     };
     std::vector<ImageRecord> imageRecords;
+    struct PreviousSampled {
+        std::array<std::uint32_t, 8> words{};
+        bool depthCompare = false;
+        std::shared_ptr<Texture> texture;
+    };
+    PreviousSampled previousSampled;
     // The next record resolveImageBinding consumes (records follow the deferredImages order).
     std::size_t nextImageRecord = 0;
     // Stage B: the record's texture when the fastRevalidate predicate proves it current under the
