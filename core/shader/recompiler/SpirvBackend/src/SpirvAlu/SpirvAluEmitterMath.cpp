@@ -53,19 +53,17 @@ std::uint32_t CompareOrdered64(SpirvEmitterState& state, std::uint32_t lhsValue,
 }
 
 std::uint32_t EmitMulHigh(SpirvEmitterState& state, std::uint32_t lhs, std::uint32_t rhs, bool signedValue) {
-    const auto operandType = signedValue ? TypeI32(state) : TypeU32(state);
-    const auto pairType = signedValue ? TypeI32Pair(state) : TypeU32Pair(state);
-    auto lhsOperand = lhs;
-    auto rhsOperand = rhs;
-    if (signedValue) {
-        lhsOperand = Unary(state, spv::OpBitcast, TypeI32(state), lhs);
-        rhsOperand = Unary(state, spv::OpBitcast, TypeI32(state), rhs);
-    }
+    const auto pairType = TypeU32Pair(state);
     const auto extended = state.module.AllocateId();
-    state.module.AddFunction(signedValue ? spv::OpSMulExtended : spv::OpUMulExtended, pairType, extended, lhsOperand, rhsOperand);
+    state.module.AddFunction(spv::OpUMulExtended, pairType, extended, lhs, rhs);
     const auto high = state.module.AllocateId();
-    state.module.AddFunction(spv::OpCompositeExtract, operandType, high, extended, 1u);
-    return signedValue ? Unary(state, spv::OpBitcast, TypeU32(state), high) : high;
+    state.module.AddFunction(spv::OpCompositeExtract, TypeU32(state), high, extended, 1u);
+    if (!signedValue) return high;
+    const auto aNeg = Binary(state, spv::OpSLessThan, TypeBool(state), lhs, ConstantU32(state, 0u));
+    const auto bNeg = Binary(state, spv::OpSLessThan, TypeBool(state), rhs, ConstantU32(state, 0u));
+    const auto corrA = Select(state, TypeU32(state), aNeg, rhs, ConstantU32(state, 0u));
+    const auto corrB = Select(state, TypeU32(state), bNeg, lhs, ConstantU32(state, 0u));
+    return Binary(state, spv::OpISub, TypeU32(state), high, Binary(state, spv::OpIAdd, TypeU32(state), corrA, corrB));
 }
 
 std::uint32_t EmitShift64(SpirvEmitterState& state, spv::Op opcode, std::uint32_t value, std::uint32_t shift) {

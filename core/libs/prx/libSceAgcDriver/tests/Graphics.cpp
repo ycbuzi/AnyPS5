@@ -1289,6 +1289,20 @@ void cmaskTests() {
     Require(texels(0x5a5a5a5au), "a refused pass changed the texels of a DCC target");
 }
 
+void uint8x4TargetTests() {
+    auto queue = makeState();
+    queue.context[0x1c5] = 7;
+    queue.context[0x31c] = (queue.context[0x31c] & ~0x1ffcu) | (10u << 2u) | (4u << 8u);
+    const auto state = AgcDriver::Graphics::DecodeState(queue);
+    Require(state.color.format == VK_FORMAT_R8G8B8A8_UINT && state.color.elementBytes == 4 && state.color.uintExport, "an 8_8_8_8 UINT color target was rejected");
+    for (const std::uint32_t swap : {2u, 3u}) {
+        queue.context[0x31c] = (queue.context[0x31c] & ~0x1800u) | (swap << 11u);
+        Require(AgcDriver::Graphics::DecodeState(queue).color.format == VK_FORMAT_R8G8B8A8_UINT, "a reversed 8_8_8_8 UINT color target was rejected");
+    }
+    queue.context[0x31c] = (queue.context[0x31c] & ~0x1800u) | (1u << 11u);
+    expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "unsupported color format 10 number type 4 component swap 1");
+}
+
 void uint16ExportTests() {
     auto queue = makeState();
     queue.context[0x1c5] = 7;
@@ -3261,6 +3275,7 @@ int main() {
         metadataPassTests();
         cmaskTests();
         uint16ExportTests();
+        uint8x4TargetTests();
         ShaderStageTests();
         TuningFieldTests();
         PixelInputLayoutTests();
