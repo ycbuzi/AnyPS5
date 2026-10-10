@@ -13,6 +13,7 @@ double APS5_VABI atof_nid_postfix(const char*);
 float APS5_VABI strtof_nid_postfix(const char*, char**);
 long double APS5_VABI strtold_nid_postfix(const char*, char**);
 std::int64_t APS5_VABI strtol_nid_postfix(const char*, char**, int);
+std::int64_t APS5_VABI atol_nid_postfix(const char*);
 std::uint64_t APS5_VABI strtoul_nid_postfix(const char*, char**, int);
 std::intmax_t APS5_VABI strtoimax_nid_postfix(const char*, char**, int);
 long long APS5_VABI strtoll_nid_postfix(const char*, char**, int);
@@ -267,6 +268,9 @@ int main() {
     Require(std::isinf(strtof_nid_postfix("1e1000", nullptr)));
     Require(*__error_nid_postfix() == 34);
     Require(strtold_nid_postfix("1.0000000000000000001!", &end) > 1.L && *end == '!');
+    Require(atol_nid_postfix("  +42tail") == 42);
+    Require(atol_nid_postfix("-4294967296") == -INT64_C(4294967296));
+    Require(atol_nid_postfix("invalid") == 0);
     Require(fmodf_nid_postfix(5.5f, 2.f) == 1.5f);
     Require(fmodf_nid_postfix(-5.5f, 2.f) == -1.5f);
     Require(std::signbit(fmodf_nid_postfix(-4.f, 2.f)));
