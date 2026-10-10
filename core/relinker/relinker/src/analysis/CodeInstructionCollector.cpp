@@ -9,7 +9,9 @@
 #include <iterator>
 #include <limits>
 #include <map>
+#include <span>
 #include <string>
+#include <unordered_set>
 
 namespace Relinker {
 
@@ -273,17 +275,21 @@ std::set<Domain::VirtualAddress> CodeInstructionCollector::Collect(const std::ve
         }
     }
     std::size_t previousRoots = 0;
+    std::unordered_set<Domain::VirtualAddress> decodedInstructions;
+    std::vector<std::unordered_set<Domain::VirtualAddress>> sectionReachable(headers.size());
     do {
         previousRoots = roots.size();
-        for (const auto& header : headers) {
+        for (std::size_t i = 0; i < headers.size(); ++i) {
+            const auto& header = headers[i];
             if (header.Type != 1 || (header.Flags & 1) == 0 || header.FileSize == 0) continue;
             range(header.Offset, header.FileSize);
             std::vector<std::uint64_t> entries;
             for (const auto root : roots) if (root >= header.MappedAddress && root - header.MappedAddress < header.FileSize) entries.push_back(root);
             if (entries.empty()) continue;
-            const std::vector<std::uint8_t> text(bytes.begin() + header.Offset, bytes.begin() + header.Offset + header.FileSize);
-            const auto graph = UnusedNidFilter::BuildControlFlowGraph(text, header.MappedAddress, entries.front(), entries, pointers, true);
+            const std::span<const std::uint8_t> text(bytes.data() + header.Offset, header.FileSize);
+            const auto graph = UnusedNidFilter::BuildControlFlowGraph(text, header.MappedAddress, entries.front(), entries, pointers, true, sectionReachable[i]);
             for (const auto address : graph->ReachableVaddrs()) {
+                if (!decodedInstructions.insert(address).second) continue;
                 instructions.insert(address);
                 const auto offset = address - header.MappedAddress;
                 const auto info = decoder.DecodeInstruction(text.data() + offset, text.size() - offset);

@@ -74,7 +74,7 @@ static_assert(sizeof(FragmentParameter) == 12, "FragmentParameter changed: updat
 static_assert(sizeof(CompiledShaderInfo) == 344, "CompiledShaderInfo changed: update the info encoder");
 static_assert(sizeof(ShaderInfo) == 232, "ShaderInfo changed: update the info encoder");
 static_assert(sizeof(BufferResource) == 32, "BufferResource changed: update the info encoder");
-static_assert(sizeof(ImageResource) == 112, "ImageResource changed: update the info encoder");
+static_assert(sizeof(ImageResource) == 120, "ImageResource changed: update the info encoder");
 static_assert(sizeof(SamplerResource) == 16, "SamplerResource changed: update the info encoder");
 static_assert(sizeof(SampledResourcePair) == 12, "SampledResourcePair changed: update the info encoder");
 static_assert(sizeof(StageInput) == 56, "StageInput changed: update the info encoder");
@@ -483,6 +483,7 @@ void encodeInfo(Writer& writer, const CompiledShaderInfo& compiled) {
         out.Value(image.constantSwizzle);
         out.Value(image.constantSwizzleCompatible);
         out.Value(image.flatVolumeCompatible);
+        out.Value(image.flatLineCompatible);
         out.Value(image.byElements);
         out.Value(image.byComponents);
         out.Value(image.packedFormat);
@@ -587,6 +588,7 @@ void decodeInfo(Reader& reader, CompiledShaderInfo& compiled) {
         in.Value(image.constantSwizzle);
         in.Value(image.constantSwizzleCompatible);
         in.Value(image.flatVolumeCompatible);
+        in.Value(image.flatLineCompatible);
         in.Value(image.byElements);
         in.Value(image.byComponents);
         in.Value(image.packedFormat);

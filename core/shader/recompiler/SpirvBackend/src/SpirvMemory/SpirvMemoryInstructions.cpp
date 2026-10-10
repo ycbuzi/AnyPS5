@@ -1121,6 +1121,26 @@ void EmitStoreAddressU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
     StoreAddress(ctx, inst, 32u);
 }
 
+void StoreAddressWide(SpirvValueEmitContext& ctx, const IrValue& inst, std::uint32_t components) {
+    const auto& mem = ctx.Memory(inst);
+    if (mem.kind != ResourceKind::Flat && mem.kind != ResourceKind::Global) ctx.Fail(inst, "must write a physical address resource");
+    EmitIfCondition(ctx.state, ActiveArgument(ctx, inst), [&]() {
+        EmitBdaDwordWrites(ctx, inst, GuestAddressBase(ctx, inst, mem), mem.offset, components, ctx.Arg(inst, inst.ArgumentCount() - 2u));
+    });
+}
+
+void EmitStoreAddressU32x2(SpirvValueEmitContext& ctx, const IrValue& inst) {
+    StoreAddressWide(ctx, inst, 2u);
+}
+
+void EmitStoreAddressU32x3(SpirvValueEmitContext& ctx, const IrValue& inst) {
+    StoreAddressWide(ctx, inst, 3u);
+}
+
+void EmitStoreAddressU32x4(SpirvValueEmitContext& ctx, const IrValue& inst) {
+    StoreAddressWide(ctx, inst, 4u);
+}
+
 std::uint32_t EmitAddressAtomic(SpirvValueEmitContext& ctx, const IrValue& inst) {
     return AddressAtomic(ctx, inst);
 }
