@@ -108,7 +108,6 @@ struct SidebandResampleInfo {
 
 struct Resampler {
     float ratio = 1.0f;
-    float ratioChange = 0.0f;
     std::vector<double> frames;
     double position = 1.0;
 };
@@ -494,7 +493,7 @@ void StorePcm(double value, std::uint8_t* out, std::uint32_t encoding) {
 }
 
 bool Resampling(const Instance& instance) {
-    return instance.resampler.ratio != 1.0f || instance.resampler.ratioChange != 0.0f || !instance.resampler.frames.empty();
+    return instance.resampler.ratio != 1.0f || !instance.resampler.frames.empty();
 }
 
 std::size_t ResamplerHeld(const Instance& instance, std::size_t channels) {
@@ -532,10 +531,6 @@ void ResamplerProduce(Instance& instance, PcmOutputs& outputs, std::size_t chann
         }
         outputs.Emit(frame.data(), frameBytes);
         resampler.position += resampler.ratio;
-        if (resampler.ratioChange != 0.0f) {
-            resampler.ratio += resampler.ratioChange;
-            if (!std::isfinite(resampler.ratio) || resampler.ratio <= 0.0f) NotImplemented_nid_no_patch("AJM resample ramp reaching a ratio that is not positive");
-        }
     }
     const auto index = std::min(static_cast<std::size_t>(resampler.position), available);
     if (index > 1) {
@@ -1158,9 +1153,7 @@ void Execute(const JobHeader& job, const AjmBuffer* inputs, const AjmBuffer* out
         break;
     case JobKind::SetResampleParameters:
         std::memcpy(&instance->resampler.ratio, job.parameters, sizeof(instance->resampler.ratio));
-        instance->resampler.ratioChange = 0.0f;
-        if (job.parameterSize >= 2 * sizeof(float)) std::memcpy(&instance->resampler.ratioChange, job.parameters + sizeof(float), sizeof(float));
-        AJM_TRACE("[ajm] instance %u set resample ratio %f, change per sample %f\n", job.instance, static_cast<double>(instance->resampler.ratio), static_cast<double>(instance->resampler.ratioChange));
+        AJM_TRACE("[ajm] instance %u set resample ratio %f\n", job.instance, static_cast<double>(instance->resampler.ratio));
         WriteResult(job.sideband, job.sidebandSize, 0);
         break;
     case JobKind::GetResampleInfo: {
@@ -1348,13 +1341,8 @@ int APS5_VABI sceAjmBatchJobSetResampleParameters(AjmBatchInfo* info, uint32_t i
 }
 
 int APS5_VABI sceAjmBatchJobSetResampleParametersEx(AjmBatchInfo* info, uint32_t instance, float ratio_start, float ratio_change_per_sample, uint32_t flags, void* result) {
-    (void)flags;
-    if (!std::isfinite(ratio_start) || ratio_start <= 0.0f || !std::isfinite(ratio_change_per_sample)) return SCE_AJM_ERROR_INVALID_PARAMETER;
-    auto header = MakeHeader(JobKind::SetResampleParameters, instance, result, sizeof(SidebandResult));
-    std::memcpy(header.parameters, &ratio_start, sizeof(ratio_start));
-    std::memcpy(header.parameters + sizeof(ratio_start), &ratio_change_per_sample, sizeof(ratio_change_per_sample));
-    header.parameterSize = sizeof(ratio_start) + sizeof(ratio_change_per_sample);
-    return Append(info, header, nullptr, nullptr);
+    if (ratio_change_per_sample != 0.0f) throw std::runtime_error("sceAjmBatchJobSetResampleParametersEx: a ratio change per sample is unsupported");
+    return sceAjmBatchJobSetResampleParameters(info, instance, ratio_start, flags, result);
 }
 
 int APS5_VABI sceAjmBatchJobGetResampleInfo(AjmBatchInfo* info, uint32_t instance, void* result) {
@@ -1365,12 +1353,12 @@ int APS5_VABI sceAjmBatchJobDecode(AjmBatchInfo* info, uint32_t instance, const 
     return sceAjmBatchJobRun(info, instance, SIDEBAND_STREAM, bitstream_input, bitstream_input_size, pcm_output, pcm_output_size, result, sizeof(SidebandResult) + sizeof(SidebandStream));
 }
 
-int APS5_VABI sceAjmBatchJobDecodeSingle(AjmBatchInfo* info, uint32_t instance, const void* bitstream_input, size_t bitstream_input_size, void* pcm_output, size_t pcm_output_size, void* result) {
-    return sceAjmBatchJobRun(info, instance, SIDEBAND_STREAM, bitstream_input, bitstream_input_size, pcm_output, pcm_output_size, result, sizeof(SidebandResult) + sizeof(SidebandStream));
-}
-
 int APS5_VABI sceAjmBatchJobDecodeSplit(AjmBatchInfo* info, uint32_t instance, const AjmBuffer* input_buffers, size_t input_buffers_num, const AjmBuffer* output_buffers, size_t output_buffers_num, void* result) {
     return sceAjmBatchJobRunSplit(info, instance, SIDEBAND_STREAM, input_buffers, input_buffers_num, output_buffers, output_buffers_num, result, sizeof(SidebandResult) + sizeof(SidebandStream));
+}
+
+int APS5_VABI sceAjmBatchJobDecodeSingle(AjmBatchInfo* info, uint32_t instance, const void* bitstream_input, size_t bitstream_input_size, void* pcm_output, size_t pcm_output_size, void* result) {
+    return sceAjmBatchJobRun(info, instance, SIDEBAND_STREAM, bitstream_input, bitstream_input_size, pcm_output, pcm_output_size, result, sizeof(SidebandResult) + sizeof(SidebandStream));
 }
 
 int APS5_VABI sceAjmBatchJobGetGaplessDecode(AjmBatchInfo* info, uint32_t instance, void* result) {

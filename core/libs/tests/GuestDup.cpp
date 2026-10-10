@@ -14,6 +14,7 @@ std::int64_t APS5_VABI write_nid_postfix(int, const char*, std::int64_t);
 int APS5_VABI socketpair_nid_postfix(int, int, int, int*);
 std::int64_t APS5_VABI send_nid_postfix(int, const void*, std::uint64_t, int);
 std::int64_t APS5_VABI recv_nid_postfix(int, void*, std::uint64_t, int);
+int APS5_VABI open_nid_postfix(const char*, int, int);
 int* APS5_VABI __error_nid_postfix();
 }
 
@@ -121,9 +122,53 @@ static void SocketDuplicates() {
     for (const int descriptor : {target, pair[1], next[0], next[1], pipe[0], pipe[1]}) Require(close_nid_postfix(descriptor) == 0);
 }
 
+static void RandomDeviceDuplicates() {
+    const int random = open_nid_postfix("/dev/urandom", 0, 0);
+    Require(random >= 0);
+    const int dupRandom = dup_nid_postfix(random);
+    Require(dupRandom >= 0 && dupRandom != random);
+    unsigned char randomBuf1[16] = {};
+    unsigned char randomBuf2[16] = {};
+    Require(read_nid_postfix(random, randomBuf1, sizeof(randomBuf1)) == sizeof(randomBuf1));
+    Require(read_nid_postfix(dupRandom, randomBuf2, sizeof(randomBuf2)) == sizeof(randomBuf2));
+    Require(std::memcmp(randomBuf1, randomBuf2, sizeof(randomBuf1)) != 0);
+
+    Require(dup2_nid_postfix(random, random) == random);
+    Require(read_nid_postfix(random, randomBuf1, sizeof(randomBuf1)) == sizeof(randomBuf1));
+
+    int pipe[2];
+    Require(pipe_nid_postfix(pipe) == 0);
+    Require(write_nid_postfix(pipe[1], "hello", 5) == 5);
+    Require(dup2_nid_postfix(pipe[0], random) == random);
+    char textBuf[8] = {};
+    Require(read_nid_postfix(random, textBuf, 5) == 5);
+    Require(std::memcmp(textBuf, "hello", 5) == 0);
+
+    const int targetHost = pipe[0];
+    Require(dup2_nid_postfix(dupRandom, targetHost) == targetHost);
+    unsigned char randomBuf3[16] = {};
+    Require(read_nid_postfix(targetHost, randomBuf3, sizeof(randomBuf3)) == sizeof(randomBuf3));
+    Require(std::memcmp(randomBuf3, randomBuf2, sizeof(randomBuf3)) != 0);
+
+    const int secondRandom = open_nid_postfix("/dev/random", 0, 0);
+    Require(secondRandom >= 0);
+    Require(dup2_nid_postfix(dupRandom, secondRandom) == secondRandom);
+    unsigned char randomBuf4[16] = {};
+    Require(read_nid_postfix(secondRandom, randomBuf4, sizeof(randomBuf4)) == sizeof(randomBuf4));
+    Require(std::memcmp(randomBuf4, randomBuf3, sizeof(randomBuf4)) != 0);
+
+    const int invalidFd = FirstSocket - 100;
+    RequireFailure(dup2_nid_postfix(invalidFd, secondRandom), GuestEbadf);
+    unsigned char randomBuf5[16] = {};
+    Require(read_nid_postfix(secondRandom, randomBuf5, sizeof(randomBuf5)) == sizeof(randomBuf5));
+
+    for (const int descriptor : {random, dupRandom, pipe[1], secondRandom}) Require(close_nid_postfix(descriptor) == 0);
+}
+
 int main() {
     DupOutlivesOriginal();
     Dup2ReplacesTarget();
     BadDescriptors();
     SocketDuplicates();
+    RandomDeviceDuplicates();
 }
