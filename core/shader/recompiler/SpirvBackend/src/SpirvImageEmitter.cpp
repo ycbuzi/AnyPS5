@@ -1470,7 +1470,28 @@ TableSelection TableSlot(SpirvValueEmitContext& ctx, const IrValue& inst, const 
     return EmitIndirectImageSelector(ctx, image, key);
 }
 
+void EmitConstantSwizzleSample(SpirvValueEmitContext& ctx, const ImageEmitAccess& access) {
+    auto& state = ctx.state;
+    const auto numericClass = access.image.numericClass;
+    const bool gather = access.inst.Opcode() == IrOpcode::ImageGatherRaw;
+    const auto scalarType = ImageScalarType(state, numericClass);
+    const auto one = numericClass == IrTextureNumericClass::Float ? ConstantF32(state, 0x3f800000u) : numericClass == IrTextureNumericClass::Sint ? ConstantI32(state, 1) : ConstantU32(state, 1u);
+    const auto zero = SampledComponentZero(state, numericClass);
+    std::uint32_t channels[4] = {};
+    for (std::uint32_t channel = 0; channel < 4u; channel++) {
+        const auto selector = RuntimeImageSwizzle(state, access.mem.resource, gather ? ImageGatherComponent(EffectiveDmask(access.mem)) : channel);
+        channels[channel] = Select(state, scalarType, Binary(state, spv::OpIEqual, TypeBool(state), selector, ConstantU32(state, 1u)), one, zero);
+    }
+    const auto value = state.module.AllocateId();
+    state.module.AddFunction(spv::OpCompositeConstruct, ImageVectorType(state, numericClass, 4), value, channels[0], channels[1], channels[2], channels[3]);
+    ctx.Define(access.inst, ResultVector(ctx, access, value, numericClass, false, gather));
+}
+
 void EmitSamplingOp(SpirvValueEmitContext& ctx, const ImageEmitAccess& access) {
+    if (access.image.constantSwizzle) {
+        EmitConstantSwizzleSample(ctx, access);
+        return;
+    }
     if (access.image.srgbDecode) {
         ctx.Fail(access.inst, "samples or gathers an sRGB image the device cannot sample, which is not implemented");
     }

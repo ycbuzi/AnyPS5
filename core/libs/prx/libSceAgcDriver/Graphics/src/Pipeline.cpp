@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <list>
 #include <mutex>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
@@ -371,16 +372,19 @@ void append(std::vector<std::byte>& key, const TValue& value) {
 // (the recompiler could not identify it, so nothing else may share its pipeline). The rect-list
 // control and evaluation stages are generated from the vertex and fragment results, which the key
 // already names, so they carry no id of their own.
-std::vector<std::byte> pipelineKey(const Context& context, const State& state, const VertexInputLayout& input, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout) {
+void pipelineKey(std::vector<std::byte>& key, const Context& context, const State& state, const VertexInputLayout& input, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout) {
     using Stage = ShaderRecompiler::ShaderStage;
-    std::vector<std::byte> key;
+    key.clear();
     append(key, context.device);
     append(key, attachmentLayout);
     append(key, shaders.size());
     for (const auto& shader : shaders) {
         Require(shader.program != nullptr, "missing compiled shader");
         const bool generated = state.rectList && (shader.stage == Stage::TessellationControl || shader.stage == Stage::TessellationEvaluation);
-        if (!generated && shader.program->PipelineVariantId() == 0) return {};
+        if (!generated && shader.program->PipelineVariantId() == 0) {
+            key.clear();
+            return;
+        }
         append(key, shader.stage);
         append(key, generated ? std::uint64_t{0} : shader.program->PipelineVariantId());
         // Where the stage's push constants sit in the block (AssemblePushConstants).
@@ -452,16 +456,10 @@ std::vector<std::byte> pipelineKey(const Context& context, const State& state, c
         append(key, tessellation.partitioning);
         append(key, tessellation.outputTopology);
     }
-    return key;
 }
 
 std::uint64_t hashKey(const std::vector<std::byte>& key) {
-    std::uint64_t hash = 14695981039346656037ull;
-    for (const auto byte : key) {
-        hash ^= static_cast<std::uint8_t>(byte);
-        hash *= 1099511628211ull;
-    }
-    return hash;
+    return std::hash<std::string_view>{}(std::string_view(reinterpret_cast<const char*>(key.data()), key.size()));
 }
 
 struct PipelineStore {
@@ -475,6 +473,7 @@ struct PipelineStore {
         std::shared_ptr<Pipeline> pipeline;
     };
     std::mutex mutex;
+    std::vector<std::byte> scratchKey;
     // Least recently used first.
     std::list<Entry> entries;
     std::unordered_map<std::uint64_t, std::list<Entry>::iterator> index;
@@ -526,7 +525,8 @@ std::shared_ptr<Pipeline> CachedPipeline(const Context& context, const State& st
     auto& store = Pipelines();
     std::lock_guard lock(store.mutex);
     reportPipelines(store);
-    const auto key = pipelineKey(context, state, vertexInput, resources, shaders, attachmentLayout);
+    auto& key = store.scratchKey;
+    pipelineKey(key, context, state, vertexInput, resources, shaders, attachmentLayout);
     if (key.empty()) {
         ++store.uncached;
         return std::make_shared<Pipeline>(context, state, vertexInput, resources, shaders, attachmentLayout);
