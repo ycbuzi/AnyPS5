@@ -116,6 +116,63 @@ void testLifetime(bool reopen) {
     LibcRunShutdown_nid_postfix();
 }
 
+void testDeferredBuffer() {
+    const int handle = sceVideoOutOpen(255, 0, 0, nullptr);
+    auto cfg = VideoOutDriver::Get().GetConfig(handle);
+    auto gate = std::make_shared<Gate>();
+    AgcDriverRegisterVideoOutput_nid_postfix(7, gate);
+    std::array<uint32_t, 6> held{0xc004105c, 7, 0xfffffffeu, 1, 0, 0};
+    Packet heldPacket{held.data(), 6, 0, {}};
+    check(sceAgcDriverSubmitDcb(&heldPacket) == 0, "the gated flip was not accepted");
+    std::array<uint32_t, 6> flip{0xc004105c, static_cast<uint32_t>(handle), 0, 1, 3, 0};
+    Packet flipPacket{flip.data(), 6, 0, {}};
+    check(sceAgcDriverSubmitDcb(&flipPacket) == 0, "a GPU flip of a buffer registered before the GPU reaches it was rejected at submit");
+    std::vector<std::byte> allocation(65536 + 65535);
+    const auto storage = alignedBuffer(allocation);
+    VideoOutBuffers buffer{storage.data(), nullptr, {nullptr, nullptr}};
+    VideoOutBufferAttribute2 attribute{};
+    sceVideoOutSetBufferAttribute2(&attribute, 0x8000000000000000ull, 0, 64, 64, 0, 0, 0);
+    check(sceVideoOutRegisterBuffers2(handle, 0, 0, &buffer, 1, &attribute, 0, nullptr) == 0, "buffer registration failed");
+    gate->Release();
+    {
+        std::unique_lock lock(cfg->mutex);
+        const bool done = cfg->vblankCond.wait_for(lock, std::chrono::seconds(30), [&] { return cfg->failure || cfg->flipStatus.count == 1; });
+        if (cfg->failure) std::rethrow_exception(cfg->failure);
+        check(done, "the deferred flip did not complete");
+        check(cfg->flipStatus.flipArg == 3 && cfg->flipStatus.currentBuffer == 0, "the deferred flip presented the wrong request");
+    }
+    AgcDriverWaitIdle_nid_postfix();
+    sceVideoOutUnregisterBuffers(handle, 0);
+    sceVideoOutClose(handle);
+    AgcDriverUnregisterVideoOutput_nid_postfix(7, gate);
+    LibcRunShutdown_nid_postfix();
+}
+
+void testUnregisteredBuffer() {
+    const int handle = sceVideoOutOpen(255, 0, 0, nullptr);
+    auto cfg = VideoOutDriver::Get().GetConfig(handle);
+    std::vector<std::byte> allocation(65536 + 65535);
+    const auto storage = alignedBuffer(allocation);
+    VideoOutBuffers buffer{storage.data(), nullptr, {nullptr, nullptr}};
+    VideoOutBufferAttribute2 attribute{};
+    sceVideoOutSetBufferAttribute2(&attribute, 0x8000000000000000ull, 0, 64, 64, 0, 0, 0);
+    check(sceVideoOutRegisterBuffers2(handle, 0, 0, &buffer, 1, &attribute, 0, nullptr) == 0, "buffer registration failed");
+    check(sceVideoOutUnregisterBuffers(handle, 0) == 0, "buffer unregistration failed");
+    std::array<uint32_t, 6> flip{0xc004105c, static_cast<uint32_t>(handle), 0, 1, 7, 0};
+    Packet flipPacket{flip.data(), 6, 0, {}};
+    check(sceAgcDriverSubmitDcb(&flipPacket) == 0, "a GPU flip of an unregistered buffer was rejected at submit");
+    {
+        std::unique_lock lock(cfg->mutex);
+        const bool done = cfg->vblankCond.wait_for(lock, std::chrono::seconds(30), [&] { return cfg->failure || cfg->flipStatus.count == 1; });
+        if (cfg->failure) std::rethrow_exception(cfg->failure);
+        check(done, "a GPU flip of an unregistered buffer did not complete");
+        check(cfg->flipStatus.flipPendingNum == 0 && cfg->flipStatus.flipArg == 7 && cfg->bufferPending[0] == 0, "a GPU flip of an unregistered buffer left pending state");
+    }
+    AgcDriverWaitIdle_nid_postfix();
+    sceVideoOutClose(handle);
+    LibcRunShutdown_nid_postfix();
+}
+
 std::size_t tiledOffset(uint32_t x, uint32_t y, uint32_t width) {
     constexpr std::array<uint32_t, 7> xMasks{4, 8, 128, 256, 0x2200, 0x800, 0x8400};
     constexpr std::array<uint32_t, 7> yMasks{16, 32, 64, 0x1100, 0x200, 0x400, 0x4800};
@@ -613,6 +670,8 @@ int main(int argc, char** argv) {
         else if (argc == 2 && std::string(argv[1]) == "unavailable") testUnavailable();
         else if (argc == 2 && std::string(argv[1]) == "onedevice") testOneDevice();
         else if (argc == 2 && std::string(argv[1]) == "overlay") testOverlay();
+        else if (argc == 2 && std::string(argv[1]) == "deferred") testDeferredBuffer();
+        else if (argc == 2 && std::string(argv[1]) == "unregistered") testUnregisteredBuffer();
         else testLifetime(argc == 2 && std::string(argv[1]) == "reopen");
         std::puts("VideoOut flip tests passed");
         return 0;

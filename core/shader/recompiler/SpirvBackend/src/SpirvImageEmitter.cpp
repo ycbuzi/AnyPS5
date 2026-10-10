@@ -1297,7 +1297,12 @@ void EmitEmulatedCompareSample(SpirvValueEmitContext& ctx, const ImageEmitAccess
     reference = Select(state, f32, equal(parameter(4u), EmulatedCompare::ReferenceUnorm), ext(f32, GLSLstd450FClamp, {reference, f32Constant(0.0f), f32Constant(1.0f)}), reference);
     reference = Select(state, f32, equal(parameter(4u), EmulatedCompare::ReferenceSnorm), ext(f32, GLSLstd450FClamp, {reference, f32Constant(-1.0f), f32Constant(1.0f)}), reference);
     const auto address = [&](std::uint32_t index, std::uint32_t extent, std::uint32_t mode) {
-        return Select(state, i32, equal(mode, EmulatedCompare::AddressWrap), Binary(state, spv::OpSMod, i32, index, extent), ext(i32, GLSLstd450SClamp, {index, ConstantI32(state, 0), Binary(state, spv::OpISub, i32, extent, ConstantI32(state, 1))}));
+        const auto remainder = Binary(state, spv::OpSRem, i32, index, extent);
+        const auto negative = Binary(state, spv::OpSLessThan, TypeBool(state), remainder, ConstantI32(state, 0));
+        const auto correction = Select(state, i32, negative, extent, ConstantI32(state, 0));
+        const auto wrapped = Binary(state, spv::OpIAdd, i32, remainder, correction);
+        const auto clamped = ext(i32, GLSLstd450SClamp, {index, ConstantI32(state, 0), Binary(state, spv::OpISub, i32, extent, ConstantI32(state, 1))});
+        return Select(state, i32, equal(mode, EmulatedCompare::AddressWrap), wrapped, clamped);
     };
     const auto inside = [&](std::uint32_t index, std::uint32_t extent) {
         const auto notBelow = Binary(state, spv::OpSGreaterThanEqual, TypeBool(state), index, ConstantI32(state, 0));
