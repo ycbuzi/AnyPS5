@@ -83,6 +83,20 @@ bool utcCalendarFields(std::int64_t time, GuestTm& result) {
 
 }
 
+#ifdef __linux__
+#include <cstdlib>
+
+namespace {
+
+const bool timeZoneFixed = [] {
+    if (std::getenv("TZ") == nullptr) ::setenv("TZ", ":/etc/localtime", 0);
+    ::tzset();
+    return true;
+}();
+
+}  // namespace
+#endif
+
 extern "C" {
 
 GuestTm* APS5_VABI localtime_s_nid_postfix(const int64_t* timer, GuestTm* result);

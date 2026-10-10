@@ -596,6 +596,13 @@ int main() {
             "raw compute cache eviction lost snapshot lifetime or exceeded its entry limit");
         check(!expectFailure([&] { AgcDriver::DriverDetail::ReadRawComputeShader(rawAddress + 4); }).empty(), "raw compute accepted a misaligned entry");
         check(!expectFailure([] { AgcDriver::DriverDetail::ReadRawComputeShader(0); }).empty(), "raw compute accepted an unmapped entry");
+        alignas(256) std::array<std::uint32_t, 128> straddling{};
+        straddling.fill(0xbf800000);
+        straddling[63] = 0xf4000000;
+        straddling[64] = 0xfa000000;
+        straddling[65] = 0xbf810000;
+        const auto straddled = AgcDriver::DriverDetail::ReadRawComputeShader(reinterpret_cast<std::uintptr_t>(straddling.data()));
+        check(straddled->code.size() == 66 && straddled->code[64] == 0xfa000000, "raw compute stopped at a memory instruction across its first read window");
 #ifdef _WIN32
         auto* mapping = static_cast<std::uint32_t*>(VirtualAlloc(nullptr, 8192, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
         check(mapping != nullptr, "cannot allocate raw compute boundary test");

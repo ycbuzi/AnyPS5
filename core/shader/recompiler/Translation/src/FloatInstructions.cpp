@@ -17,18 +17,20 @@ bool TranslationContext::packedFloat16(const RdnaInstruction& inst, IrOpcode opc
     const auto translateLane = [&](bool high) -> IrF32 {
         const IrF32 lhs = readF16LaneAsF32(sourceAt(inst, 0u), high, true);
         const IrF32 rhs = readF16LaneAsF32(sourceAt(inst, 1u), high, true);
+        const auto ternary = [&](const IrF32& third) -> IrF32 {
+            if (opcode == IrOpcode::FPFma32) return fmaF16RoundedToOdd(lhs, rhs, third);
+            return IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value(), &third.Value()}));
+        };
         if (accumulator) {
-            const IrF32 acc = readF16LaneAsF32(accumulatorOperand(inst), high, true);
-            return applyF32ResultModifiers(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value(), &acc.Value()})));
+            return applyF32ResultModifiers(inst.destination, ternary(readF16LaneAsF32(accumulatorOperand(inst), high, true)));
         }
         if (inst.sourceCount == 3u) {
-            const IrF32 third = readF16LaneAsF32(sourceAt(inst, 2u), high, true);
-            return applyF32ResultModifiers(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value(), &third.Value()})));
+            return applyF32ResultModifiers(inst.destination, ternary(readF16LaneAsF32(sourceAt(inst, 2u), high, true)));
         }
         return applyF32ResultModifiers(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {&lhs.Value(), &rhs.Value()})));
     };
     IrU32 result = packHalf2x16(translateLane(false), translateLane(true));
-    if (!inst.destination.clamp || !dx10Clamp()) {
+    if (!inst.destination.clamp || !dx10Clamp() || quietSnan) {
         const auto laneBits = [&](const RdnaOperand& operand, bool high) {
             const IrU32 source = readF16SourceBits(operand);
             const bool selectHigh = high ? operand.opSelHi : operand.opSel;
@@ -214,8 +216,27 @@ bool TranslationContext::float16Ternary(const RdnaInstruction& inst, IrOpcode op
         const RdnaOperand& operand = accumulator && index == 2u ? accumulatorOperand(inst) : sourceAt(inst, index);
         args[index] = mix ? &readMixF32(operand).Value() : &readF16AsF32(operand).Value();
     }
+    if (opcode == IrOpcode::FPFma32 && !mix) {
+        writeF16(inst.destination, fmaF16RoundedToOdd(IrF32(*args[0]), IrF32(*args[1]), IrF32(*args[2])));
+        return true;
+    }
     writeF16(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {args[0], args[1], args[2]})));
     return true;
+}
+
+IrF32 TranslationContext::fmaF16RoundedToOdd(IrF32 lhs, IrF32 rhs, IrF32 addend) {
+    IrValue& product = ir.Emit(IrOpcode::FPMul32, IrType::F32, {&lhs.Value(), &rhs.Value()});
+    IrValue& sum = ir.Emit(IrOpcode::FPAdd32, IrType::F32, {&product, &addend.Value()});
+    IrValue& addendPart = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&sum, &product});
+    IrValue& productPart = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&sum, &addendPart});
+    IrValue& productError = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&product, &productPart});
+    IrValue& addendError = ir.Emit(IrOpcode::FPSub32, IrType::F32, {&addend.Value(), &addendPart});
+    IrValue& error = ir.Emit(IrOpcode::FPAdd32, IrType::F32, {&productError, &addendError});
+    IrValue& inexact = ir.Emit(IrOpcode::FPOrdNotEqual32, IrType::U1, {&error, &ir.ConstantF32(0.0f)});
+    IrValue& sumBits = ir.BitCastU32(sum);
+    IrValue& sameSign = ir.IEqual(ir.BitwiseAnd(ir.BitwiseXor(sumBits, ir.BitCastU32(error)), ir.Constant(0x80000000u)), ir.Constant(0u));
+    IrValue& towardZero = ir.Select(sameSign, sumBits, ir.ISub(sumBits, ir.Constant(1u)));
+    return IrF32(ir.BitCastF32(ir.Select(inexact, ir.BitwiseOr(towardZero, ir.Constant(1u)), sumBits)));
 }
 
 IrU32 TranslationContext::readF16Bits(const RdnaOperand& operand) {

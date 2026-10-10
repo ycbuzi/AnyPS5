@@ -325,7 +325,7 @@ RdnaInstruction DecodeRdnaImageOp(std::span<const std::uint32_t> code, std::uint
 RdnaInstruction DecodeRdnaMimg(std::uint32_t programCounter, std::span<const std::uint32_t> code, std::uint32_t wordIndex) {
     const std::size_t index = wordIndex;
     if (index >= code.size() || code.size() - index < 2u) {
-        throw std::runtime_error("truncated MIMG instruction");
+        throw std::out_of_range("truncated MIMG instruction");
     }
     const auto word0 = code[index];
     const auto word1 = code[index + 1u];
@@ -345,7 +345,7 @@ RdnaInstruction DecodeRdnaMimg(std::uint32_t programCounter, std::span<const std
     const auto nsa = (word0 >> 1u) & 3u;
     const auto wordCount = 2u + nsa;
     if (code.size() - index < wordCount) {
-        throw std::runtime_error("truncated MIMG NSA payload");
+        throw std::out_of_range("truncated MIMG NSA payload");
     }
     if (programCounter % 4u != 0u || programCounter > std::numeric_limits<std::uint32_t>::max() - (wordCount * 4u - 1u)) {
         throw std::runtime_error("invalid MIMG program counter");

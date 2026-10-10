@@ -616,6 +616,7 @@ void peBuilder() {
     std::array<PeDirectory, 16> directories{};
     const auto file = WindowsPeWriter().Write(sections, LoadRva, directories);
     require(file.size() > 0x400, "PE writer rejected the stub section");
+    require(read<std::uint16_t>(file, 0x96) == 0x22, "PE writer marked a fixed image as relocation-stripped");
     auto altered = converted.Bytes;
     altered[0x205] = 0xDC;
     requireFailure([&] {

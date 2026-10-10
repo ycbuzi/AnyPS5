@@ -148,6 +148,9 @@ void PrepareMultisampledStorage(AgcDriver::VulkanDevice& device) {
     request.context.waveSize = 32;
     request.context.compute = ShaderComputeStageInfo{{8, 8, 1}, 0, {true, true, false}, false, 2, {}};
     request.target = device.ComputeTarget(32);
+    std::vector<std::uint32_t> multisampleCapabilities(request.target.supportedCapabilities.begin(), request.target.supportedCapabilities.end());
+    if (std::ranges::find(multisampleCapabilities, spv::CapabilityStorageImageMultisample) == multisampleCapabilities.end()) multisampleCapabilities.push_back(spv::CapabilityStorageImageMultisample);
+    request.target.supportedCapabilities = multisampleCapabilities;
     request.layout.pushConstantSizeBytes = 128;
     request.useCache = false;
     for (std::uint32_t variant = 0; variant < 5; ++variant) {

@@ -9,6 +9,7 @@ add_library(libkernel SHARED EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Terminal.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Open.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/OpenFileLimit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/File/src/SharedMemory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/File/src/Stdio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../libc/src/Rename.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Semaphore/src/Semaphore.cpp
@@ -545,6 +546,15 @@ if(BUILD_TESTING)
     set_tests_properties(guest_equeue_events PROPERTIES TIMEOUT 20)
     if(WIN32)
         set_tests_properties(guest_equeue_events PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libkernel>")
+    endif()
+    add_test_executable(guest_shm_open_tests ${LIBS_INCLUDE_DIR}/tests/GuestShmOpen.cpp)
+    target_include_directories(guest_shm_open_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_shm_open_tests PRIVATE libkernel libc)
+    configure_windows_unwind(guest_shm_open_tests)
+    add_test(NAME guest_shm_open COMMAND guest_shm_open_tests)
+    if(WIN32)
+        set_tests_properties(guest_shm_open PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libkernel>")
     endif()
     add_test_executable(guest_system_configuration_tests ${LIBS_INCLUDE_DIR}/tests/GuestSystemConfiguration.cpp)

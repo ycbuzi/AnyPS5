@@ -1589,17 +1589,23 @@ void EmitImage(SpirvValueEmitContext& ctx, const IrValue& inst) {
     const bool returnsValue = inst.Opcode() != IrOpcode::ImageWrite;
     const auto resultId = returnsValue ? ctx.Result(inst) : 0u;
     ctx.definitions.erase(&inst);
+    const bool exits = !state.continueTarget;
     const auto merge = state.module.AllocateId();
-    const auto invalid = state.module.AllocateId();
+    const auto invalid = exits ? state.module.AllocateId() : merge;
+    const auto undefined = returnsValue && !exits ? state.module.AllocateId() : 0u;
     std::vector<std::uint32_t> labels(modes.size());
     std::vector<std::uint32_t> words{spv::OpSwitch, selector, invalid};
     for (std::uint32_t index = 0u; index < modes.size(); ++index) {
         labels[index] = state.module.AllocateId();
         words.insert(words.end(), {index, labels[index]});
     }
+    std::vector<std::uint32_t> incoming;
+    if (undefined != 0u) {
+        state.module.AddFunction(spv::OpUndef, TypeId(state, inst.Type()), undefined);
+        incoming.insert(incoming.end(), {undefined, state.currentLabel});
+    }
     state.module.AddFunction(spv::OpSelectionMerge, merge, spv::SelectionControlMaskNone);
     state.module.AddFunction(words);
-    std::vector<std::uint32_t> incoming;
     for (std::uint32_t index = 0u; index < modes.size(); ++index) {
         EmitLabel(state, labels[index]);
         std::uint32_t modeMerge = 0u;
@@ -1607,18 +1613,26 @@ void EmitImage(SpirvValueEmitContext& ctx, const IrValue& inst) {
             const auto enabled = state.module.SpecializationConstant(TypeU32(state), PipelineSpecialization::ImageModeBase + memory.resource * PipelineSpecialization::ImageModeStride + index, 1u);
             const auto active = Binary(state, spv::OpINotEqual, TypeBool(state), enabled, ConstantU32(state, 0u));
             const auto activeLabel = state.module.AllocateId();
-            const auto inactiveLabel = state.module.AllocateId();
             modeMerge = state.module.AllocateId();
+            const auto inactiveLabel = exits ? state.module.AllocateId() : modeMerge;
             state.module.AddFunction(spv::OpSelectionMerge, modeMerge, spv::SelectionControlMaskNone);
             state.module.AddFunction(spv::OpBranchConditional, active, activeLabel, inactiveLabel);
-            EmitLabel(state, inactiveLabel);
-            state.module.AddFunction(spv::OpUnreachable);
+            if (exits) {
+                EmitLabel(state, inactiveLabel);
+                state.module.AddFunction(spv::OpUnreachable);
+            }
             EmitLabel(state, activeLabel);
         }
         emitMode(modes[index]);
         if (modeMerge != 0u) {
+            const auto activeEnd = state.currentLabel;
             state.module.AddFunction(spv::OpBranch, modeMerge);
             EmitLabel(state, modeMerge);
+            if (undefined != 0u) {
+                const auto joined = state.module.AllocateId();
+                state.module.AddFunction(spv::OpPhi, TypeId(state, inst.Type()), joined, ctx.Def(&inst), activeEnd, undefined, labels[index]);
+                ctx.definitions.insert_or_assign(&inst, joined);
+            }
         }
         if (returnsValue) incoming.insert(incoming.end(), {ctx.Def(&inst), state.currentLabel});
         ctx.definitions.erase(&inst);
@@ -1626,8 +1640,10 @@ void EmitImage(SpirvValueEmitContext& ctx, const IrValue& inst) {
     }
     state.runtimeImage = nullptr;
     state.runtimeImageMetadata = 0u;
-    EmitLabel(state, invalid);
-    state.module.AddFunction(spv::OpUnreachable);
+    if (exits) {
+        EmitLabel(state, invalid);
+        state.module.AddFunction(spv::OpUnreachable);
+    }
     EmitLabel(state, merge);
     if (returnsValue) {
         std::vector<std::uint32_t> phi{spv::OpPhi, TypeId(state, inst.Type()), resultId};
