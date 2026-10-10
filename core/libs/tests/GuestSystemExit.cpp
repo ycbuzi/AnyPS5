@@ -112,6 +112,9 @@ bool PreviousProcessEnded(std::uint64_t id) {
     return id == ProcessId();
 #endif
 }
+#ifdef _WIN32
+void WINAPI UnexpectedDetach(PVOID) { TerminateProcess(GetCurrentProcess(), 4); }
+#endif
 }
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--load-exec") == 0) {
@@ -137,6 +140,10 @@ int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--immediate") == 0) {
         LibcRegisterShutdown_nid_postfix(UnexpectedCleanup);
         Require(std::atexit(UnexpectedCleanup) == 0);
+#ifdef _WIN32
+        auto slot = FlsAlloc(UnexpectedDetach);
+        Require(slot != FLS_OUT_OF_INDEXES && FlsSetValue(slot, &slot));
+#endif
         _Exit_nid_postfix(0);
         return 2;
     }
