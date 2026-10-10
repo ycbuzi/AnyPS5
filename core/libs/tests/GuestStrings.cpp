@@ -7,6 +7,7 @@
 #include <string>
 
 extern "C" {
+void* APS5_VABI memccpy_nid_postfix(void*, const void*, int, std::size_t);
 char* APS5_VABI basename_nid_postfix(const char*);
 char* APS5_VABI __inet_ntoa_nid_postfix(unsigned int);
 int* APS5_VABI __error_nid_postfix();
@@ -38,6 +39,39 @@ static void Require(bool condition) {
     if (!condition) {
         std::fputs("Guest string check failed\n", stderr);
         std::abort();
+    }
+}
+
+static void CheckMemccpy() {
+    const unsigned char source[] = {0x11, 0x80, 0x00, 0xff, 0x80};
+    struct CopyCase {
+        int character;
+        std::size_t count;
+        std::size_t copied;
+        bool found;
+    };
+    const CopyCase cases[] = {
+        {0x11, sizeof(source), 1, true},
+        {0x80, sizeof(source), 2, true},
+        {0x00, sizeof(source), 3, true},
+        {0xff, 4, 4, true},
+        {0x22, sizeof(source), sizeof(source), false},
+        {0x80, 1, 1, false},
+        {0x11, 0, 0, false},
+        {0x180, sizeof(source), 2, true},
+        {-1, sizeof(source), 4, true},
+    };
+    for (const auto& test : cases) {
+        unsigned char destination[sizeof(source) + 2];
+        std::memset(destination, 0x5a, sizeof(destination));
+        auto* output = destination + 1;
+        void* result = memccpy_nid_postfix(output, source, test.character, test.count);
+        Require(result == (test.found ? output + test.copied : nullptr));
+        Require(destination[0] == 0x5a);
+        Require(std::memcmp(output, source, test.copied) == 0);
+        for (std::size_t i = test.copied + 1; i < sizeof(destination); ++i) {
+            Require(destination[i] == 0x5a);
+        }
     }
 }
 
@@ -113,6 +147,7 @@ static void CheckSscanfS() {
 }
 
 int main() {
+    CheckMemccpy();
     CheckBoundsCheckedFunctions();
     CheckSscanfS();
     Require(std::strcmp(basename_nid_postfix(nullptr), ".") == 0);
