@@ -40,6 +40,7 @@ float APS5_VABI frexpf_nid_postfix(float x, int* exponent) { return std::frexp(x
 std::int64_t APS5_VABI lround_nid_postfix(double x) { return std::llround(x); }
 std::int64_t APS5_VABI lroundf_nid_postfix(float x) { return std::llround(x); }
 std::int64_t APS5_VABI llround_nid_postfix(double x) { return std::llround(x); }
+std::int64_t APS5_VABI llroundf_nid_postfix(float x) { return std::llround(x); }
 int APS5_VABI __isfinitef_nid_postfix(float x) { return std::isfinite(x) ? 1 : 0; }
 int APS5_VABI __isnormal_nid_postfix(double x) { return std::isnormal(x) ? 1 : 0; }
 int APS5_VABI __isnormalf_nid_postfix(float x) { return std::isnormal(x) ? 1 : 0; }

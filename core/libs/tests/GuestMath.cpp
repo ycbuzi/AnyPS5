@@ -68,6 +68,7 @@ float APS5_VABI acoshf_nid_postfix(float);
 double APS5_VABI atanh_nid_postfix(double);
 std::int64_t APS5_VABI lroundf_nid_postfix(float);
 std::int64_t APS5_VABI llround_nid_postfix(double);
+std::int64_t APS5_VABI llroundf_nid_postfix(float);
 int APS5_VABI __isfinitef_nid_postfix(float);
 double APS5_VABI log1p_nid_postfix(double);
 int APS5_VABI __isnormal_nid_postfix(double);
@@ -331,6 +332,8 @@ int main() {
     Require(lroundf_nid_postfix(4294967296.f) == INT64_C(4294967296));
     Require(lroundf_nid_postfix(2.5f) == 3);
     Require(llround_nid_postfix(-4294967296.5) == -INT64_C(4294967297));
+    Require(llroundf_nid_postfix(2.5f) == 3 && llroundf_nid_postfix(-2.5f) == -3);
+    Require(llroundf_nid_postfix(4294967296.f) == INT64_C(4294967296));
     const auto infinity = std::numeric_limits<float>::infinity();
     const auto nan = std::numeric_limits<float>::quiet_NaN();
     Require(__isinff_nid_postfix(infinity) == 1 && __isinff_nid_postfix(-infinity) == 1);
