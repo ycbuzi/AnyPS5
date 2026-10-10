@@ -319,6 +319,7 @@ if(BUILD_TESTING)
     )
     target_include_directories(entry_stub_tests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
     )
     add_test(NAME entry_stub COMMAND entry_stub_tests)
 

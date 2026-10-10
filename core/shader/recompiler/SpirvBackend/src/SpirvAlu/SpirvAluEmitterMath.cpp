@@ -1223,8 +1223,9 @@ static std::uint32_t EmitNativeF32ToF16BitsRte(SpirvEmitterState& state, std::ui
     const auto magnitude = Binary(state, spv::OpBitwiseAnd, u32, source, ConstantU32(state, 0x7fffffffu));
     const auto sign = Binary(state, spv::OpBitwiseAnd, u32, Binary(state, spv::OpShiftRightLogical, u32, source, ConstantU32(state, 16u)), ConstantU32(state, 0x8000u));
     const auto payload = Binary(state, spv::OpShiftRightLogical, u32, Binary(state, spv::OpBitwiseAnd, u32, magnitude, ConstantU32(state, 0x7fffffu)), ConstantU32(state, 13u));
-    const auto nan = Binary(state, spv::OpBitwiseOr, u32, sign, Binary(state, spv::OpBitwiseOr, u32, ConstantU32(state, 0x7e00u), payload));
-    return Select(state, u32, Binary(state, spv::OpUGreaterThan, TypeBool(state), magnitude, ConstantU32(state, 0x7f800000u)), nan, bits);
+    const auto nan = Binary(state, spv::OpBitwiseOr, u32, ConstantU32(state, 0x7e00u), payload);
+    const auto result = Select(state, u32, Binary(state, spv::OpUGreaterThan, TypeBool(state), magnitude, ConstantU32(state, 0x7f800000u)), nan, Binary(state, spv::OpBitwiseAnd, u32, bits, ConstantU32(state, 0x7fffu)));
+    return Binary(state, spv::OpBitwiseOr, u32, sign, result);
 }
 
 std::uint32_t EmitF32ToF16BitsRte(SpirvEmitterState& state, std::uint32_t value) {

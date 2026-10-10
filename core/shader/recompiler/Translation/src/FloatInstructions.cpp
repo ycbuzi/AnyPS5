@@ -211,6 +211,9 @@ bool TranslationContext::float16Binary(const RdnaInstruction& inst, IrOpcode opc
 }
 
 bool TranslationContext::float16Ternary(const RdnaInstruction& inst, IrOpcode opcode, bool accumulator, bool mix) {
+    if (mix && floatMode.has_value() && (floatMode->floatMode & 0xccu) != 0xc0u) {
+        throw std::runtime_error("v_fma_mixlo/mixhi_f16 at pc " + std::to_string(inst.programCounter) + " in FLOAT_MODE " + std::to_string(floatMode->floatMode) + " (f16 denormals not kept or rounding not to nearest even) is not implemented");
+    }
     std::array<IrValue*, 3> args{};
     for (std::uint32_t index = 0u; index < args.size(); ++index) {
         const RdnaOperand& operand = accumulator && index == 2u ? accumulatorOperand(inst) : sourceAt(inst, index);
@@ -218,6 +221,10 @@ bool TranslationContext::float16Ternary(const RdnaInstruction& inst, IrOpcode op
     }
     if (opcode == IrOpcode::FPFma32 && !mix) {
         writeF16(inst.destination, fmaF16RoundedToOdd(IrF32(*args[0]), IrF32(*args[1]), IrF32(*args[2])));
+        return true;
+    }
+    if (mix) {
+        writeF16(inst.destination, IrF32(ir.Emit(IrOpcode::FPInterpolateF16, IrType::F32, {args[0], args[1], args[2], &ir.Constant(0u)})));
         return true;
     }
     writeF16(inst.destination, IrF32(ir.Emit(opcode, IrType::F32, {args[0], args[1], args[2]})));
