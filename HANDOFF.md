@@ -28,6 +28,31 @@ a time: the PC pulls this branch before doing new work, and pushes back before h
 4. **Contributing upstream:** the intake bot closes PRs from anyone with fewer than 20 merged PRs,
    so contributions go through issue comments and Discussions, posted from the PC as `ycbuzi`.
 
+## How we raise the % (the harvesting plan)
+
+Every contributor's finished work is a candidate for our stack, wherever it lives:
+- **Open PRs** upstream (184 open at 07:55 UTC).
+- **PRs the intake bot closed** (label `intake paused`): closed by policy, not on quality. 126 at
+  ~08:07 UTC, growing by about one every 7 minutes.
+- **Fix branches posted in issue comments**, because people now skip the PR entirely: elsi06
+  (2599), SCD28 (2582), AlxcBTW (2597), SleglJan/AnyPS5 PRs 17-21.
+- **Discussions.**
+- **Other people's forks**: branches never posted anywhere. As far as the records show, not
+  searched yet.
+
+A candidate goes into the stack only if:
+1. A maintainer didn't reject it on merit.
+2. It merges cleanly, or the conflict is trivial (for example only the `docs/dev/TechnicalDebt.md`
+   changelog).
+3. It adds more implemented functions than it declares, otherwise the % drops.
+4. Its functions actually do something. `progress.py` counts any function without the
+   not-implemented marker, so one that only returns an error still counts.
+5. The stack still builds and the tests still pass afterwards.
+
+Measure the gain on our stack, not on bare upstream: several candidates overlap work we already
+carry. Upstream also absorbs some of this work over time (oneandonlydean's `fix/carry-NNNN` PRs
+merge other people's fixes), so our lead shrinks unless we keep harvesting.
+
 ## Rules the user set
 
 - **Re-check right before posting**: the thread's comments, the merge state of every PR the post
@@ -90,9 +115,10 @@ Cloud can do (Linux, no GPU):
 4. Issue 2598, Palworld stops on `sceSaveDataCancel`: check whether the export exists anywhere.
 5. Check the stack's own earlier functions for "counts as implemented but does nothing".
    The PC session said this was owed.
-6. More stacking: 1611, 1097, 1141, 1431, 1091, 1772 are not merged upstream as of `4fbf6ca5`.
-   Not yet checked whether the stack already carries them. Also SleglJan/AnyPS5 PRs 17-21 (not
-   applied as of last night). Skip 1492 (1252 lines). 1909, 2123 and 1686 are now upstream.
+6. More harvesting from every source above. Known leftovers: 1611, 1097, 1141, 1431, 1091, 1772
+   are not merged upstream as of `4fbf6ca5`.
+   Not yet checked whether the stack already carries them. SleglJan/AnyPS5 PRs 17-21 were not
+   applied as of last night. New intake-closed PRs since ~08:07 UTC are unmeasured. Skip 1492 (1252 lines). 1909, 2123 and 1686 are now upstream.
 7. Maybe a full Linux build: needs extra libraries, and this machine has 4 cores.
 
 PC only (Windows, GPUs, posting):
@@ -119,4 +145,4 @@ PC only (Windows, GPUs, posting):
 ## Log
 
 - 2026-10-10 ~08:30-09:00 UTC (cloud): picked up from the PC session, merged upstream `6cc33583`,
-  measured 86.76% vs 85.77%, wrote this file.
+  measured 86.76% vs 85.77%, wrote this file and the harvesting plan.
