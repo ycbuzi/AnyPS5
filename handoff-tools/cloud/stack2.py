@@ -22,8 +22,13 @@ def resolve_additive(path):
     ok = [True]
     def keep_both(m):
         ours, base, theirs = m.group(1), m.group(2), m.group(3)
-        if base.strip(): ok[0] = False; return m.group(0)
         o = ours.splitlines(keepends=True); t = theirs.splitlines(keepends=True)
+        if base.strip():
+            # Only the changelog may be merged when both sides edited the same lines: keep our
+            # version of the edited bullets and add the bullets the other side introduced.
+            if not path.endswith("TechnicalDebt.md"): ok[0] = False; return m.group(0)
+            b = base.splitlines(keepends=True)
+            return "".join(o + [l for l in t if l not in b and l not in o])
         if o and not o[-1].endswith("\n"): o[-1] += "\n"
         # Only the changelog gets per-line de-duplication (both sides may add the same bullet).
         # Code keeps every line of both sides: a repeated structural line such as a closing

@@ -166,10 +166,48 @@ Stacked in cycle 1 (49): 867, 967, 989, 1008, 1052, 1169, 1212, 1390, 1527, 1554
 - 2601 (unlink on read-only files, Windows): handled upstream in the thread. MarcZX100's rebased
   branch `codex/fix-unlink-readonly-2601` (`505fe780b`) is a harvest candidate.
 
+## How far can this go (measured 2026-10-10 ~09:40 UTC)
+
+`tools/progress.py` counts a function as implemented as soon as it no longer calls
+`NotImplemented_nid_no_patch`, so 100% is reachable any time by making every stub return an error.
+That is the hollow work this stack refuses, and what upstream rejects on sight (1498 and 2193 were
+closed for exactly that: "+100 count is not backed by new behaviour").
+
+For the 376 functions still missing at `9a6e26fe2`, `handoff-tools/cloud/coverage.py` +
+`coverage2.py` checked every unmerged upstream PR (mass-stub and merit-rejected PRs excluded, and a
+call to an `Unsupported*`/`NotImplemented*` helper counted as hollow):
+
+| Remaining functions | Count |
+|---|---|
+| Real implementation in some non-rejected unmerged PR | 66 |
+| Only hollow implementations exist | 51 |
+| Nothing on GitHub | 259 |
+
+Ceiling from harvesting alone: **2988/3298 = 90.6%** (slightly less: 492 and 2499, both rejected on
+quality, hold a few of the 66). Beyond that, the code has to be written. The biggest blocks with
+nothing available: libSceHmd2 (16, VR headset), libSceAgc (18), libScePsml_debug (10),
+libkernel (12), TextToSpeech2, CdlgG2P, VrTracker2, WebAppLauncher (7 each).
+
+PRs holding the 66, with the close reason checked on GitHub:
+- 2503 (19: Share, Ult, WebBrowserDialog, libc `_Cnd`/`_Mtx`): closed by the intake bot only, but
+  34 files and 10 real conflict hunks against our stack in libkernel/libc. Needs a careful hand
+  merge; tried and backed out in cycle 2.
+- 1952 (8 libc `_Cnd`/`_Mtx`, need-gated), 1884 (7 Ssl, author-closed, never reviewed), 2393 (3
+  libkernel, bot-closed), 1583, 2562, 1141 + 1739 (pthread_cancel; 1739 is open and waits for 1141),
+  2012, 1689/953, 82/1021, 1981, 1064, 1672, 1985 and other singles: all conflict with the stack in
+  code or in the changelog (cycle 3 run, `handoff-tools/cloud/stack-run3-2026-10-10.txt`).
+- 971/1055/1885/2435 (4 Agc marker-span builders): closed because no title calls them and the packet
+  layout is guessed; GPU work, left out.
+- 492 (10 libc) and 2499 (4): rejected on quality; left out. 1879: reverted (duplicates), left out.
+
+Our 88.6% is other contributors' work assembled, not ours: do not report it upstream as a
+completion claim. Upstream's lower number is a policy (merge only what a title needs), not a lag.
+
 ## Open work
 
 Cloud can do (Linux, no GPU):
-1. Merge the 18 new upstream commits (probable `GuestFont.cpp` conflict, see above).
+1. Cycle 3 continued: hand-merge 1884, 1952, 2393 and the changelog-only conflicts; 2503 when
+   there is time.
 2. Build the relinker only (`-DANYPS5_RELINKER_ONLY=ON`) and run its tests on Linux.
 3. Issue 2599, fSELF-wrapped modules silently skipped: elsi06 has a fix (their fork, branch
    `fix/relinker-self-guest-modules`, commit `bc444a67`; PR 2605 auto-closed), tested on macOS
