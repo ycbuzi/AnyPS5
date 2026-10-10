@@ -563,7 +563,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "%s\n", error.what());
         try { LibcRunShutdown_nid_postfix(); }
         catch (const std::exception& shutdown) { std::fprintf(stderr, "shutdown: %s\n", shutdown.what()); }
-        if (std::string(error.what()).find("Vulkan support") != std::string::npos && !std::getenv("ANYPS5_REQUIRE_DISPLAY")) return 77;
+        if (std::string(error.what()).find("Vulkan support") != std::string::npos && !std::getenv("ANYPS5_REQUIRE_DISPLAY")) {
+            std::printf("skipped, no display or Vulkan device: %s\n", error.what());
+            return 77;
+        }
         return 1;
     }
 }
