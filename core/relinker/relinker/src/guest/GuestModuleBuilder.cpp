@@ -95,19 +95,22 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         if (alias != paths.end()) neededAliases.emplace(name, *alias);
         else missingNeeded.insert(name);
     }
-    if (!missingNeeded.empty()) {
+    if (!missingNeeded.empty() || !unmatchedExclusions.empty()) {
         std::map<std::string, std::filesystem::path> found;
         std::map<std::string, std::filesystem::path> foundByStem;
         const auto record = [](std::map<std::string, std::filesystem::path>& matches, const std::string& name, const std::filesystem::path& path) {
             if (!matches.emplace(name, path).second) throw Domain::RelinkerException("Ambiguous needed module: " + matches.at(name).string() + " and " + path.string());
         };
         for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator(); ++it) {
-            if (it->is_directory() && std::find(directories.begin(), directories.end(), it->path()) != directories.end()) {
-                it.disable_recursion_pending();
-                continue;
-            }
             if (!it->is_regular_file()) continue;
             const auto name = it->path().filename().string();
+            if (name.ends_with(GuestModuleSuffix)) continue;
+            if (excludedModules.contains(name)) {
+                for (auto parent = it->path().parent_path(); parent != root && !parent.empty(); parent = parent.parent_path()) {
+                    if (std::any_of(directories.begin(), directories.end(), [&](const auto& directory) { return std::filesystem::equivalent(parent, directory); })) unmatchedExclusions.erase(name);
+                }
+                continue;
+            }
             const auto stem = ModuleStem(name, windows);
             std::vector<std::string> stemMatches;
             if (!stem.empty()) {
@@ -149,10 +152,6 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
     if (!unresolved.empty()) {
         std::map<std::string, std::filesystem::path> identities;
         for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator(); ++it) {
-            if (it->is_directory() && std::find(directories.begin(), directories.end(), it->path()) != directories.end()) {
-                it.disable_recursion_pending();
-                continue;
-            }
             const auto& path = it->path();
             const auto extension = path.extension().string();
             if (!it->is_regular_file() || (extension != ".prx" && extension != ".sprx" && extension != ".suprx") ||

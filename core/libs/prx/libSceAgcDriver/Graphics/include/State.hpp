@@ -81,6 +81,9 @@ struct State {
     float depthBiasConstant = 0.0f;
     float depthBiasSlope = 0.0f;
     float depthBiasClamp = 0.0f;
+    bool depthBiasPerFace = false;
+    float backDepthBiasConstant = 0.0f;
+    float backDepthBiasSlope = 0.0f;
     bool stencilTest = false;
     VkStencilOpState stencilFront{};
     VkStencilOpState stencilBack{};

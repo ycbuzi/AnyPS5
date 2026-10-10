@@ -438,7 +438,6 @@ void EmitDirectInstruction(SpirvValueEmitContext& ctx, const IrValue& inst) {
         case IrOpcode::FPSub32: return Invoke(EmitFPSub32, ctx, inst);
         case IrOpcode::FPFma32: return Invoke(EmitFPFma32, ctx, inst);
         case IrOpcode::FPMad32: return Invoke(EmitFPMad32, ctx, inst);
-        case IrOpcode::FPNanResultFma32: return Invoke(EmitFPNanResultFma32, ctx, inst);
         case IrOpcode::FPMul32: return Invoke(EmitFPMul32, ctx, inst);
         case IrOpcode::FPMin32: return Invoke(EmitFPMin32, ctx, inst);
         case IrOpcode::FPMax32: return Invoke(EmitFPMax32, ctx, inst);

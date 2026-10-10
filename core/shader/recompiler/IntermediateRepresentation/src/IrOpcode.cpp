@@ -265,7 +265,6 @@ constexpr std::array<OpcodeMeta, static_cast<std::size_t>(IrOpcode::Count)> Meta
     makeMeta("FPFma32", F32, F32, F32, F32),
     makeMeta("FPMad32", F32, F32, F32, F32),
     makeMeta("FPMul32", F32, F32, F32),
-    makeMeta("FPNanResultFma32", F32, F32, F32, F32, F32),
     makeMeta("FPMin32", F32, F32, F32),
     makeMeta("FPMax32", F32, F32, F32),
     makeMeta("FPMinTri32", F32, F32, F32, F32),

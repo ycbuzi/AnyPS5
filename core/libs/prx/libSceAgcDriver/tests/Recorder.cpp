@@ -3410,7 +3410,7 @@ void pipelineCacheTests(const Device& device, bool benchmark) {
     state.colors.push_back(state.color);
     state.blend.colorWriteMask = 15;
     state.blends.push_back(state.blend);
-    ShaderResources resources(context, shaders, state.color, 0, 0);
+    ShaderResources resources(context, shaders, state.color, static_cast<std::uint32_t>(state.colors.size()), 0, 0);
     const auto lookup = [&](const VertexInputLayout& input) {
         return CachedPipeline(context, state, input, resources, shaders, VK_IMAGE_LAYOUT_GENERAL);
     };

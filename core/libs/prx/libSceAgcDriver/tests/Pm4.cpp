@@ -73,6 +73,18 @@ void testCatalog() {
     for (const auto& [id, name] : custom) check(AgcDriver::Pm4::Name(makePacket(0x10, {0}, id << 2)[0]) == name, "custom opcode name mismatch");
 }
 
+void testNopPad() {
+    check(AgcDriver::Pm4::PacketWords(0xffff1000u) == 1, "the one-dword NOP is not one dword");
+    for (const auto queue : {0u, 0x20u}) AgcDriver::Pm4::Validate(std::vector<std::uint32_t>{0xffff1000u}, queue);
+    expectFailure([] { AgcDriver::Pm4::Validate(std::vector<std::uint32_t>{0xffff1000u, 0}, 0); }, "filler size");
+    for (const auto header : {0xffff1001u, 0xffff1002u}) check(AgcDriver::Pm4::PacketWords(header) == 0x4001, "a NOP with count 0x3fff and header flags is not sized by its count");
+    AgcDriver::Pm4::Validate(makePacket(0x10, {0}), 0);
+    std::vector<std::uint32_t> largest(0x4000, 0);
+    largest[0] = 0xfffe1000u;
+    check(AgcDriver::Pm4::PacketWords(largest[0]) == largest.size(), "the largest counted NOP is not sized by its count");
+    AgcDriver::Pm4::Validate(largest, 0);
+}
+
 void testRegisters() {
     AgcDriver::QueueState state;
     execute(state, makePacket(0x79, {0x242, 4}));
@@ -794,6 +806,20 @@ void testConditionalSubmission() {
     check(results[13] == 0, "a rejected conditional submission executed a guarded packet");
 }
 
+void testNopPadSubmission() {
+    alignas(8) static std::uint32_t zero = 0;
+    static std::array<std::uint32_t, 3> results{};
+    results.fill(0);
+    auto words = joinPackets({{0xffff1000u, 0xc0027904u, 0x342u, 0xce200000u, 0u, 0xc0017904u, 0x342u, 0xcea00000u}, writeWord(results[0], 81), {0xffff1000u}});
+    submitWords(words);
+    AgcDriverWaitIdle_nid_postfix();
+    check(results[0] == 81, "a one-dword NOP stopped the packets after it");
+    words = joinPackets({conditional(zero, 6), {0xffff1000u}, writeWord(results[1], 82), writeWord(results[2], 83)});
+    submitWords(words);
+    AgcDriverWaitIdle_nid_postfix();
+    check(results[1] == 0 && results[2] == 83, "COND_EXEC did not count a one-dword NOP as one dword");
+}
+
 std::vector<std::uint32_t> branch(std::uint32_t mode, std::uint32_t function, const std::vector<std::uint32_t>* first, const std::vector<std::uint32_t>* second) {
     const auto address = [](const std::vector<std::uint32_t>* target) { return target ? reinterpret_cast<std::uintptr_t>(target->data()) : std::uintptr_t{0}; };
     const auto size = [](const std::vector<std::uint32_t>* target) { return target ? static_cast<std::uint32_t>(target->size()) : 0u; };
@@ -975,6 +1001,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         testCatalog();
+        testNopPad();
         testWriteChangedKeepsUntouchedBytes();
         testRegisters();
         testRegisterFile();
@@ -999,6 +1026,7 @@ int main(int argc, char** argv) {
         testPredicatedSubmission();
         testConditionalSubmission();
         testSuspendPointWritesQueuedLabels();
+        testNopPadSubmission();
         testBranchSubmission();
         LibcRunShutdown_nid_postfix();
         std::puts("PM4 catalog, registers, state, memory, conditional execution and submission tests passed");

@@ -337,9 +337,16 @@ void RunGuestTextureResourceTests() {
         Require(image.dccPipeAligned == pipeAligned && stored == expected && std::all_of(keys, keys + expected, [](std::uint8_t key) { return key == 0xff; }), std::string("a 1920x1080 SW_64KB_R_X storage image with ") + (pipeAligned ? "pipe-aligned" : "unaligned") + " DCC stored " + std::to_string(stored) + " uncompressed keys, expected " + std::to_string(expected));
     }
 
-    Fields badSwizzle = base;
-    badSwizzle.bcSwizzle = 1;
-    rejectFields(badSwizzle, "BC swizzle");
+    for (std::uint32_t swizzle = 0; swizzle <= 5u; ++swizzle) {
+        Fields borderSwizzle = base;
+        borderSwizzle.bcSwizzle = swizzle;
+        Require(DecodeTextureResource(pack(borderSwizzle)).bcSwizzle == swizzle, "a texture descriptor lost its BC swizzle " + std::to_string(swizzle));
+    }
+    for (std::uint32_t swizzle : {6u, 7u}) {
+        Fields badSwizzle = base;
+        badSwizzle.bcSwizzle = swizzle;
+        rejectFields(badSwizzle, "reserved BC swizzle");
+    }
 
     Fields badLevels = base;
     badLevels.baseLevel = 2;

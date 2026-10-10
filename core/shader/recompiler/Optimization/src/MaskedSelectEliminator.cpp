@@ -136,7 +136,6 @@ bool isLaneLocal(IrOpcode opcode) {
         case IrOpcode::FPFma32:
         case IrOpcode::FPMad32:
         case IrOpcode::FPMul32:
-        case IrOpcode::FPNanResultFma32:
         case IrOpcode::FPMin32:
         case IrOpcode::FPMax32:
         case IrOpcode::FPMinTri32:

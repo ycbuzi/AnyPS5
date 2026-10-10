@@ -211,6 +211,20 @@ void RunSamplerReductionTests(const Fields& base) {
     reject([&] { RequireFilterMinmax(context, VK_FORMAT_R32G32_SFLOAT, 0b011u, samplers); }, "does not support min/max filtering");
     reject([&] { RequireFilterMinmax(context, VK_FORMAT_R32_SFLOAT, 0b1000u, samplers); }, "sampler element 3, which its shader does not bind");
 
+    const auto borderSampler = [&](std::uint32_t clamp, std::uint32_t borderColorType) {
+        Fields fields = base;
+        fields.clampY = clamp;
+        fields.borderColorType = borderColorType;
+        return std::make_shared<Sampler>(context, DecodeSamplerResource(pack(fields)));
+    };
+    const std::array borderSamplers{borderSampler(6u, 0u), borderSampler(6u, 1u), borderSampler(6u, 2u), borderSampler(2u, 1u)};
+    Require(!borderSamplers[0]->ReadsOpaqueBlackBorder() && borderSamplers[1]->ReadsOpaqueBlackBorder() && !borderSamplers[2]->ReadsOpaqueBlackBorder() && !borderSamplers[3]->ReadsOpaqueBlackBorder(), "opaque black border detection is wrong");
+    for (std::uint32_t swizzle = 0; swizzle <= 5u; ++swizzle) RequireBorderSwizzle(swizzle, 0b1101u, borderSamplers);
+    RequireBorderSwizzle(0u, 0b0010u, borderSamplers);
+    RequireBorderSwizzle(4u, 0b0010u, borderSamplers);
+    for (std::uint32_t swizzle : {1u, 2u, 3u, 5u}) reject([&] { RequireBorderSwizzle(swizzle, 0b0010u, borderSamplers); }, "moves the alpha channel is sampled through an opaque black border");
+    reject([&] { RequireBorderSwizzle(1u, 0b10000u, borderSamplers); }, "sampler element 4, which its shader does not bind");
+
     const auto pointFiltered = [](const std::array<std::uint32_t, 4>& words) { return ShaderRecompiler::PointFilteredSamplerWord(words[0], words[2]); };
     Require(pointFiltered(pack(base)) == 0x05000000u, "a point-filtered weighted-average sampler kept its bilinear or linear mip filter");
     Require(pointFiltered(pack(minPoint)) == pack(minPoint)[2], "a point-filtered min sampler that already point-samples changed");

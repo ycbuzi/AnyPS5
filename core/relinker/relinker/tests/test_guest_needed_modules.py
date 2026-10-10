@@ -36,7 +36,8 @@ def main():
         work = Path(directory)
 
         def convert(case, windows, needed=NEEDED):
-            (case / "sce_module").mkdir(parents=True, exist_ok=True)
+            if not (case / "sce_modules").exists():
+                (case / "sce_module").mkdir(parents=True, exist_ok=True)
             source = case / "input.elf"
             source.write_bytes(executable_with_needed(needed))
             output = case / ("output.exe" if windows else "output.elf")
@@ -63,7 +64,7 @@ def main():
                 needed = needed_libraries(output.read_bytes())
                 assert needed == ["$ORIGIN/app0/Media/Modules/needed.prx.guest.prx"], needed
 
-            for directory in ("Media/Modules", "sce_module"):
+            for directory in ("Media/Modules", "sce_module", "sce_module/nested", "sce_modules/nested", "prx/shipping"):
                 case = work / f"{windows}-debug-name-{directory.replace('/', '-')}"
                 (case / directory).mkdir(parents=True)
                 (case / directory / "needed.prx").write_bytes(module_with_symbol(True))

@@ -15,6 +15,10 @@
 #include <string>
 #include <thread>
 
+#ifndef _WIN32
+#include <pthread.h>
+#endif
+
 enum class MutexType : std::uint32_t {
     ErrorCheck = 1,
     Recursive = 2,
@@ -97,7 +101,7 @@ struct PthreadPrivate {
 #ifdef _WIN32
     void* nativeHandle = nullptr;
 #else
-    std::thread _thr;
+    pthread_t hostThread{};
 #endif
     std::thread::id threadId;
     std::atomic<unsigned> references{2};

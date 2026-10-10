@@ -1277,25 +1277,6 @@ std::uint32_t EmitFPMad32(SpirvEmitterState& state, std::uint32_t arg0, std::uin
     return EmitFPAdd32(state, EmitFPMul32(state, arg0, arg1), arg2);
 }
 
-std::uint32_t EmitFPNanResultFma32(SpirvEmitterState& state, const IrValue& inst, std::uint32_t result, std::uint32_t lhs, std::uint32_t rhs, std::uint32_t addend) {
-    const auto u32 = TypeU32(state);
-    const auto boolean = TypeBool(state);
-    const auto bits = [&](std::uint32_t value) { return Unary(state, spv::OpBitcast, u32, value); };
-    const auto magnitude = [&](std::uint32_t value) { return Binary(state, spv::OpBitwiseAnd, u32, bits(value), ConstantU32(state, 0x7fffffffu)); };
-    const auto isNan = [&](std::uint32_t value) { return Binary(state, spv::OpUGreaterThan, boolean, magnitude(value), ConstantU32(state, 0x7f800000u)); };
-    const bool quiet = (inst.Flags<std::uint64_t>() & 1u) != 0u;
-    return EmitValueOrDefaultIfCondition(state, isNan(result), TypeF32(state), result, [&] {
-        const auto equals = [&](std::uint32_t value, std::uint32_t constant) { return Binary(state, spv::OpIEqual, boolean, value, ConstantU32(state, constant)); };
-        const auto infZero = [&](std::uint32_t inf, std::uint32_t zero) { return Binary(state, spv::OpLogicalAnd, boolean, equals(magnitude(inf), 0x7f800000u), equals(magnitude(zero), 0u)); };
-        const auto invalidProduct = Binary(state, spv::OpLogicalOr, boolean, infZero(lhs, rhs), infZero(rhs, lhs));
-        const auto quieted = [&](std::uint32_t value) { return quiet ? Binary(state, spv::OpBitwiseOr, u32, bits(value), ConstantU32(state, 0x00400000u)) : bits(value); };
-        auto chosen = Select(state, u32, Binary(state, spv::OpLogicalAnd, boolean, isNan(addend), Unary(state, spv::OpLogicalNot, boolean, invalidProduct)), quieted(addend), ConstantU32(state, 0xffc00000u));
-        chosen = Select(state, u32, isNan(rhs), quieted(rhs), chosen);
-        chosen = Select(state, u32, isNan(lhs), quieted(lhs), chosen);
-        return Unary(state, spv::OpBitcast, TypeF32(state), chosen);
-    });
-}
-
 std::uint32_t EmitFPRoundEven32(SpirvEmitterState& state, std::uint32_t arg0) {
     return EmitGlsl<GLSLstd450RoundEven, IrType::F32>(state, arg0);
 }

@@ -978,12 +978,12 @@ bool SameAsPreviousStorageElement(const ShaderRecompiler::DescriptorBinding& bin
 
 }
 
-ShaderResources::ShaderResources(const Context& context, const ShaderRecompiler::RecompileResult& vertex, const ShaderRecompiler::RecompileResult& fragment, const ColorTarget& target, std::uint64_t indexAddress, std::size_t indexBytes) : ShaderResources(context, std::array<CompiledShader, 2>{{{ShaderRecompiler::ShaderStage::Vertex, &vertex, 0}, {ShaderRecompiler::ShaderStage::Fragment, &fragment, static_cast<std::uint32_t>(vertex.pushConstants.size())}}}, target, indexAddress, indexBytes) {}
+ShaderResources::ShaderResources(const Context& context, const ShaderRecompiler::RecompileResult& vertex, const ShaderRecompiler::RecompileResult& fragment, const ColorTarget& target, std::uint64_t indexAddress, std::size_t indexBytes) : ShaderResources(context, std::array<CompiledShader, 2>{{{ShaderRecompiler::ShaderStage::Vertex, &vertex, 0}, {ShaderRecompiler::ShaderStage::Fragment, &fragment, static_cast<std::uint32_t>(vertex.pushConstants.size())}}}, target, 1, indexAddress, indexBytes) {}
 
-ShaderResources::ShaderResources(const Context& context, std::span<const CompiledShader> shaders, const ColorTarget& target, std::uint64_t indexAddress, std::size_t indexBytes, std::span<const GuestMemorySnapshot> snapshots) : context(context), guestMemory(context) {
+ShaderResources::ShaderResources(const Context& context, std::span<const CompiledShader> shaders, const ColorTarget& target, std::uint32_t colorAttachments, std::uint64_t indexAddress, std::size_t indexBytes, std::span<const GuestMemorySnapshot> snapshots) : context(context), guestMemory(context) {
     drawBuild = true;
     prepareAddressBindings(shaders, snapshots);
-    build(shaders, &target, indexAddress, indexBytes);
+    build(shaders, &target, colorAttachments, indexAddress, indexBytes);
 }
 
 ShaderResources::ShaderResources(const Context& context, const CompiledShader& compute, std::span<const GuestMemorySnapshot> snapshots) : ShaderResources(context, compute, snapshots, false) {}
@@ -1006,7 +1006,7 @@ ShaderResources::ShaderResources(const Context& context, const CompiledShader& c
     const std::span<const CompiledShader> shaders(&deferredCompute, 1);
     if (!deferred) {
         prepareAddressBindings(shaders, snapshots);
-        build(shaders, nullptr, 0, 0);
+        build(shaders, nullptr, 0, 0, 0);
         forgetDeferredInputs();
         return;
     }
@@ -1018,7 +1018,7 @@ ShaderResources::ShaderResources(const Context& context, const CompiledShader& c
     if (lockedBuild) return;
     unlockedPrepare = true;
     prepareAddressBindings(shaders, snapshots);
-    buildPrepare(shaders, nullptr, 0, 0);
+    buildPrepare(shaders, nullptr, 0, 0, 0);
 }
 
 void ShaderResources::Complete() {
@@ -1026,7 +1026,7 @@ void ShaderResources::Complete() {
     const std::span<const CompiledShader> shaders(&deferredCompute, 1);
     if (lockedBuild) {
         prepareAddressBindings(shaders, deferredSnapshots);
-        buildPrepare(shaders, nullptr, 0, 0);
+        buildPrepare(shaders, nullptr, 0, 0, 0);
     }
     buildComplete();
     forgetDeferredInputs();
@@ -1040,8 +1040,8 @@ void ShaderResources::forgetDeferredInputs() {
     deferredSnapshots = {};
 }
 
-void ShaderResources::build(std::span<const CompiledShader> shaders, const ColorTarget* target, std::uint64_t indexAddress, std::size_t indexBytes) {
-    buildPrepare(shaders, target, indexAddress, indexBytes);
+void ShaderResources::build(std::span<const CompiledShader> shaders, const ColorTarget* target, std::uint32_t colorAttachments, std::uint64_t indexAddress, std::size_t indexBytes) {
+    buildPrepare(shaders, target, colorAttachments, indexAddress, indexBytes);
     buildComplete();
 }
 
@@ -1206,7 +1206,7 @@ void ValidateRuntimeResources(const CompiledShader& shader, std::span<const std:
 
 }
 
-void ShaderResources::buildPrepare(std::span<const CompiledShader> shaders, const ColorTarget* target, std::uint64_t indexAddress, std::size_t indexBytes) {
+void ShaderResources::buildPrepare(std::span<const CompiledShader> shaders, const ColorTarget* target, std::uint32_t colorAttachments, std::uint64_t indexAddress, std::size_t indexBytes) {
     PerformanceTimer frameTiming("Resources.Prepare");
     const auto stageStart = std::chrono::steady_clock::now();
     phaseStart = stageStart;
@@ -1223,7 +1223,8 @@ void ShaderResources::buildPrepare(std::span<const CompiledShader> shaders, cons
             ShaderRecompiler::RuntimeAbi::RequireVersion(shader.program->runtimeAbiVersion);
             const VkShaderStageFlags flags = VulkanStage(shader.stage);
             std::uint64_t stageStorageBuffers = 0;
-            std::uint64_t stageResources = 0;
+            std::uint64_t stageResources = shader.stage == ShaderRecompiler::ShaderStage::Fragment ? colorAttachments : 0;
+            Require(stageResources <= context.limits.maxPerStageResources, "shader descriptors exceed per-stage limits");
             std::vector<std::size_t> offsetsInData;
             std::int64_t shaderData = -1;
             const auto firstSampler = samplers.size();
@@ -1391,6 +1392,7 @@ void ShaderResources::buildComplete() {
                 bufferCount += binding.allocations.size();
                 if (binding.layout.descriptorType != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) imageCount += binding.layout.descriptorCount;
             }
+            allocationDescriptors.resize(allocations.size());
             std::vector<VkDescriptorBufferInfo> buffers;
             std::vector<VkDescriptorImageInfo> images;
             buffers.reserve(bufferCount);
@@ -1406,7 +1408,10 @@ void ShaderResources::buildComplete() {
                 switch (binding.layout.descriptorType) {
                     case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
                         write.pBufferInfo = buffers.data() + buffers.size();
-                        for (const auto index : binding.allocations) buffers.push_back(descriptor(allocations[index]));
+                        for (const auto index : binding.allocations) {
+                            allocationDescriptors[index] = descriptor(allocations[index]);
+                            buffers.push_back(allocationDescriptors[index]);
+                        }
                         break;
                     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
                         write.pImageInfo = images.data() + images.size();
@@ -2991,6 +2996,7 @@ void ShaderResources::resolveImageBinding(const ShaderRecompiler::DescriptorBind
                 if (!singleLevel || (range.type != VK_IMAGE_VIEW_TYPE_1D && range.type != VK_IMAGE_VIEW_TYPE_2D)) throw std::runtime_error("AGC graphics: guest texture sampled with unnormalized coordinates is not a single-level, single-layer 1D or 2D view starting at mip 0, which is not implemented (base level " + std::to_string(resource.baseLevel) + ", levels " + std::to_string(range.levels) + ", layers " + std::to_string(range.layers) + ", view type " + std::to_string(static_cast<int>(range.type)) + ")");
             }
             RequireFilterMinmax(context, texture->ViewFormat(), binding.imageSamplers[element], shaderSamplers);
+            RequireBorderSwizzle(resource.bcSwizzle, binding.imageSamplers[element], shaderSamplers);
             textures.push_back(std::move(texture));
             textureFirstLayer.push_back(firstLayer);
             describedRanges.push_back({"texture", resource.baseAddress, guestBytes, resource.width, resource.height, resource.format, static_cast<int>(resource.tileMode), resource.dccAddress});
@@ -3218,23 +3224,33 @@ std::shared_ptr<ShaderResources::DrawBindings> ShaderResources::PrepareDrawBindi
     }
     const auto update = context.Resolved(&DeviceFunctions::updateDescriptorSets, "vkUpdateDescriptorSets");
     update(context.device, 0, nullptr, static_cast<std::uint32_t>(copies.size()), copies.data());
+    std::vector<std::size_t> snapshotIndices(allocations.size(), selected.size());
+    for (std::size_t index = 0; index < selected.size(); ++index) snapshotIndices[selected[index]] = index;
+    std::size_t infoCount = 0;
+    for (const auto& binding : bindings) infoCount += binding.allocations.size();
     std::vector<VkDescriptorBufferInfo> infos;
-    infos.reserve(selected.size());
-    for (const auto& snapshot : result->snapshots) infos.push_back({snapshot.buffer->Handle(), 0, snapshot.buffer->Bytes().size()});
+    infos.reserve(infoCount);
     std::vector<VkWriteDescriptorSet> writes;
     for (const auto& binding : bindings) {
-        for (std::size_t element = 0; element < binding.allocations.size(); ++element) {
-            const auto found = std::find(selected.begin(), selected.end(), binding.allocations[element]);
-            if (found == selected.end()) continue;
-            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-            write.dstSet = result->allocation.set;
-            write.dstBinding = binding.layout.binding;
-            write.dstArrayElement = static_cast<std::uint32_t>(element);
-            write.descriptorCount = 1;
-            write.descriptorType = binding.layout.descriptorType;
-            write.pBufferInfo = &infos[static_cast<std::size_t>(found - selected.begin())];
-            writes.push_back(write);
+        if (std::none_of(binding.allocations.begin(), binding.allocations.end(),
+                [&](std::size_t index) { return snapshotIndices[index] != selected.size(); })) continue;
+        const auto first = infos.size();
+        for (const auto index : binding.allocations) {
+            const auto snapshotIndex = snapshotIndices[index];
+            if (snapshotIndex == selected.size()) infos.push_back(allocationDescriptors[index]);
+            else {
+                const auto& snapshot = result->snapshots[snapshotIndex];
+                infos.push_back({snapshot.buffer->Handle(), 0, snapshot.buffer->Bytes().size()});
+            }
         }
+        VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        write.dstSet = result->allocation.set;
+        write.dstBinding = binding.layout.binding;
+        write.dstArrayElement = 0;
+        write.descriptorCount = static_cast<std::uint32_t>(binding.allocations.size());
+        write.descriptorType = binding.layout.descriptorType;
+        write.pBufferInfo = infos.data() + first;
+        writes.push_back(write);
     }
     update(context.device, static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
     recorder.Keep(result);

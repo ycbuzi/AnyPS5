@@ -7,6 +7,8 @@
 #include <spirv/unified1/spirv.hpp>
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -297,6 +299,15 @@ void Registration(bool indirect) {
         }));
     }
     for (auto& registration : registrations) registration.get();
+    Shader copy = header.shader;
+    copy.user_data = reinterpret_cast<ShaderUserData*>(&copy);
+    AgcDriverResolveShaderAbi_nid_postfix(&copy, {}, {});
+    alignas(Shader) std::array<std::byte, sizeof(Shader)> padded{};
+    std::memcpy(padded.data(), &copy, sizeof(Shader));
+    padded.back() = std::byte{0x7d};
+    AgcDriverResolveShaderAbi_nid_postfix(reinterpret_cast<Shader*>(padded.data()), {}, {});
+    copy.target ^= 1u;
+    ExpectFailure([&] { AgcDriverResolveShaderAbi_nid_postfix(&copy, {}, {}); }, "replaced shader header");
     header.registers[1].value |= 0x100u;
     ExpectFailure([&] { AgcDriverRegisterShader_nid_postfix(&header.shader); }, "invalid registered program address");
     header.registers[1].value &= 0xffu;
