@@ -120,8 +120,10 @@ void RunGuestTextureResourceTests() {
     tileModes.tileModeRaw = 0x09;
     Require(DecodeTextureResource(pack(tileModes)).tileMode == TextureTileMode::kStandard64KB, "tile mode 0x09 must decode to standard 64KB");
     tileModes.tileModeRaw = 0x1b;
-    rejectFields(tileModes, "pipe/bank XOR base");
+    const auto xorBase = DecodeTextureResource(pack(tileModes));
+    Require(xorBase.baseAddress == 0x12340000ull && xorBase.pipeBankXor == 0x5600u, "a 64 KiB XOR swizzle did not split its base into the block base and its pipe/bank XOR");
     tileModes.base40 = 0x120000ull;
+    Require(DecodeTextureResource(pack(tileModes)).pipeBankXor == 0u, "an aligned 64 KiB XOR base gained a pipe/bank XOR");
     Require(DecodeTextureResource(pack(tileModes)).tileMode == TextureTileMode::RenderTarget64KB, "tile mode 0x1b must decode to render target 64KB");
     constexpr std::array<std::pair<std::uint32_t, TextureTileMode>, 7> added{{{0x02, TextureTileMode::kD256B}, {0x06, TextureTileMode::kD4KB}, {0x0a, TextureTileMode::kD64KB}, {0x11, TextureTileMode::kS64KBT}, {0x12, TextureTileMode::kD64KBT}, {0x15, TextureTileMode::kS4KBX}, {0x16, TextureTileMode::kD4KBX}}};
     for (const auto& [raw, mode] : added) {
@@ -132,10 +134,18 @@ void RunGuestTextureResourceTests() {
     tileModes.base40 = 0x120010ull;
     Require(DecodeTextureResource(pack(tileModes)).tileMode == TextureTileMode::kD4KBX, "a 4 KiB XOR swizzle must accept a 4 KiB aligned base");
     tileModes.base40 = 0x120011ull;
-    rejectFields(tileModes, "pipe/bank XOR base");
+    const auto xor4Kb = DecodeTextureResource(pack(tileModes));
+    Require(xor4Kb.baseAddress == 0x12001000ull && xor4Kb.pipeBankXor == 0x100u, "a 4 KiB XOR swizzle did not split its base into the block base and its pipe/bank XOR");
     tileModes.tileModeRaw = 0x12;
     tileModes.base40 = 0x120010ull;
-    rejectFields(tileModes, "pipe/bank XOR base");
+    const auto xorT = DecodeTextureResource(pack(tileModes));
+    Require(xorT.baseAddress == 0x12000000ull && xorT.pipeBankXor == 0x1000u, "a 64 KiB T swizzle did not split its base into the block base and its pipe/bank XOR");
+    tileModes.tileModeRaw = 0x09;
+    const auto standard = DecodeTextureResource(pack(tileModes));
+    Require(standard.baseAddress == 0x12001000ull && standard.pipeBankXor == 0u, "a swizzle without XOR addressing split its base");
+    tileModes.tileModeRaw = 0x1b;
+    tileModes.base40 = 0x56ull;
+    rejectFields(tileModes, "null base address");
     tileModes.base40 = base.base40;
     tileModes.tileModeRaw = 0x03;
     rejectFields(tileModes, "unsupported tile mode");

@@ -34,6 +34,7 @@ struct Push {
     std::uint32_t linearBase;
     std::uint32_t columnBegin;
     std::uint32_t rowBegin;
+    std::uint32_t pipeBankXor;
 };
 
 std::uint32_t BlockBytesFor(TextureTileMode tileMode) {
@@ -219,6 +220,7 @@ void TextureDetiler::Dispatch(VkCommandBuffer commands, TextureTileMode tileMode
     push.linearBase = window.linearBase;
     push.columnBegin = window.columnBegin;
     push.rowBegin = window.rowBegin;
+    push.pipeBankXor = window.pipeBankXor;
     context.Function<PFN_vkCmdPushConstants>("vkCmdPushConstants")(commands, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(Push), &push);
     const auto groupsX = (columnEnd - window.columnBegin + 7u) / 8u;
     const auto groupsY = (rowEnd - window.rowBegin + 7u) / 8u;
