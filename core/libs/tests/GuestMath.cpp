@@ -49,6 +49,7 @@ double APS5_VABI ldexp_nid_postfix(double, int);
 double APS5_VABI scalbn_nid_postfix(double, int);
 float APS5_VABI scalbnf_nid_postfix(float, int);
 double APS5_VABI frexp_nid_postfix(double, int*);
+double APS5_VABI trunc_nid_postfix(double);
 float APS5_VABI frexpf_nid_postfix(float, int*);
 long double APS5_VABI sinl_nid_postfix(long double);
 long double APS5_VABI cosl_nid_postfix(long double);
@@ -294,6 +295,8 @@ int main() {
         Require(std::isinf(result) && result > 0.f && std::fetestexcept(FE_INVALID) != 0);
     }
     Require(log10f_nid_postfix(100.f) == 2.f);
+    Require(trunc_nid_postfix(1.9) == 1.0 && trunc_nid_postfix(-1.9) == -1.0);
+    Require(std::signbit(trunc_nid_postfix(-0.5)) && std::isinf(trunc_nid_postfix(std::numeric_limits<double>::infinity())));
     Require(logbf_nid_postfix(8.f) == 3.f && logbf_nid_postfix(-0.75f) == -1.f);
     Require(logbf_nid_postfix(std::numeric_limits<float>::denorm_min()) == -149.f);
     Require(logbf_nid_postfix(0.f) == -std::numeric_limits<float>::infinity());
