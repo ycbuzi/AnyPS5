@@ -84,6 +84,10 @@ int APS5_VABI ferror_nid_postfix(FileStream* stream) {
 void APS5_VABI clearerr_nid_postfix(FileStream* stream) {
     stream->ClearError();
 }
+void APS5_VABI rewind_nid_postfix(FileStream* stream) {
+    std::rewind(GetNativeStream(stream));
+    stream->SyncStatus();
+}
 int APS5_VABI fileno_nid_postfix(FileStream* stream) {
 #ifdef _WIN32
     const int descriptor = _fileno(GetNativeStream(stream));
