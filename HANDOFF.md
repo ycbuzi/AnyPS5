@@ -82,9 +82,12 @@ Completion, measured in the cloud with `python3 tools/progress.py --root <tree> 
 | Ours after the first upstream sync       | 2733        | 3151  | 86.73% |
 | Ours after cycle 1 (49 PRs)              | 2886        | 3260  | 88.53% |
 | Ours after cycle 2, `9a6e26fe2`          | 2922        | 3298  | 88.60% |
-| **Ours now (cycle 3), tip of the branch** | **2953**   | **3300** | **89.48%** |
+| Ours after cycle 3, `4d9cdc4ae`          | 2953        | 3300  | 89.48% |
+| Upstream `main`, `be403084c` (09:50 UTC) | 2697        | 3190  | 84.55% |
+| **Ours now (cycle 4), `d43f3e2bc`**      | **2960**    | **3350** | **88.36%** |
 
-Lead over upstream: **+263 implemented functions, +3.76 points.** 347 functions remain.
+Lead over upstream: **+263 implemented functions, +3.81 points.** 390 functions remain. Both
+percentages dropped at cycle 4 because upstream merged PR 407, which declares 52 new stubs.
 
 Build and test status:
 - Last full Windows suite: **660/660 passed**, on the 29-commit stack (`c44602f8`, base `4e9d298e`).
@@ -161,6 +164,26 @@ Candidates: the PRs holding real implementations of what we lack (see "How far c
   not have), 2393/1802/1431 (written against the pre-1988 thread model; need re-implementation),
   2503 (34 files, 10 real conflict hunks), 82 (needs `Ngs2WaveformFormat` from 1021, which
   conflicts), 850/852 (need FreeType headers to check here), 1616 (duplicates Stdio functions).
+
+### Cycle 4 (cloud, 09:46-09:50 UTC)
+
+Synced with upstream `be403084c` (+28 commits, merge `4e05bbaf6`). Upstream merged 1141
+(pthread_cancel) and 407 (Deathloop loading, +52 stubs). Conflicts: `libc/Export.cpp` (took
+upstream's side minus the `_Cnd_*`/`_Mtx_*` stubs our 1952 merge implements), `libSceJson2/Export.cpp`
+(kept our `SpecialFloatFormatType` enum; then `d43f3e2bc` removed two placeholder stubs the merge
+carried for functions the file already implements), changelog (upstream's bullets plus ours).
+Build 7 of `d43f3e2bc`: see the log.
+
+### Agents launched at 09:52 UTC (cloud), each in its own worktree and branch
+
+The user asked for everything in "How far can this go" to be attempted, with subagents, truthfully.
+Each branch is merged into `claude/stoic-turing-wc7bje` only after its report is checked and the
+tree builds. Branches: `agent/usbd` (libSceUsbd over source-built libusb, PRs 2224+2228 or 1880),
+`agent/ssl` (PR 1884 on mbedtls), `agent/pr2503` (the rest of 2503, file by file), `agent/posix`
+(implement libkernel `madvise`/`select`/`shm_open`, libc `_WStoul`/`swscanf_s`, evaluate PR 1482),
+`agent/kernel-raise` (port 2393's `sceKernelRaiseException` + coredump user data onto the current
+thread model). Rules given to all: report only what was verified and how, no hollow
+implementations, no pushes, build and test on Linux, keep PR authors' authorship.
 
 ### What the stack has that upstream doesn't
 
@@ -288,10 +311,15 @@ PC only (Windows, GPUs, posting):
 - 2026-10-10 ~09:12-09:35 UTC (cloud): cycle 2. Stacked 10 more, fixed the duplicate definitions
   and the CMake damage, reverted 1879, synced upstream `3afc78464` (now 2922/3298 = 88.60% vs
   upstream 85.72%), measured the GitHub ceiling for the remaining functions.
-- 2026-10-10 ~09:38 UTC (cloud): **build 4 of `9a6e26fe2` passed on Linux (1515/1515 targets)**
+- 2026-10-10 09:38 UTC (cloud): **build 4 of `9a6e26fe2` passed on Linux (1515/1515 targets)**
   and its CPU-side suite passed, **398/398** (`ctest -E '^agc_|video_out'`).
-- 2026-10-10 ~09:40-09:57 UTC (cloud): cycle 3. 1886, 1583, 2012, 1689, 1985 stacked, 1952
-  hand-merged (now 2945/3300 = 89.24%). Build 5 of that tip started.
-- 2026-10-10 ~09:58-10:10 UTC (cloud): 1981 and 1993 hand-merged, the Share/Ult slice of 2503
-  applied (2953/3300 = 89.48%). Build 5 failed at configure (duplicate libSceVoice target);
-  fixed in `4d9cdc4ae`; build 6 started on it.
+- 2026-10-10 09:33-09:42 UTC (cloud): cycle 3. 1886, 1583, 2012, 1689, 1985 stacked, 1952
+  hand-merged (2945/3300 = 89.24%). Build 5 of that tip failed at configure (duplicate
+  libSceVoice target).
+- 2026-10-10 09:42-09:46 UTC (cloud): 1981 and 1993 hand-merged, the Share/Ult slice of 2503
+  applied, the duplicate target and constant fixed (`4d9cdc4ae`, 2953/3300 = 89.48%).
+  **Build 6 of `4d9cdc4ae` passed (825 targets rebuilt, 0 failures) and its suite passed 402/402.**
+  (Times earlier in this file that read ~10:00 or later were estimates and are 15 minutes ahead of
+  these commit times.)
+- 2026-10-10 09:46-09:52 UTC (cloud): cycle 4 upstream sync (`4e05bbaf6`, fix `d43f3e2bc`;
+  2960/3350 = 88.36% vs upstream 84.55%), build 7 started, five agents launched (see above).
