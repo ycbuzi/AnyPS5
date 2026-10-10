@@ -5,6 +5,7 @@
 #include "prx/libc/include/GuestWriteWatch.hpp"
 #include "prx/libkernel/File/include/FileFlags.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
+#include "prx/libkernel/DirectMemory/DirectMemory.hpp"
 #include <array>
 #include "SceTypes.hpp"
 #include <chrono>
@@ -291,6 +292,19 @@ static void CheckReleaseDirectMemoryClearsMappings() {
         VirtualQueryInfo next{};
         if (sceKernelVirtualQuery(view, 1, &next, sizeof(next)) == 0) Require(next.start != reinterpret_cast<std::uintptr_t>(view));
     }
+}
+
+static void CheckReleaseDirectMemoryRejectsInvalidRanges() {
+    constexpr std::size_t page = 0x4000;
+    Require(sceKernelReleaseDirectMemory(-1, page) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(0, 0) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(0, 1) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(0, page - 1) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(1, page) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(0, std::numeric_limits<std::size_t>::max()) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(0, DIRECT_MEMORY_SIZE + page) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(DIRECT_MEMORY_SIZE - page, page * 2) == SCE_KERNEL_ERROR_EINVAL);
+    Require(sceKernelReleaseDirectMemory(DIRECT_MEMORY_SIZE, page) == SCE_KERNEL_ERROR_EINVAL);
 }
 
 static void CheckFixedMappingReplacesPartialOverlap() {
@@ -1238,6 +1252,7 @@ int main() {
     CheckAudioCoprocessorProtection();
     CheckDirectMemoryFollowsPhysicalPages();
     CheckReleaseDirectMemoryClearsMappings();
+    CheckReleaseDirectMemoryRejectsInvalidRanges();
     CheckFixedMappingReplacesPartialOverlap();
     CheckDirectMemoryGpuProtBits();
     CheckFixedVirtualReservation();

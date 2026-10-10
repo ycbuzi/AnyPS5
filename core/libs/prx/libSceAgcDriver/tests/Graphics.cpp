@@ -1016,7 +1016,7 @@ void DepthBoundsBiasTests() {
     state = AgcDriver::Graphics::DecodeState(queue);
     Require(state.depthBias && state.depthBiasConstant == 4.0f && state.cullMode == VK_CULL_MODE_BACK_BIT, "a triangle draw with the point and line offset enable lost its depth bias");
     queue.userConfig[0x242] = 2;
-    expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "polygon mode, depth bias, provoking vertex");
+    expectFailure([&] { AgcDriver::Graphics::DecodeState(queue); }, "polygon mode, depth bias or nonstandard rasterization");
     queue.userConfig[0x242] = 4;
     queue.context[0x205] = 0x00001a4au;
     queue.context[0x2de] = 0x1f0u;
@@ -2765,6 +2765,128 @@ void orderedPixelShaderTests() {
     expectFailure([&] { static_cast<void>(ShaderRecompiler::Recompile(orderedPixelRequest(0x30600u, plain))); }, "fragmentShaderPixelInterlock");
 }
 
+void ProvokingVertexTests() {
+    using namespace AgcDriver::Graphics;
+    constexpr std::uint32_t lastVertex = 1u << 19u;
+    auto queue = makeState();
+    queue.context[0x1b3] = 2;
+    queue.context[0x1b4] = 2;
+    const auto first = DecodeState(queue);
+    Require(first.provokingVertexMode == VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT, "the default provoking vertex is not first");
+    for (const auto primitive : {2u, 4u, 5u, 6u}) {
+        queue.userConfig[0x242] = primitive;
+        for (const auto last : {false, true, false}) {
+            queue.context[0x205] = 0x240u | (last ? lastVertex : 0u);
+            const auto state = DecodeState(queue);
+            Require(state.provokingVertexMode == (last ? VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT : VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT), "PROVOKING_VTX_LAST did not select the requested vertex for primitive " + std::to_string(primitive));
+            const auto rejection = DrawRejection(queue, false);
+            Require(rejection.empty(), "the draw precheck rejected provoking vertex mode for primitive " + std::to_string(primitive) + ": " + rejection);
+            Require(state.cullMode == first.cullMode && state.frontFace == first.frontFace && state.depthBias == first.depthBias, "PROVOKING_VTX_LAST changed another rasterization field");
+        }
+    }
+    queue.context[0x205] |= lastVertex;
+    queue.ClearContext();
+    Require((queue.context.at(0x205) & lastVertex) == 0, "context reset kept last provoking vertex mode");
+    Require(DrawKeyCovers({RegisterBank::Context, 0x205}), "the draw cache key does not cover provoking vertex mode");
+    const Context unsupported{};
+    ValidateProvokingVertex(unsupported, first);
+    auto last = first;
+    last.provokingVertexMode = VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT;
+    expectFailure([&] { ValidateProvokingVertex(unsupported, last); }, "last provoking vertex requires VK_EXT_provoking_vertex with provokingVertexLast enabled");
+    auto supported = unsupported;
+    supported.provokingVertexLast = true;
+    ValidateProvokingVertex(supported, last);
+    for (const auto topology : {VK_PRIMITIVE_TOPOLOGY_POINT_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN}) {
+        auto state = last;
+        state.topology = topology;
+        ValidateProvokingVertex(supported, state);
+    }
+    for (const auto topology : {VK_PRIMITIVE_TOPOLOGY_PATCH_LIST, VK_PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY, VK_PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY, VK_PRIMITIVE_TOPOLOGY_MAX_ENUM}) {
+        auto state = last;
+        state.topology = topology;
+        expectFailure([&] { ValidateProvokingVertex(supported, state); }, "last provoking vertex is unsupported for this primitive topology");
+    }
+    const std::array<std::uint32_t, 7> flatColor{0xc8120002u, 0xc8160102u, 0xc81a0202u, 0xc81e0302u, 0xf800180fu, 0x07060504u, 0xbf810000u};
+    const auto flatPixel = recompilePixel({0x400u}, flatColor);
+    const auto inputs = locatedInputs(flatPixel.spirv.Words());
+    Require(inputs.size() == 1 && inputs[0].location == 0 && inputs[0].flat && !inputs[0].perVertex, "flat v_interp_mov P0 did not compile to a flat input");
+    Require(flatPixel.fragmentParameters.size() == 1 && flatPixel.fragmentParameters[0].flat && !flatPixel.fragmentParameters[0].perVertex, "flat v_interp_mov P0 has explicit per-vertex metadata");
+    const std::array<CompiledShader, 1> flatShaders{{{ShaderRecompiler::ShaderStage::Fragment, &flatPixel, 0}}};
+    ValidateProvokingVertex(supported, last, flatShaders);
+    ShaderRecompiler::RecompileResult fragment{};
+    const std::array<CompiledShader, 1> shaders{{{ShaderRecompiler::ShaderStage::Fragment, &fragment, 0}}};
+    for (const auto topology : {VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN}) {
+        auto state = last;
+        state.topology = topology;
+        for (const auto flat : {false, true}) {
+            for (const auto perVertex : {false, true}) {
+                fragment.fragmentParameters = {{0, 0, flat, perVertex}};
+                auto firstState = state;
+                firstState.provokingVertexMode = VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT;
+                ValidateProvokingVertex(unsupported, firstState, shaders);
+                if (flat && perVertex) {
+                    expectFailure([&] { ValidateProvokingVertex(supported, state, shaders); }, "last provoking vertex with explicit per-vertex flat interpolation is unsupported");
+                } else if (perVertex && topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP) {
+                    expectFailure([&] { ValidateProvokingVertex(supported, state, shaders); }, "last provoking vertex with explicit per-vertex triangle-strip interpolation is unsupported");
+                } else {
+                    ValidateProvokingVertex(supported, state, shaders);
+                }
+            }
+        }
+    }
+    for (const auto path : {ShaderPath::Geometry, ShaderPath::Tessellation, ShaderPath::TessellationGeometry}) {
+        auto generated = last;
+        generated.stages.path = path;
+        expectFailure([&] { ValidateProvokingVertex(supported, generated); }, "last provoking vertex is unsupported for generated primitive pipelines");
+        generated.provokingVertexMode = VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT;
+        ValidateProvokingVertex(unsupported, generated);
+    }
+    for (std::uint32_t generated = 0; generated < 3; ++generated) {
+        auto state = last;
+        if (generated == 0) state.rectList = true;
+        if (generated == 1) state.stages.mesh.emplace();
+        if (generated == 2) state.stages.tessellation.emplace();
+        expectFailure([&] { ValidateProvokingVertex(supported, state); }, "last provoking vertex is unsupported for generated primitive pipelines");
+    }
+    last.provokingVertexMode = VK_PROVOKING_VERTEX_MODE_MAX_ENUM_EXT;
+    expectFailure([&] { ValidateProvokingVertex(supported, last); }, "invalid provoking vertex mode");
+}
+
+void ProvokingVertexRenderPassTests() {
+    using namespace AgcDriver::Graphics;
+    const auto first = DecodeState(makeState());
+    const std::array<VkImageView, 1> views{reinterpret_cast<VkImageView>(std::uintptr_t{1})};
+    const std::array<VkProvokingVertexModeEXT, 5> modes{
+        VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT, VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT,
+        VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT, VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT,
+        VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT
+    };
+    for (const bool perPipeline : {false, true}) {
+        Context context{};
+        context.provokingVertexLast = true;
+        context.provokingVertexModePerPipeline = perPipeline;
+        auto state = first;
+        const auto initialKey = DrawRenderPassKey(context, state, views);
+        auto previousKey = initialKey;
+        auto previousMode = modes.front();
+        for (const auto mode : modes) {
+            state.provokingVertexMode = mode;
+            const auto key = DrawRenderPassKey(context, state, views);
+            const bool reusable = key == previousKey;
+            Require(reusable == (perPipeline || mode == previousMode), "render-pass reuse does not respect provokingVertexModePerPipeline");
+            previousKey = key;
+            previousMode = mode;
+        }
+        Require(previousKey == initialKey, "returning to first provoking vertex changed the render-pass identity");
+        state.viewport.x += 1.0f;
+        Require(DrawRenderPassKey(context, state, views) == initialKey, "dynamic viewport changes prevent render-pass reuse");
+        const std::array<VkImageView, 1> differentViews{reinterpret_cast<VkImageView>(std::uintptr_t{2})};
+        Require(DrawRenderPassKey(context, state, differentViews) != initialKey, "different attachments share a render-pass identity");
+        ++state.renderExtent.width;
+        Require(DrawRenderPassKey(context, state, views) != initialKey, "different render extents share a render-pass identity");
+    }
+}
+
 void ConservativeRasterizationTests() {
     auto queue = makeState();
     queue.context[0x1b3] = 2;
@@ -3403,6 +3525,8 @@ int main() {
         DepthBoundsBiasTests();
         conservativeZExportTests();
         orderedPixelShaderTests();
+        ProvokingVertexTests();
+        ProvokingVertexRenderPassTests();
         ConservativeRasterizationTests();
         DisabledColorTests();
         OpaqueDestinationAlphaTests();

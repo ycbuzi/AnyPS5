@@ -36,6 +36,23 @@
 
 namespace AgcDriver::Graphics {
 
+std::uint64_t DrawRenderPassKey(const Context& context, const State& state, std::span<const VkImageView> targetViews) {
+    std::uint64_t key = 14695981039346656037ull;
+    const auto mix = [&](std::uint64_t value) {
+        key ^= value;
+        key *= 1099511628211ull;
+    };
+    for (const auto view : targetViews) mix(reinterpret_cast<std::uint64_t>(view));
+    if (state.blends.size() != state.colors.size()) {
+        mix(state.blends.size());
+        for (const auto& color : state.colors) mix(color.exportIndex);
+    }
+    mix(state.renderExtent.width);
+    mix(state.renderExtent.height);
+    if (!context.provokingVertexModePerPipeline) mix(state.provokingVertexMode);
+    return key;
+}
+
 namespace {
 
 std::uint32_t GuestFormatFor(VkFormat format, std::uint32_t elementBytes) {
@@ -1533,18 +1550,7 @@ void recordDraw(const Context& context, const State& state, const Pm4::DrawParam
     // within the open batch) and the extent. The previous draw's pass is continued only when this
     // draw neither reads its attachments (a barrier would be owed, which no pass allows) nor
     // records anything outside a pass (an indirect draw's argument barrier and scratch copies).
-    std::uint64_t passKey = 14695981039346656037ull;
-    const auto mix = [&](std::uint64_t value) {
-        passKey ^= value;
-        passKey *= 1099511628211ull;
-    };
-    for (const auto view : record.targetViews) mix(reinterpret_cast<std::uint64_t>(view));
-    if (state.blends.size() != state.colors.size()) {
-        mix(state.blends.size());
-        for (const auto& color : state.colors) mix(color.exportIndex);
-    }
-    mix(state.renderExtent.width);
-    mix(state.renderExtent.height);
+    const auto passKey = DrawRenderPassKey(context, state, record.targetViews);
     const bool readsTarget = std::any_of(record.targets.begin(), record.targets.end(), [&](const std::shared_ptr<StorageTexture>& target) { return resources.ReadsImage(target.get()); });
     // A queued DCC key store over memory the draw writes or reads in place (unknown for an
     // address-based build), or over its GPU-side records, lands before it, as before a dispatch
@@ -1977,11 +1983,7 @@ void Draw(const Context& context, const State& state, const Pm4::DrawParameters&
             recipe->framebuffer = framebuffer;
             for (const auto& owner : owners) recipe->targets.emplace_back(owner);
             recipe->targetViews = targetViews;
-            std::uint64_t passKey = 14695981039346656037ull;
-            for (const auto view : targetViews) passKey = (passKey ^ reinterpret_cast<std::uint64_t>(view)) * 1099511628211ull;
-            passKey = (passKey ^ state.renderExtent.width) * 1099511628211ull;
-            passKey = (passKey ^ state.renderExtent.height) * 1099511628211ull;
-            recipe->passKey = passKey;
+            recipe->passKey = DrawRenderPassKey(context, state, targetViews);
             recipe->vertexInput = inputs.vertexInput;
             recipe->pushStages = PushConstantStages(shaders);
             if (recipe->pushStages != 0) {
