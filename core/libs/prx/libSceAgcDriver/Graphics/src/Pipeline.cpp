@@ -1,6 +1,7 @@
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
 #include "prx/libSceAgcDriver/Execution/include/PerformanceTimer.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/Pipeline.hpp"
+#include "prx/libSceAgcDriver/Graphics/include/PipelineLibrary.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/PipelineSpecialization.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/VertexInput.hpp"
 #include <algorithm>
@@ -63,10 +64,16 @@ void LogPipelineStatistics_nid_no_patch(const Context& context, VkPipeline pipel
     }
 }
 
+bool HasStencil(VkFormat format) {
+    return format == VK_FORMAT_D16_UNORM_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT || format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_S8_UINT;
+}
+
 Framebuffer::Framebuffer(const Context& context, VkRenderPass renderPass, std::span<const VkImageView> targets, VkExtent2D extent) : context(context) {
     // Cached objects outlive their device's teardown; they must not keep its buffer pool alive past it.
     this->context.bufferPool.reset();
     Require(extent.width != 0 && extent.height != 0 && extent.width <= context.limits.maxFramebufferWidth && extent.height <= context.limits.maxFramebufferHeight, "framebuffer extent exceeds device limits");
+    views.assign(targets.begin(), targets.end());
+    if (renderPass == VK_NULL_HANDLE) return;
     VkFramebufferCreateInfo framebufferInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
     framebufferInfo.renderPass = renderPass;
     framebufferInfo.attachmentCount = static_cast<std::uint32_t>(targets.size());
@@ -108,7 +115,64 @@ void ValidateViewport(const Context& context, const VkViewport& viewport) {
     Require(std::min(viewport.y, viewport.y + viewport.height) >= context.limits.viewportBoundsRange[0] && std::max(viewport.y, viewport.y + viewport.height) <= context.limits.viewportBoundsRange[1], "viewport Y exceeds device bounds");
 }
 
-Pipeline::Pipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout) : context(context), _modules(shaders.size()), attachments(state.colors.size() + (state.depth ? 1u : 0u)), colorAttachments(state.colors.size()), depthBounds(state.depth.has_value() && state.depthBoundsTest), depthBias(state.depth.has_value() && state.depthBias) {
+namespace {
+
+template<typename TValue>
+void appendKey(std::vector<std::byte>& key, const TValue& value) {
+    static_assert(std::is_trivially_copyable_v<TValue>);
+    const auto bytes = std::as_bytes(std::span(&value, 1));
+    key.insert(key.end(), bytes.begin(), bytes.end());
+}
+
+bool libraryKeys(PipelineLibraryKeys& keys, const Context& context, const State& state, const VertexInputLayout& input, const ShaderResources& resources, std::span<const CompiledShader> shaders) {
+    using Stage = ShaderRecompiler::ShaderStage;
+    if (!context.graphicsPipelineLibrary || context.pipelineExecutableInfo || state.depthBiasPerFace || state.rectList) return false;
+    keys = {};
+    for (const auto& shader : shaders) {
+        if (shader.stage == Stage::Geometry || shader.program->PipelineVariantId() == 0) return false;
+        auto& key = shader.stage == Stage::Fragment ? keys.fragmentShader : keys.preRasterization;
+        appendKey(key, shader.stage);
+        appendKey(key, shader.program->PipelineVariantId());
+        appendKey(key, shader.pushConstantOffset);
+    }
+    for (const auto& binding : input.bindings) {
+        appendKey(keys.vertexInput, binding.binding);
+        appendKey(keys.vertexInput, binding.stride);
+        appendKey(keys.vertexInput, binding.inputRate);
+    }
+    appendKey(keys.vertexInput, input.attributes.size());
+    for (const auto& attribute : input.attributes) {
+        appendKey(keys.vertexInput, attribute.location);
+        appendKey(keys.vertexInput, attribute.binding);
+        appendKey(keys.vertexInput, attribute.format);
+        appendKey(keys.vertexInput, attribute.offset);
+    }
+    appendKey(keys.vertexInput, state.topology);
+    appendKey(keys.vertexInput, state.primitiveRestart);
+    appendKey(keys.preRasterization, state.provokingVertexMode);
+    appendKey(keys.preRasterization, state.negativeOneToOne);
+    appendKey(keys.preRasterization, state.depthClamp && context.depthClamp);
+    appendKey(keys.preRasterization, state.conservativeRasterization);
+    appendKey(keys.preRasterization, state.depth.has_value() && state.depthBias);
+    appendKey(keys.preRasterization, state.stages.tessellation.has_value());
+    if (state.stages.tessellation) appendKey(keys.preRasterization, state.stages.tessellation->inputControlPoints);
+    for (const auto& blend : state.blends) appendKey(keys.fragmentOutput, blend);
+    for (const auto value : state.blendConstants) appendKey(keys.fragmentOutput, value);
+    appendKey(keys.renderPass, state.blends.size());
+    for (const auto& color : state.colors) {
+        appendKey(keys.renderPass, color.format);
+        appendKey(keys.renderPass, color.exportIndex);
+    }
+    appendKey(keys.renderPass, state.depth.has_value());
+    if (state.depth) appendKey(keys.renderPass, state.depth->format);
+    appendKey(keys.layout, PushConstantStages(shaders));
+    for (const auto word : resources.LayoutKey()) appendKey(keys.layout, word);
+    return true;
+}
+
+}
+
+Pipeline::Pipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout) : context(context), _modules(shaders.size()), attachments(state.colors.size() + (state.depth ? 1u : 0u)), colorAttachments(state.colors.size()), depthBounds(state.depth.has_value() && state.depthBoundsTest), depthBias(state.depth.has_value() && state.depthBias), dynamicRendering(context.graphicsPipelineLibrary) {
     PerformanceTimer timing("Vulkan.GraphicsPipeline");
     // A cached pipeline may outlive its device's teardown (see ClearCachedPipelines); it must not keep
     // the buffer pool, which is reset with the device, alive past it.
@@ -198,12 +262,27 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
             colors.push_back(depth);
             subpass.pDepthStencilAttachment = &depthReference;
         }
+        std::vector<VkFormat> renderingColors(state.blends.size(), VK_FORMAT_UNDEFINED);
+        for (const auto& color : state.colors) renderingColors.at(color.exportIndex) = color.format;
+        VkPipelineRenderingCreateInfoKHR rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
+        rendering.colorAttachmentCount = static_cast<std::uint32_t>(renderingColors.size());
+        rendering.pColorAttachmentFormats = renderingColors.empty() ? nullptr : renderingColors.data();
+        if (state.depth) {
+            rendering.depthAttachmentFormat = state.depth->format;
+            if (HasStencil(state.depth->format)) rendering.stencilAttachmentFormat = state.depth->format;
+        }
+        if (dynamicRendering) {
+            depthFormat = state.depth ? state.depth->format : VK_FORMAT_UNDEFINED;
+            colorSlots.assign(state.blends.size(), ~0u);
+            for (std::uint32_t index = 0; index < state.colors.size(); ++index) colorSlots.at(state.colors[index].exportIndex) = index;
+            this->attachmentLayout = attachmentLayout;
+        }
         VkRenderPassCreateInfo passInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
         passInfo.attachmentCount = static_cast<std::uint32_t>(colors.size());
         passInfo.pAttachments = colors.empty() ? nullptr : colors.data();
         passInfo.subpassCount = 1;
         passInfo.pSubpasses = &subpass;
-        Check(context.Function<PFN_vkCreateRenderPass>("vkCreateRenderPass")(context.device, &passInfo, nullptr, &renderPass), "vkCreateRenderPass");
+        if (!dynamicRendering) Check(context.Function<PFN_vkCreateRenderPass>("vkCreateRenderPass")(context.device, &passInfo, nullptr, &renderPass), "vkCreateRenderPass");
         VkPipelineVertexInputStateCreateInfo input{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
         input.vertexBindingDescriptionCount = static_cast<std::uint32_t>(vertexInput.bindings.size());
         input.pVertexBindingDescriptions = vertexInput.bindings.data();
@@ -221,9 +300,12 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
         if (state.negativeOneToOne) viewports.pNext = &depthClip;
         viewports.viewportCount = 1;
         viewports.scissorCount = 1;
+        PipelineLibraryKeys keys;
+        libraries = libraryKeys(keys, context, state, vertexInput, resources, shaders);
         std::vector<VkDynamicState> dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
         if (depthBounds) dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BOUNDS);
         if (depthBias) dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+        if (libraries) dynamicStates.assign(PipelineLibraryDynamicStates().begin(), PipelineLibraryDynamicStates().end());
         VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size());
         dynamic.pDynamicStates = dynamicStates.data();
@@ -277,8 +359,10 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
         pipelineInfo.pDynamicState = &dynamic;
         pipelineInfo.layout = layout;
         pipelineInfo.renderPass = renderPass;
+        if (dynamicRendering) pipelineInfo.pNext = &rendering;
         timing.Mark("modules_and_state");
-        Check(context.Function<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(context.device, context.pipelineCache, 1, &pipelineInfo, nullptr, &pipeline), "vkCreateGraphicsPipelines");
+        if (libraries) pipeline = LinkPipelineFromLibraries(context, pipelineInfo, rendering, layoutInfo, keys);
+        else Check(context.Function<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(context.device, context.pipelineCache, 1, &pipelineInfo, nullptr, &pipeline), "vkCreateGraphicsPipelines");
         if (state.depthBiasPerFace) {
             raster.cullMode = VK_CULL_MODE_FRONT_BIT;
             Check(context.Function<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(context.device, context.pipelineCache, 1, &pipelineInfo, nullptr, &backFaces), "vkCreateGraphicsPipelines");
@@ -370,6 +454,35 @@ std::shared_ptr<Framebuffer> Pipeline::AcquireFramebuffer(std::span<const VkImag
 }
 
 void Pipeline::Begin(VkCommandBuffer commands, const Framebuffer& framebuffer, VkExtent2D extent, const State& state) const {
+    if (dynamicRendering) {
+        const auto views = framebuffer.Views();
+        Require(views.size() == attachments, "render targets do not match the pipeline's attachments");
+        std::vector<VkRenderingAttachmentInfoKHR> colors(colorSlots.size(), VkRenderingAttachmentInfoKHR{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR});
+        for (std::size_t slot = 0; slot < colorSlots.size(); ++slot) {
+            if (colorSlots[slot] == ~0u) continue;
+            colors[slot].imageView = views[colorSlots[slot]];
+            colors[slot].imageLayout = attachmentLayout;
+            colors[slot].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            colors[slot].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        }
+        VkRenderingAttachmentInfoKHR depth{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR};
+        if (depthFormat != VK_FORMAT_UNDEFINED) {
+            depth.imageView = views.back();
+            depth.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+            depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        }
+        VkRenderingInfoKHR rendering{VK_STRUCTURE_TYPE_RENDERING_INFO_KHR};
+        rendering.renderArea = {{0, 0}, extent};
+        rendering.layerCount = 1;
+        rendering.colorAttachmentCount = static_cast<std::uint32_t>(colors.size());
+        rendering.pColorAttachments = colors.empty() ? nullptr : colors.data();
+        if (depthFormat != VK_FORMAT_UNDEFINED) rendering.pDepthAttachment = &depth;
+        if (depthFormat != VK_FORMAT_UNDEFINED && HasStencil(depthFormat)) rendering.pStencilAttachment = &depth;
+        context.Resolved(&DeviceFunctions::cmdBeginRendering, "vkCmdBeginRenderingKHR")(commands, &rendering);
+        Continue(commands, state);
+        return;
+    }
     VkRenderPassBeginInfo begin{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     begin.renderPass = renderPass;
     begin.framebuffer = framebuffer.Handle();
@@ -382,9 +495,34 @@ void Pipeline::Continue(VkCommandBuffer commands, const State& state) const {
     context.Resolved(&DeviceFunctions::cmdBindPipeline, "vkCmdBindPipeline")(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
     context.Resolved(&DeviceFunctions::cmdSetViewport, "vkCmdSetViewport")(commands, 0, 1, &state.viewport);
     context.Resolved(&DeviceFunctions::cmdSetScissor, "vkCmdSetScissor")(commands, 0, 1, &state.scissor);
+    if (libraries) {
+        setLibraryState(commands, state);
+        return;
+    }
     if (depthBias) context.Resolved(&DeviceFunctions::cmdSetDepthBias, "vkCmdSetDepthBias")(commands, state.depthBiasConstant, state.depthBiasClamp, state.depthBiasSlope);
     if (!depthBounds) return;
     context.Resolved(&DeviceFunctions::cmdSetDepthBounds, "vkCmdSetDepthBounds")(commands, state.minDepthBounds, state.maxDepthBounds);
+}
+
+void Pipeline::setLibraryState(VkCommandBuffer commands, const State& state) const {
+    const bool depth = state.depth.has_value();
+    context.Resolved(&DeviceFunctions::cmdSetCullMode, "vkCmdSetCullModeEXT")(commands, state.cullMode);
+    context.Resolved(&DeviceFunctions::cmdSetFrontFace, "vkCmdSetFrontFaceEXT")(commands, state.frontFace);
+    context.Resolved(&DeviceFunctions::cmdSetDepthBias, "vkCmdSetDepthBias")(commands, depthBias ? state.depthBiasConstant : 0.0f, depthBias ? state.depthBiasClamp : 0.0f, depthBias ? state.depthBiasSlope : 0.0f);
+    context.Resolved(&DeviceFunctions::cmdSetDepthBounds, "vkCmdSetDepthBounds")(commands, depthBounds ? state.minDepthBounds : 0.0f, depthBounds ? state.maxDepthBounds : 1.0f);
+    context.Resolved(&DeviceFunctions::cmdSetDepthTestEnable, "vkCmdSetDepthTestEnableEXT")(commands, depth && state.depthTest);
+    context.Resolved(&DeviceFunctions::cmdSetDepthWriteEnable, "vkCmdSetDepthWriteEnableEXT")(commands, depth && state.depthWrite);
+    context.Resolved(&DeviceFunctions::cmdSetDepthCompareOp, "vkCmdSetDepthCompareOpEXT")(commands, depth ? state.depthCompare : VK_COMPARE_OP_ALWAYS);
+    context.Resolved(&DeviceFunctions::cmdSetDepthBoundsTestEnable, "vkCmdSetDepthBoundsTestEnableEXT")(commands, depthBounds);
+    context.Resolved(&DeviceFunctions::cmdSetStencilTestEnable, "vkCmdSetStencilTestEnableEXT")(commands, depth && state.stencilTest);
+    const auto stencil = [&](VkStencilFaceFlags face, const VkStencilOpState& op) {
+        context.Resolved(&DeviceFunctions::cmdSetStencilOp, "vkCmdSetStencilOpEXT")(commands, face, op.failOp, op.passOp, op.depthFailOp, op.compareOp);
+        context.Resolved(&DeviceFunctions::cmdSetStencilCompareMask, "vkCmdSetStencilCompareMask")(commands, face, op.compareMask);
+        context.Resolved(&DeviceFunctions::cmdSetStencilWriteMask, "vkCmdSetStencilWriteMask")(commands, face, op.writeMask);
+        context.Resolved(&DeviceFunctions::cmdSetStencilReference, "vkCmdSetStencilReference")(commands, face, op.reference);
+    };
+    stencil(VK_STENCIL_FACE_FRONT_BIT, depth ? state.stencilFront : VkStencilOpState{});
+    stencil(VK_STENCIL_FACE_BACK_BIT, depth ? state.stencilBack : VkStencilOpState{});
 }
 
 void Pipeline::ContinueBackFaces(VkCommandBuffer commands, const State& state) const {
@@ -625,6 +763,7 @@ void ClearCachedPipelines(VkDevice device) {
         store.index.erase(it->hash);
         it = store.entries.erase(it);
     }
+    ClearPipelineLibraries(device);
 }
 
 }
