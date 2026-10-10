@@ -25,16 +25,28 @@ int APS5_VABI sceNgs2GeomCalcListener(const Ngs2GeomListenerParam* param, Ngs2Ge
     return 0;
 }
 
-int APS5_VABI sceNgs2GeomResetListenerParam(Ngs2GeomListenerParam* out_listener_param) {
-    (void)out_listener_param;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNgs2GeomResetListenerParam(Ngs2GeomListenerParam* outListenerParam) {
+    if (outListenerParam == nullptr) throw std::invalid_argument("sceNgs2GeomResetListenerParam: null output");
+    *outListenerParam = {};
+    outListenerParam->orient_front.z = 1.0f;
+    outListenerParam->orient_up.y = 1.0f;
+    outListenerParam->sound_speed = 343.0f;
+    return SCE_NGS2_OK;
 }
 
-int APS5_VABI sceNgs2GeomResetSourceParam(Ngs2GeomSourceParam* out_source_param) {
-    (void)out_source_param;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNgs2GeomResetSourceParam(Ngs2GeomSourceParam* outSourceParam) {
+    if (outSourceParam == nullptr) throw std::invalid_argument("sceNgs2GeomResetSourceParam: null output");
+    *outSourceParam = {};
+    outSourceParam->direction.z = 1.0f;
+    outSourceParam->cone = {1.0f, 360.0f, 1.0f, 360.0f};
+    outSourceParam->rolloff = {0, 1000000.0f, 1.0f, 1.0f};
+    outSourceParam->doppler_factor = 1.0f;
+    outSourceParam->fbw_level = 1.0f;
+    outSourceParam->lfe_level = 1.0f;
+    outSourceParam->max_level = 1.0f;
+    outSourceParam->num_speakers = 2;
+    outSourceParam->matrix_format = 2;
+    return SCE_NGS2_OK;
 }
 
 }
