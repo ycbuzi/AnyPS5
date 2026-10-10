@@ -68,6 +68,7 @@ double APS5_VABI atanh_nid_postfix(double);
 std::int64_t APS5_VABI lroundf_nid_postfix(float);
 std::int64_t APS5_VABI llround_nid_postfix(double);
 int APS5_VABI __isfinitef_nid_postfix(float);
+double APS5_VABI log1p_nid_postfix(double);
 int APS5_VABI __isnormal_nid_postfix(double);
 int APS5_VABI __isnormalf_nid_postfix(float);
 int APS5_VABI __isinff_nid_postfix(float);
@@ -341,6 +342,8 @@ int main() {
     Require(__isnormalf_nid_postfix(std::numeric_limits<float>::denorm_min()) == 0);
     Require(__isnormal_nid_postfix(1.) == 1 && __isnormal_nid_postfix(0.) == 0);
     Require(__isnormal_nid_postfix(std::numeric_limits<double>::denorm_min()) == 0);
+    Require(log1p_nid_postfix(0.0) == 0.0 && log1p_nid_postfix(1e-20) > 0.0);
+    Require(log1p_nid_postfix(-1.0) == -std::numeric_limits<double>::infinity() && std::isnan(log1p_nid_postfix(-2.0)));
     const auto quotient = div_nid_postfix(7, 2);
     Require(quotient.quot == 3 && quotient.rem == 1);
     const auto negativeNumerator = div_nid_postfix(-7, 2);
