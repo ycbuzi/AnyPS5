@@ -753,6 +753,39 @@ static void CheckSharedWriteTracking() {
 #endif
 }
 
+static void CheckFailedCollectKeepsWrites() {
+#ifdef _WIN32
+    constexpr std::size_t page = 0x4000;
+    const auto collect = [](void* address, std::size_t bytes, std::size_t& count) {
+        std::array<void*, 32> pages{};
+        count = pages.size();
+        return GuestArena::GuestArenaCollectWrites_nid_postfix(reinterpret_cast<std::uintptr_t>(address), bytes, pages.data(), &count, true);
+    };
+    std::size_t count = 0;
+    auto* block = static_cast<unsigned char*>(GuestArena::GuestArenaAllocate_nid_postfix(page * 3, page));
+    GuestArena::GuestArenaCommit_nid_postfix(block, page, PAGE_READWRITE, page);
+    GuestArena::GuestArenaCommit_nid_postfix(block + page * 2, page, PAGE_READWRITE, page);
+    Require(collect(block, page, count) && collect(block + page * 2, page, count));
+    static_cast<volatile unsigned char*>(block)[8] = 1;
+    Require(!collect(block, page * 3, count));
+    Require(collect(block, page, count) && count == 1);
+    GuestArena::GuestArenaRelease_nid_postfix(block, page * 3);
+
+    std::int64_t phys = 0;
+    Require(sceKernelAllocateDirectMemory(0, 0x7fffffffffll, page * 2, 0, 0, &phys) == 0);
+    void* mapped = nullptr;
+    Require(sceKernelMapDirectMemory(&mapped, page * 2, 3, 0, phys, 0) == 0);
+    auto* shared = static_cast<volatile unsigned char*>(mapped);
+    Require(collect(mapped, page * 2, count));
+    shared[8] = 2;
+    Require(sceKernelMprotect(const_cast<unsigned char*>(shared + page), page, 0) == 0);
+    Require(!collect(mapped, page * 2, count));
+    Require(collect(mapped, page, count) && count == 4);
+    Require(sceKernelMunmap(mapped, page * 2) == 0);
+    Require(sceKernelReleaseDirectMemory(phys, page * 2) == 0);
+#endif
+}
+
 static void CheckPinnedSharedPages() {
 #ifdef _WIN32
     constexpr std::size_t page = 0x4000;
@@ -1189,6 +1222,7 @@ int main() {
     CheckSharedWriteTracking();
     CheckReadsIntoSharedWriteTracking();
     CheckPinnedSharedPages();
+    CheckFailedCollectKeepsWrites();
 #if defined(__linux__)
     CheckWriteWatch();
     CheckDirectMemoryWriteWatch();
