@@ -1,9 +1,152 @@
 # Handoff: AnyPS5 work between the PC session and the cloud session
 
-Last updated: 2026-10-10 ~10:10 UTC, by the cloud session.
+Last updated: 2026-10-10 ~19:20 UTC, by the PC session.
 
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
+
+## START HERE — state at 2026-10-10 19:20 UTC (PC session)
+
+`claude/stoic-turing-wc7bje` is **248 commits ahead of upstream and 0 behind** `4a747c48`.
+Working tree clean.
+
+| | implemented | total | % |
+|---|---|---|---|
+| upstream `4a747c48` | 2710 | 3208 | 84.48% |
+| this stack | 3004 | 3354 | **89.56%** |
+
+**The 89.56% HAS NEVER BEEN COMPILED.** Fix that first. The build was stopped mid-run to do the
+upstream sync. Specific risk: the stack contains **PR #2533**, which cycle 1 previously dropped
+because it "adds `libSceFont/src/Font.cpp` including a `Font.h` that doesn't exist". The sweep
+agent recommended it anyway. One of them is wrong; the build will say which.
+
+### Do these first, in order
+
+1. **Windows build + full suite.** Submodules needed:
+   `git submodule update --init 3rdparty/libusb 3rdparty/mbedtls`, then
+   `git -C 3rdparty/mbedtls submodule update --init framework`. Watch for #2533's `Font.cpp`.
+2. **Re-check `guest_memory` and `guest_file_vector`** — both failed `0xc0000409` earlier today on
+   the pre-sync tree. `kernel-raise` changed `GuestMemory.cpp` by +103 lines and the sync touched
+   that area, so their status is unknown. Upstream's own Windows CI passes both (its only failure
+   is `guest_avplayer`), so if they still fail, it is ours.
+3. **GPU matrix** on the three adapters — **after clearing the AMD cache** (trap below).
+
+### Rollback tags on the PC
+
+`pre-fullsync` (8a7129f5), `pre-tier1` (bf3b1258), `pre-harvest-today` / `cloud-stack` (d3c5efc3),
+`pc-stack-pre-cloud` (70333e41).
+
+### What the sync resolution decided (auditable, may need revisiting)
+
+53 upstream commits, 9 conflicting files. Principle: **where upstream has since implemented a
+function we had harvested, upstream's implementation AND its tests win**, because this tree must
+pass upstream's tests.
+
+- `libkernel/File/src/Stdio.cpp`, `GuestDup.cpp`, `GuestFilesystem.cpp` → **upstream's**
+  `dup`/`dup2`/`fdatasync` (theirs tracks random devices, handles `from == to`, returns SCE errors;
+  our harvested copies did none of that).
+- `libSceAjm.native/src/Ajm.cpp`, `GuestAjm.cpp` → **upstream's** `SetResampleParametersEx`
+  (theirs throws for a non-zero ratio change; ours implemented it and may have been a guess).
+- `libSceSsl/Export.cpp` → **ours**, the mbedtls implementation (2 remaining stubs against
+  upstream's 9). Took **upstream's** `GuestSsl.cpp` CA-list tests as its spec —
+  **this pairing is untested and is the most likely new test failure.**
+- `GuestAvailableCpumask.cpp` → additive, kept both sides.
+
+### Harvest still on the table
+
+- **`agent/pr2503`** on the fork (`8a623bca`, 5 commits, 22 files, ~19 functions): libc dinkumware
+  thread primitives, pthread cancellation, equeue/aio, signin + web-browser dialogs with tests,
+  share/ult helpers. Conflicts in 13 files. Largest single block left. Do **not** use GitHub's
+  "Sync fork" on it — that offers to discard the 5 commits.
+- **Sweep tier 2**: #2741, #2754, #2841, #2788 → measured 3009/3357 (89.63%). Real bodies,
+  policy-closed, but each has Δimpl == Δtotal.
+- The ~20-PR band **#2893–#2941** was blocked by the 9-file divergence, which is **now resolved** —
+  re-running the sweep against the synced stack is the cheapest remaining gain.
+- Artefacts: `<scratch>/sweep/results.tsv`, `DELIVERABLE.tsv`, per-PR body dumps. 484 candidates
+  measured; only 28 moved the count.
+
+### Do NOT harvest these (verified hollow or refused)
+
+- **#2721 (+14)** — rewrites 14 `libSceFontFt` stubs to `return SupportFormat();` where
+  `SupportFormat()` is `{ return 0; }`. Byte-identical to the stub. This is what our issue
+  **#2971** is about.
+- **#2719 (+7)** bare `EOPNOTSUPP`; **#2849 (+5)** + **#2851 (+4)** are refused #2494's nine
+  exports split in two; **#2454 (+4)** bare `SIGNED_OUT`; **#2850**, **#2765**.
+- Declare more than they implement: **#2924 (+0/+12)**, **#2565 (+9/+12)**, #2872, #2903, #2899,
+  #2787, #2857, #2858, #2897, #2906.
+
+## Traps that cost real time today — read before trusting any measurement
+
+**AMD's pipeline cache fabricates GPU failures.** `%LOCALAPPDATA%\AMD\VkCache` is keyed by
+**executable name**, so after rebuilding the test binaries the driver serves pipelines compiled by
+older builds of the same-named exe. Symptom: failures whose output still holds the `0xdeadbeef`
+fill. This read as **77 of 252 `agc_driver_` tests failing** on the RDNA2 iGPU; after emptying the
+cache (485 files, 17 MB) and pointing `ANYPS5_SHADER_CACHE_DIR` at a fresh directory, it was **3**.
+`LeandroLP23` hit and publicly retracted the same mistake on #2755.
+
+**Corollary: identical results across different code can mean a shared confounder.** Pristine
+upstream and this stack produced byte-identical 77-failure lists, which looked like proof the code
+was at fault. It was proof both read the same poisoned cache.
+
+**Read the WHOLE issue body before investigating.** `head -30` on #2891 hid its "Where it points"
+section; an hour went into re-deriving an ownership chain the reporter had already published.
+These reporters put the root cause at the END.
+
+**Re-run the novelty check in the seconds before posting, not before the work.** A comment on
+#2581 had to be deleted because the PR it argued against merged 9 minutes earlier. Check: the error
+string, the file name, the issue's comments, the candidate PR's comments, and its merge state.
+
+**A negative hardware result is usually not worth posting.** "It doesn't reproduce on my GPU"
+narrows visibility, not the defect.
+
+## Verified GPU state (cold caches)
+
+| adapter | device | subgroup | result |
+|---|---|---|---|
+| RTX 4070 SUPER | `0x2783` | 32 | 252/252 |
+| GTX 1650 SUPER | `0x2187` | 32 | 252/252 |
+| Radeon 610M RDNA2 | `0x164e` | 64 | 249/252 — all 3 already filed |
+
+Control: `ANYPS5_GPU=no-such-device-zzz` must report **Skipped**. If it passes, the tests never
+reached the GPU and every number is meaningless.
+
+## Upstream changes worth knowing
+
+- **Intake threshold is now 10 merged PRs, down from 20** (`f4b6e101`, PR #2808). Still blocks us
+  at 0. If it keeps falling, the PR channel opens and the strategy changes.
+- Upstream merged its own versions of **both issues we filed**: #2525 (`0e03ad0f9`) and #2582
+  (#2614). Both closed and fixed.
+- **#2599 is already fixed** (`bc444a675`, PR #2605) — the relinker now fails loudly on fSELF
+  guest modules, naming the module.
+- Upstream's own percentage **fell** 85.69% → 84.48% today: +75 declared against +27 implemented.
+  Syncing cost this stack only 1 declaration, because harvesting had already taken the PRs upstream
+  later merged.
+
+## Posted today
+
+- **#2525** — duplicate `DT_NEEDED` at three sites, before/after through the real relinker on
+  `--windows` and `--macos`. `babyhuey`: *"that's right for all three"* + fix branch; `nyavana`
+  then wrote the guest-PRX tests closing the one gap flagged as unproven. **Closed, fixed.**
+- **#2582** — `guest_font` aborts on any host with fonts available. Three independent fixes within
+  40 minutes. **Closed, fixed.**
+- **#2971** — `progress.py`'s `STUB_WRAPPER` matches only `void` wrappers, so a `static int`
+  wrapper counts its callers as implemented; #2721 as the worked example.
+- **#2475** (discussion) — answered the author's three DOOM questions.
+- **Four candidates killed at the gate**: #2540 (already root-caused), #2570 (already merged),
+  the stale-cache artifact, and a duplicate of #2891's own analysis.
+
+## PC-only jobs still not done
+
+- **#2944** (new) — AMD RX 6700 XT: 9 `agc_driver` segfaults in amdvlk64, plus
+  `sdwa_float_selectors` and `sdwa_ldexp_f16` wrong. **Those two are 2 of our 3 remaining Radeon
+  failures** — direct match for this machine. Clear the AMD cache first.
+- **#2640** — the reporter's Windows non-ANSI-path fix is **Wine-tested only**; this machine has
+  real Windows. 9 comments now, so check whether someone beat us to it.
+- **#2652** — needs DOOM's bundled `sce_module/libc.prx` unwrapped from its fSELF container; the
+  relinker now refuses it outright. Linux and macOS arms are done by others.
+- **#2631** — the f16 round-toward-zero fix (`c7d132be`) is still **not validated on hardware**.
+  A/B-confirmed *not* to cause AMD failures, but that is not the same as correct. Do not post to
+  that thread until measured.
 
 ## If the cloud session died: resume here (written 10:15 UTC, 2026-10-10)
 
