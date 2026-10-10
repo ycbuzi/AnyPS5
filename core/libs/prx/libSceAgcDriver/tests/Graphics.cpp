@@ -6,6 +6,7 @@
 #include "prx/libSceAgcDriver/Graphics/include/Draw.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/ShaderInputState.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/DccMetadata.hpp"
+#include "prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/Texture.hpp"
 #include "SceShaders.hpp"
 #include "ControlFlow/RequestSerializer.hpp"
@@ -802,6 +803,19 @@ void DepthStencilTests() {
     Require(state.depth && state.depth->address == 0x10000 && state.depth->stencilAddress == 0x20000 && state.depth->format == VK_FORMAT_D32_SFLOAT_S8_UINT && state.depth->clearStencil == 7, "depth surface decode changed");
     Require(state.renderExtent.width == 4 && state.renderExtent.height == 2, "render extent ignores the depth surface");
     Require(!state.depthTest && !state.depthWrite && state.stencilTest, "depth/stencil enables changed");
+    Require(state.depth->htileAddress == 0, "an HTILE surface without DB_HTILE_DATA_BASE decoded an HTILE address");
+    queue.context[0x005] = 0x300;
+    queue.context[0x01e] = 0x01;
+    log.clear();
+    AgcDriver::Graphics::RegisterReadLog() = &log;
+    state = AgcDriver::Graphics::DecodeState(queue);
+    AgcDriver::Graphics::RegisterReadLog() = nullptr;
+    for (const auto read : log) Require(AgcDriver::Graphics::DrawKeyCovers(read), "DrawKeyRegisters lacks an HTILE register the decoder reads: " + std::to_string(read.offset));
+    Require(state.depth->htileAddress == (0x30000ull | (1ull << 40u)), "the HTILE address was not decoded from DB_HTILE_DATA_BASE and its high byte");
+    queue.context[0x010] &= ~0x20000000u;
+    state = AgcDriver::Graphics::DecodeState(queue);
+    Require(state.depth->htileAddress == 0, "a surface without TILE_SURFACE_ENABLE decoded an HTILE address");
+    queue.context[0x010] |= 0x20000000u;
     const auto& front = state.stencilFront;
     Require(front.compareOp == VK_COMPARE_OP_ALWAYS && front.passOp == VK_STENCIL_OP_INCREMENT_AND_CLAMP && front.failOp == VK_STENCIL_OP_KEEP && front.reference == 1 && front.writeMask == 0xff, "stencil mask pass changed");
     Require(std::memcmp(&state.stencilBack, &front, sizeof(front)) == 0, "back faces without BACKFACE_ENABLE must use the front state");
@@ -907,6 +921,22 @@ void OneDimensionalColorTests() {
     queue.context[0x3b0] = 63u << 14u;
     const auto line = AgcDriver::Graphics::DecodeState(queue);
     Require(line.color.extent.width == 64u && line.color.extent.height == 1u && line.color.address == reinterpret_cast<std::uintptr_t>(colorMemory.data()) && line.color.depth == 1u, "a 1D color target did not decode as one row");
+}
+
+void htileDepthClearTests() {
+    static constexpr std::array<std::uint32_t, 17> kernel{0xd7460000u, 0x04010c06u, 0x34000084u, 0xdc388000u, 0x04020000u, 0xbf8c3f70u, 0xd7710008u, 0x00120805u, 0xd7710009u, 0x00120a05u, 0xd771000au, 0x00120c05u, 0xd771000bu, 0x00120e05u, 0xdc788000u, 0x00020800u, 0xbf810000u};
+    const std::array<std::uint32_t, 3> wave{64, 1, 1};
+    const auto address = [&](std::span<const std::uint32_t> code, std::array<std::uint32_t, 6> userData, std::array<std::uint32_t, 3> threads) {
+        return AgcDriver::Graphics::HtileDepthClearAddress(code, userData, threads);
+    };
+    Require(address(kernel, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0x400dc50000ull, "RADV's HTILE depth fast clear (ZMASK to 0) was not recognized");
+    Require(address(kernel, {0, 0, 0x0dc50000u, 0x40u, 0xfffff00fu, 0x00000ff0u}, wave) == 0, "an HTILE initialization to expanded (ZMASK 0xf) was taken for a clear");
+    Require(address(kernel, {0, 0, 0x0dc50000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, wave) == 0, "a stencil-only HTILE update that keeps ZMASK was taken for a depth clear");
+    Require(address(kernel, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, {32, 1, 1}) == 0, "the HTILE kernel matched with another group size");
+    auto other = kernel;
+    other[6] ^= 1u;
+    Require(address(other, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a different kernel was taken for RADV's HTILE update");
+    Require(address(std::span(kernel).first(16), {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a truncated kernel was taken for RADV's HTILE update");
 }
 
 void depthMaintenanceTests() {
@@ -3520,6 +3550,7 @@ int main() {
         DepthClipTests();
         DepthStencilTests();
         OneDimensionalColorTests();
+        htileDepthClearTests();
         ZExportTests();
         unorm10_11_11TargetTests();
         DepthBoundsBiasTests();
