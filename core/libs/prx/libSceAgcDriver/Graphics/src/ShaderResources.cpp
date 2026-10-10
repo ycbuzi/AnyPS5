@@ -29,6 +29,8 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include "prx/libc/include/GuestAllocations.hpp"
 
 namespace AgcDriver::Graphics {
@@ -102,6 +104,7 @@ struct CachedTexture {
     std::shared_ptr<StorageTexture> source;
     std::uint64_t sourceVersion = 0;
     std::uint64_t accounted = 0;
+    std::uint64_t present = 0;
 };
 
 // Entries in use order (front = most recent) with a hash index by key: a lookup is O(1) and the
@@ -113,6 +116,18 @@ struct TextureCache {
     std::unordered_map<TextureKey, std::list<CachedTexture>::iterator, TextureKeyHash> index;
     std::unordered_multimap<const StorageTexture*, std::list<CachedTexture>::iterator> views;
     std::uint64_t bytes = 0;
+    std::size_t passed = 0;
+    std::chrono::steady_clock::time_point passedSince{};
+    std::uint64_t firstUsesPresent = 0;
+    std::unordered_set<TextureKey, TextureKeyHash> firstUses;
+    struct Counts {
+        std::uint64_t inserted = 0;
+        std::uint64_t uncached = 0;
+        std::uint64_t evicted = 0;
+        std::uint64_t passed = 0;
+        std::uint64_t stale = 0;
+    } counts;
+    std::chrono::steady_clock::time_point countsReported = std::chrono::steady_clock::now();
     VkPhysicalDevice budgetDevice = VK_NULL_HANDLE;
     std::chrono::steady_clock::time_point budgetRead{};
     std::uint64_t budget = 0;
@@ -192,6 +207,53 @@ void dropUncachedViews(TextureCache& cache) {
 // Moves an entry to the front (most recently used).
 void touchTexture(TextureCache& cache, std::list<CachedTexture>::iterator it) {
     cache.entries.splice(cache.entries.begin(), cache.entries, it);
+    it->present = Recorder::Presents();
+}
+
+bool admitTexture(TextureCache& cache, const TextureKey& key, std::uint64_t incoming, std::uint64_t budget) {
+    if (cache.bytes + incoming <= budget) return true;
+    if (const auto now = std::chrono::steady_clock::now(); now - cache.passedSince >= std::chrono::seconds(1)) {
+        cache.passed = 0;
+        cache.passedSince = now;
+    }
+    const auto present = Recorder::Presents();
+    if (cache.firstUsesPresent != present) {
+        cache.firstUses.clear();
+        cache.firstUsesPresent = present;
+    }
+    const bool firstUse = incoming != 0 && present != 0 && !cache.firstUses.contains(key);
+    const auto ceiling = budget + budget / 4u;
+    while (!cache.entries.empty() && cache.bytes + incoming > budget) {
+        const auto back = std::prev(cache.entries.end());
+        if (firstUse && back->present + 1u >= present) {
+            cache.firstUses.insert(key);
+            ++cache.counts.uncached;
+            return false;
+        }
+        const bool over = cache.bytes + incoming > ceiling;
+        const bool keep = back->accounted == 0 || (!over && back->texture.use_count() > 1);
+        if (keep && cache.passed < cache.entries.size()) {
+            cache.entries.splice(cache.entries.begin(), cache.entries, back);
+            ++cache.passed;
+            ++cache.counts.passed;
+        } else if (keep && !over) {
+            break;
+        } else {
+            eraseTexture(cache, back);
+            ++cache.counts.evicted;
+        }
+    }
+    return true;
+}
+
+void reportCacheCounts(TextureCache& cache, std::uint64_t budget) {
+    static const bool profile = std::getenv("APS5_PROFILE_DRAW") != nullptr;
+    if (!profile) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - cache.countsReported < std::chrono::seconds(10)) return;
+    cache.countsReported = now;
+    const auto counts = std::exchange(cache.counts, {});
+    AgcDriver::ProfilePrint_nid_no_patch("[texture-cache] (10 s): %llu textures cached, %llu used uncached (first use this frame, the least recently used entry used this frame or the last), %llu evicted, %llu held ones passed over, %llu found changed; %llu MiB in %zu entries, budget %llu MiB, frame %llu\n", static_cast<unsigned long long>(counts.inserted), static_cast<unsigned long long>(counts.uncached), static_cast<unsigned long long>(counts.evicted), static_cast<unsigned long long>(counts.passed), static_cast<unsigned long long>(counts.stale), static_cast<unsigned long long>(cache.bytes >> 20u), cache.entries.size(), static_cast<unsigned long long>(budget >> 20u), static_cast<unsigned long long>(Recorder::Presents()));
 }
 
 // APS5_PROFILE_DRAW: what the sampled-texture and storage-image lookups did, printed as [textures]
@@ -524,6 +586,7 @@ std::shared_ptr<Texture> cachedTexture(const Context& context, std::span<const s
             }
         }
         eraseTexture(cache, it);
+        ++cache.counts.stale;
     }
     CachedTexture entry{key, address, std::vector<std::byte>(source != nullptr ? 0u : bytes), nullptr, *keys, generation};
     if (source != nullptr) {
@@ -547,13 +610,22 @@ std::shared_ptr<Texture> cachedTexture(const Context& context, std::span<const s
         counters.snapshots.fetch_add(1, std::memory_order_relaxed);
     }
     const auto budget = sampledBudget(context, cache);
-    while (!cache.entries.empty() && cache.bytes + entry.accounted > budget) eraseTexture(cache, std::prev(cache.entries.end()));
-    cache.bytes += entry.accounted;
     auto texture = entry.texture;
+    if (!admitTexture(cache, key, entry.accounted, budget)) {
+        logLookup({texture.get(), resource, guestBytes, *keys, generation, source.get()});
+        reportCacheCounts(cache, budget);
+        reportTextureCounters();
+        if (profile) LookupOutcomes::Add(source != nullptr ? LookupOutcomes::SampledMadeView : LookupOutcomes::SampledMadeSnapshot, start);
+        return texture;
+    }
+    cache.bytes += entry.accounted;
+    entry.present = Recorder::Presents();
+    ++cache.counts.inserted;
     logLookup({texture.get(), resource, guestBytes, *keys, generation, source.get()});
     cache.entries.push_front(std::move(entry));
     cache.index[key] = cache.entries.begin();
     if (source != nullptr) cache.views.emplace(source.get(), cache.entries.begin());
+    reportCacheCounts(cache, budget);
     reportTextureCounters();
     if (profile) LookupOutcomes::Add(source != nullptr ? LookupOutcomes::SampledMadeView : LookupOutcomes::SampledMadeSnapshot, start);
     return texture;
