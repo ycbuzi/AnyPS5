@@ -15,6 +15,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Math.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ExtendedMath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/NumericHelpers.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/Rounding.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Time.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FileAndHeap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StdioExtras.cpp
@@ -49,6 +50,7 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/ExtendedMath.cpp
         TARGET_DIRECTORY libc PROPERTIES COMPILE_OPTIONS "-frounding-math")
 
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/NumericHelpers.cpp
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/Rounding.cpp
 target_include_directories(libc PRIVATE
         ${LIBS_INCLUDE_DIR}
 )
@@ -77,6 +79,12 @@ if(BUILD_TESTING)
     set_source_files_properties(${LIBS_INCLUDE_DIR}/tests/GuestNumericHelpers.cpp
     add_test(NAME guest_numeric_helpers COMMAND guest_numeric_helpers_tests)
         set_tests_properties(guest_numeric_helpers PROPERTIES ENVIRONMENT_MODIFICATION
+    add_test_executable(guest_rounding_tests ${LIBS_INCLUDE_DIR}/tests/GuestRounding.cpp)
+    target_include_directories(guest_rounding_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_rounding_tests PRIVATE libc)
+    configure_windows_unwind(guest_rounding_tests)
+    add_test(NAME guest_rounding COMMAND guest_rounding_tests)
+        set_tests_properties(guest_rounding PROPERTIES ENVIRONMENT_MODIFICATION
     add_test_executable(guest_time_conversion_tests ${LIBS_INCLUDE_DIR}/tests/GuestTimeConversion.cpp)
     target_include_directories(guest_time_conversion_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_time_conversion_tests PRIVATE libc)
