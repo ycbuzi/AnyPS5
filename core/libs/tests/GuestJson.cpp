@@ -83,8 +83,11 @@ const Value* APS5_VABI _ZNK3sce4Json5Value8getValueEm(const Value*, std::size_t)
 const Value* APS5_VABI _ZNK3sce4Json5Value8getValueERKNS0_6StringE(const Value*, const String*);
 Value* APS5_VABI _ZN3sce4Json5Value10referValueEm(Value*, std::size_t);
 void APS5_VABI _ZN3sce4Json14InitParameter2C1Ev(void*);
+void APS5_VABI _ZN3sce4Json14InitParameter2C2Ev(void*);
 void APS5_VABI _ZN3sce4Json14InitParameter212setAllocatorEPNS0_12MemAllocatorEPv(void*, void*, void*);
 void APS5_VABI _ZN3sce4Json14InitParameter217setFileBufferSizeEm(void*, std::size_t);
+void APS5_VABI _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(void*, std::int32_t);
+void APS5_VABI _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(void*, void*, void*);
 int APS5_VABI _ZN3sce4Json11Initializer10initializeEPKNS0_14InitParameter2E(void*, const void*);
 }
 
@@ -361,6 +364,45 @@ static void ValueAccess() {
     Require(_ZN3sce4Json11InitializerD1Ev(initializer) == 0);
 }
 
+static void InitParameters() {
+    for (const auto construct : {_ZN3sce4Json14InitParameter2C1Ev, _ZN3sce4Json14InitParameter2C2Ev}) {
+        alignas(16) std::uint8_t parameter[40];
+        std::memset(parameter, 0xff, sizeof(parameter));
+        construct(parameter);
+        void* stored[3]{};
+        std::memcpy(stored, parameter, sizeof(stored));
+        Require(stored[0] == nullptr && stored[1] == nullptr && stored[2] == nullptr);
+        std::int32_t format = -1;
+        std::memcpy(&format, parameter + 24, sizeof(format));
+        Require(format == 0);
+        int allocator = 0;
+        int userData = 0;
+        _ZN3sce4Json14InitParameter212setAllocatorEPNS0_12MemAllocatorEPv(parameter, &allocator, &userData);
+        _ZN3sce4Json14InitParameter217setFileBufferSizeEm(parameter, 8192);
+        _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, 0);
+        for (const auto unsupported : {-1, 1}) {
+            bool rejected = false;
+            try { _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, unsupported); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            Require(rejected);
+        }
+        std::memcpy(stored, parameter, sizeof(stored));
+        Require(stored[0] == &allocator && stored[1] == &userData && reinterpret_cast<std::uintptr_t>(stored[2]) == 8192);
+        std::memcpy(&format, parameter + 24, sizeof(format));
+        Require(format == 0);
+        for (std::size_t i = 32; i < sizeof(parameter); ++i) Require(parameter[i] == 0xff);
+    }
+    alignas(16) std::uint8_t rtti[32];
+    std::memset(rtti, 0xff, sizeof(rtti));
+    int allocator = 0;
+    int userData = 0;
+    _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(rtti, &allocator, &userData);
+    void* stored[2]{};
+    std::memcpy(stored, rtti, sizeof(stored));
+    Require(stored[0] == &allocator && stored[1] == &userData);
+    for (std::size_t i = sizeof(stored); i < sizeof(rtti); ++i) Require(rtti[i] == 0xff);
+}
+
 static void ValueClear() {
     Value value{};
     _ZN3sce4Json5ValueC1Ev(&value);
@@ -405,5 +447,6 @@ int main() {
     NullAccess(_ZN3sce4Json11Initializer27setGlobalNullAccessCallBackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_);
     NullAccess(_ZN3sce4Json11Initializer27setGlobalNullAccessCallbackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_);
     ValueAccess();
+    InitParameters();
     ValueClear();
 }
