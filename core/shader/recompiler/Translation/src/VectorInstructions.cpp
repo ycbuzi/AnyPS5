@@ -31,6 +31,7 @@ std::uint32_t TranslationContext::f32DenormalFlushFor(const RdnaInstruction& ins
     case RdnaOpcode::VSubrevF32:
     case RdnaOpcode::VMulF32:
     case RdnaOpcode::VMulLegacyF32:
+    case RdnaOpcode::VMullitF32:
     case RdnaOpcode::VMinF32:
     case RdnaOpcode::VMaxF32:
     case RdnaOpcode::VMin3F32:

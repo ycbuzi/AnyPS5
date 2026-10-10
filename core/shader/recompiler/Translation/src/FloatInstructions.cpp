@@ -379,9 +379,9 @@ bool TranslationContext::vMulLegacyF32(const RdnaInstruction& inst, bool accumul
 }
 
 bool TranslationContext::vMullitF32(const RdnaInstruction& inst) {
-    const IrU32 lhs = readU32(sourceAt(inst, 0u));
-    const IrU32 rhs = readU32(sourceAt(inst, 1u));
-    const IrU32 limit = readU32(sourceAt(inst, 2u));
+    const IrU32 lhs = flushF32Denormal(readU32(sourceAt(inst, 0u)));
+    const IrU32 rhs = flushF32Denormal(readU32(sourceAt(inst, 1u)));
+    const IrU32 limit = flushF32Denormal(readU32(sourceAt(inst, 2u)));
     const auto magnitude = [&](const IrU32& bits) { return IrU32(ir.BitwiseAnd(bits.Value(), ir.Constant(0x7fffffffu))); };
     const auto isNan = [&](const IrU32& bits) { return IrU1(ir.UGreaterThan(magnitude(bits).Value(), ir.Constant(0x7f800000u))); };
     const auto isZero = [&](const IrU32& bits) { return IrU1(ir.IEqual(magnitude(bits).Value(), ir.Constant(0u))); };
@@ -389,7 +389,9 @@ bool TranslationContext::vMullitF32(const RdnaInstruction& inst) {
     const IrU1 rhsNegativeMax(ir.UGreaterThan(rhs.Value(), ir.Constant(0xff7ffffeu)));
     IrU1 lowest(ir.LogicalOr(rhsNegativeMax.Value(), ir.LogicalOr(isNan(limit).Value(), limitNotPositive.Value())));
     lowest = IrU1(ir.LogicalOr(lowest.Value(), isNan(rhs).Value()));
-    const IrU32 product(ir.BitCastU32(ir.Emit(IrOpcode::FPMul32, IrType::F32, {&ir.BitCastF32(lhs.Value()), &ir.BitCastF32(rhs.Value())})));
+    IrValue& lhsF32 = ir.BitCastF32(lhs.Value());
+    IrValue& rhsF32 = ir.BitCastF32(rhs.Value());
+    const IrU32 product(ir.BitCastU32(flushTinyProduct(&lhsF32, &rhsF32, &ir.Emit(IrOpcode::FPMul32, IrType::F32, {&lhsF32, &rhsF32})).Value()));
     IrU32 result(ir.Select(isNan(lhs).Value(), quietNan32(lhs).Value(), product.Value()));
     result = IrU32(ir.Select(ir.LogicalOr(isZero(lhs).Value(), isZero(rhs).Value()), ir.Constant(0u), result.Value()));
     result = IrU32(ir.Select(lowest.Value(), ir.Constant(0xff7fffffu), result.Value()));
