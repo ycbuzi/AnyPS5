@@ -5,6 +5,28 @@ Last updated: 2026-10-10 ~10:10 UTC, by the cloud session.
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
+## If the cloud session died: resume here (written 10:15 UTC, 2026-10-10)
+
+Everything is on `ycbuzi/AnyPS5`:
+- `claude/stoic-turing-wc7bje`: the stack (2960/3350 before the agent work) plus the 2631 fix.
+- `agent/usbd`: PRs 2224+2228 over a libusb submodule (`3rdparty/libusb`, libusb-cmake
+  `c8477c10`). Verified by the agent on Linux: builds, 3/3 usbd tests pass, conventions pass,
+  libSceUsbd 5 -> 29 done. Base `6cc335833` (older than the stack).
+- `agent/ssl`: PR 1884 over an mbedtls submodule (`3rdparty/mbedtls` 3.6.7 `068ff080`, needs its
+  nested `framework` submodule at configure). Verified on Linux: 2/2 ssl tests, conventions pass,
+  libSceSsl 5 -> 15 done. Base `6cc335833`.
+- `agent/pr2503`, `agent/posix`, `agent/kernel-raise`: were still running at 10:15 UTC in
+  worktrees under `/home/user/AnyPS5/.claude/worktrees/` in the cloud container. If the container
+  is gone, their work is lost unless it was pushed; check `git ls-remote --heads origin 'agent/*'`.
+
+Next steps, in order:
+1. `git merge --no-ff agent/usbd` and `agent/ssl` into the stack (expect changelog conflicts in
+   `docs/dev/TechnicalDebt.md`; keep both sides), `git submodule update --init 3rdparty/libusb
+   3rdparty/mbedtls` (plus mbedtls's nested `framework`), build, run the suite, measure.
+2. On the PC: Windows build + full suite + GPU matrix of the result; run ps5-opengl (PPSA99005)
+   for the 2631 fix; test 2640's branch; reproduce 2652 with DOOM.
+3. Only then consider posting anything, re-checking each thread first.
+
 ## How the PC session picks this up
 
 ```
@@ -207,8 +229,24 @@ implementations, no pushes, build and test on Linux, keep PR authors' authorship
   (guest threads get the requested size as commit inside the 0x210000 reserve the relinker writes;
   `WindowsPeWriter.cpp:34`, `Thread.cpp:459`, Microsoft's Thread Stack Size docs). Handed to the user
   to post. Check the thread before doing more on it.
-- 2631 (`v_fma_mix*` with f16 round-toward-zero): no reply (the reporter's analysis is complete).
-  A fix is possible with the existing `PackFloat2x16Rtz` IR op, but needs GPU testing: PC job.
+- 2631 (`v_fma_mix*` with f16 round-toward-zero): **fix written in the cloud at ~10:05 UTC** (see
+  the branch): `FLOAT_MODE` f16 rounding toward zero is now translated (truncation of the
+  round-to-odd product-sum in the f64 mix path with overflow stopping at 65504, the bit-exact
+  toward-zero pack for f32-to-f16 results, a round-to-odd intermediate for f16 add/sub), with a
+  CPU test `agc_float16_round_toward_zero`. Rounding toward an infinity still throws. Not measured
+  on hardware: the PC should run the GPU suite and, if possible, ps5-opengl (PPSA99005, homebrew)
+  on the three GPUs before anything is posted. Nobody had replied on the thread as of 10:00 UTC.
+- 2652 (SDK `libc.prx` exports collapse into one return-0 stub during guest module conversion):
+  zero comments as of 10:10 UTC. Affects every catalog homebrew including DOOM (PPSA99666), so the
+  PC can reproduce it directly. Needs a relinker design decision (bind placeholder exports to our
+  libc by NID, or a throwing stub per NID); not started.
+- 2648 (Palworld: `sceAudioOut2EnableChat` and eight kqueue-style kernel event exports absent):
+  not declared in our tree at all (so not in the 390). Candidates for the "write it" track.
+- 2640 (Windows: executable directory outside the ANSI code page): reporter's fix branch
+  `justdoston/AnyPS5` `fix/windows-unicode-executable-path`, Wine-tested only. PC job: test on
+  real Windows (a `ü日` directory); harvest candidate.
+- 2642 (structurizer never terminates on a two-latch loop): design question with a full repro;
+  nothing to add.
 - 2621 (R&C `DB_SHADER_CONTROL`): skipped, a maintainer design question that needs the title.
 - 2601 (unlink on read-only files, Windows): handled upstream in the thread. MarcZX100's rebased
   branch `codex/fix-unlink-readonly-2601` (`505fe780b`) is a harvest candidate.
