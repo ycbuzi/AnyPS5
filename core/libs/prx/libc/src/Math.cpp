@@ -27,6 +27,9 @@ double APS5_VABI hypot_nid_postfix(double x, double y) { return std::hypot(x, y)
 float APS5_VABI tanf_nid_postfix(float x) { return std::tan(x); }
 float APS5_VABI log10f_nid_postfix(float x) { return std::log10(x); }
 float APS5_VABI logbf_nid_postfix(float x) { return std::logb(x); }
+double APS5_VABI logb_nid_postfix(double x) { return std::logb(x); }
+float APS5_VABI sinhf_nid_postfix(float x) { return std::sinh(x); }
+float APS5_VABI nearbyintf_nid_postfix(float x) { return std::nearbyint(x); }
 double APS5_VABI exp2_nid_postfix(double x) { return std::exp2(x); }
 double APS5_VABI ldexp_nid_postfix(double x, int exponent) { return std::ldexp(x, exponent); }
 double APS5_VABI scalbn_nid_postfix(double x, int exponent) { return std::scalbn(x, exponent); }
@@ -141,6 +144,18 @@ int APS5_VABI __fpclassifyf_nid_postfix(float x) {
     return Normal;
 }
 int APS5_VABI __signbitf_nid_postfix(float x) { return std::signbit(x) ? 1 : 0; }
+
+float APS5_VABI __powisf2_nid_postfix(float base, int exponent) {
+    const bool reciprocal = exponent < 0;
+    float result = 1.0f;
+    while (true) {
+        if (exponent & 1) result *= base;
+        exponent /= 2;
+        if (exponent == 0) break;
+        base *= base;
+    }
+    return reciprocal ? 1.0f / result : result;
+}
 
 static std::mutex g_randLock;
 static std::uint32_t g_randState = 1;
