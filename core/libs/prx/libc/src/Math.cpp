@@ -79,6 +79,10 @@ float APS5_VABI atanf_nid_postfix(float x) { return std::atan(x); }
 double APS5_VABI atan2_nid_postfix(double y, double x) { return std::atan2(y, x); }
 float APS5_VABI powf_nid_postfix(float base, float exp) { return std::pow(base, exp); }
 double APS5_VABI pow_nid_postfix(double base, double exp) { return std::pow(base, exp); }
+double APS5_VABI fmin_nid_postfix(double x, double y) { return std::fmin(x, y); }
+double APS5_VABI fmax_nid_postfix(double x, double y) { return std::fmax(x, y); }
+float APS5_VABI fminf_nid_postfix(float x, float y) { return std::fmin(x, y); }
+float APS5_VABI fmaxf_nid_postfix(float x, float y) { return std::fmax(x, y); }
 float APS5_VABI expf_nid_postfix(float x) { return std::exp(x); }
 float APS5_VABI exp2f_nid_postfix(float x) { return std::exp2(x); }
 float APS5_VABI logf_nid_postfix(float x) { return std::log(x); }
