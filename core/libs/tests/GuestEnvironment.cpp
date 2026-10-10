@@ -1,7 +1,9 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include <cerrno>
 #include <cstdlib>
 #include <cstring>
 extern "C" {
+int APS5_VABI gethostname_nid_postfix(char*, std::size_t);
 char* APS5_VABI getenv_nid_postfix(const char*);
 int APS5_VABI setenv_nid_postfix(const char*, const char*, int);
 int APS5_VABI unsetenv_nid_postfix(const char*);
@@ -10,6 +12,13 @@ int* APS5_VABI __error_nid_postfix();
 }
 static void Require(bool value) { if (!value) std::abort(); }
 int main() {
+    char hostName[256]{};
+    Require(gethostname_nid_postfix(hostName, sizeof(hostName)) == 0);
+    Require(hostName[0] != '\0' && std::memchr(hostName, '\0', sizeof(hostName)) != nullptr);
+    Require(gethostname_nid_postfix(nullptr, 0) == -1 && *__error_nid_postfix() == EINVAL);
+    char tooShort[] = {'x'};
+    Require(gethostname_nid_postfix(tooShort, sizeof(tooShort)) == -1 && *__error_nid_postfix() == ENAMETOOLONG);
+    Require(tooShort[0] == 'x');
     const char* key = "ANYPS5_GUEST_ENV_TEST_4C27";
 #ifdef _WIN32
     Require(_putenv_s(key, "inherited") == 0);
