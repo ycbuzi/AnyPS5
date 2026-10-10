@@ -29,15 +29,6 @@ void* APS5_VABI memrchr_nid_postfix(const void* memory, int character, std::size
     return nullptr;
 }
 
-std::size_t APS5_VABI wcscspn_nid_postfix(const char16_t* text, const char16_t* rejected) {
-    std::size_t count = 0;
-    for (; text[count] != 0; ++count) {
-        for (const auto* current = rejected; *current != 0; ++current) {
-            if (text[count] == *current) return count;
-        }
-    }
-    return count;
-}
 
 int APS5_VABI flsl_nid_postfix(std::int64_t value) {
     return static_cast<int>(std::bit_width(static_cast<std::uint64_t>(value)));

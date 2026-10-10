@@ -59,8 +59,6 @@ static_assert(sizeof(long double) == 16 && std::numeric_limits<long double>::dig
 extern "C" {
 
 float APS5_VABI sqrtf_nid_postfix(float value) { return std::sqrt(value); }
-float APS5_VABI fabsf_nid_postfix(float value) { return std::fabs(value); }
-float APS5_VABI ceilf_nid_postfix(float value) { return std::ceil(value); }
 float APS5_VABI truncf_nid_postfix(float value) { return std::trunc(value); }
 double APS5_VABI nearbyint_nid_postfix(double value) { return std::nearbyint(value); }
 

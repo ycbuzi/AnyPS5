@@ -24,7 +24,6 @@ std::lldiv_t APS5_VABI ldiv_nid_postfix(std::int64_t numerator, std::int64_t den
 
 float APS5_VABI fmodf_nid_postfix(float x, float y) { return std::fmod(x, y); }
 float APS5_VABI nextafterf_nid_postfix(float x, float y) { return std::nextafter(x, y); }
-double APS5_VABI nextafter_nid_postfix(double x, double y) { return std::nextafter(x, y); }
 float APS5_VABI tgammaf_nid_postfix(float x) { return std::tgamma(x); }
 float APS5_VABI asinf_nid_postfix(float x) { return std::asin(x); }
 float APS5_VABI acosf_nid_postfix(float x) { return std::acos(x); }
@@ -94,10 +93,6 @@ float APS5_VABI atanf_nid_postfix(float x) { return std::atan(x); }
 double APS5_VABI atan2_nid_postfix(double y, double x) { return std::atan2(y, x); }
 float APS5_VABI powf_nid_postfix(float base, float exp) { return std::pow(base, exp); }
 double APS5_VABI pow_nid_postfix(double base, double exp) { return std::pow(base, exp); }
-double APS5_VABI fmin_nid_postfix(double x, double y) { return std::fmin(x, y); }
-double APS5_VABI fmax_nid_postfix(double x, double y) { return std::fmax(x, y); }
-float APS5_VABI fminf_nid_postfix(float x, float y) { return std::fmin(x, y); }
-float APS5_VABI fmaxf_nid_postfix(float x, float y) { return std::fmax(x, y); }
 double APS5_VABI __powidf2_nid_postfix(double a, int b) {
     const bool recip = b < 0;
     double r = 1.0;
