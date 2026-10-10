@@ -14,6 +14,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StringExtensions.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Math.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ExtendedMath.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/NumericHelpers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Time.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FileAndHeap.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StdioExtras.cpp
@@ -47,6 +48,7 @@ target_sources(libc PRIVATE
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/ExtendedMath.cpp
         TARGET_DIRECTORY libc PROPERTIES COMPILE_OPTIONS "-frounding-math")
 
+set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/NumericHelpers.cpp
 target_include_directories(libc PRIVATE
         ${LIBS_INCLUDE_DIR}
 )
@@ -68,6 +70,13 @@ if(BUILD_TESTING)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 
+    add_test_executable(guest_numeric_helpers_tests ${LIBS_INCLUDE_DIR}/tests/GuestNumericHelpers.cpp)
+    target_include_directories(guest_numeric_helpers_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_numeric_helpers_tests PRIVATE libc)
+    configure_windows_unwind(guest_numeric_helpers_tests)
+    set_source_files_properties(${LIBS_INCLUDE_DIR}/tests/GuestNumericHelpers.cpp
+    add_test(NAME guest_numeric_helpers COMMAND guest_numeric_helpers_tests)
+        set_tests_properties(guest_numeric_helpers PROPERTIES ENVIRONMENT_MODIFICATION
     add_test_executable(guest_time_conversion_tests ${LIBS_INCLUDE_DIR}/tests/GuestTimeConversion.cpp)
     target_include_directories(guest_time_conversion_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_time_conversion_tests PRIVATE libc)
