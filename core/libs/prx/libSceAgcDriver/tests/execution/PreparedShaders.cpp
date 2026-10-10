@@ -189,7 +189,26 @@ void PrepareMultisampledStorage(AgcDriver::VulkanDevice& device) {
     ExpectFailure([&] { static_cast<void>(PrepareShader(request)); }, "storage image multisampling is unavailable on the target device");
 }
 
+void UnsupportedTypeRegistration() {
+    alignas(256) static const std::array<std::uint32_t, 1> code{0xbf810000u};
+    struct Header {
+        Shader shader{};
+        std::array<ShaderRegister, 8> registers{{{0, 0x1218}, {1, 0x40104004}, {2, 0xa0}, {5, 0}, {3, 6}, {4, 0xc}, {6, 0}, {7, 0}}};
+    } header;
+    header.shader.file_header = 0x34333231u;
+    header.shader.version = 0x18;
+    header.shader.header_size = sizeof(header);
+    header.shader.shader_size = sizeof(code);
+    header.shader.code = code.data();
+    header.shader.sh_registers = header.registers.data();
+    header.shader.num_sh_registers = header.registers.size();
+    header.shader.type = 8;
+    AgcDriverRegisterShader_nid_postfix(&header.shader);
+    AgcDriverRegisterShader_nid_postfix(&header.shader);
+}
+
 void Registration(bool indirect) {
+    UnsupportedTypeRegistration();
     alignas(256) std::array<std::uint32_t, 1> code{0xbf810000u};
     struct Header {
         Shader shader{};
@@ -261,11 +280,45 @@ void Registration(bool indirect) {
     Require(destination == 0, "failed dispatch executed a subsequent memory write");
 }
 
+void DeferredRegistration() {
+    alignas(256) std::array<std::uint32_t, 2> code{0xbe842104u, 0xbf810000u};
+    struct Header {
+        Shader shader{};
+        std::array<ShaderRegister, 8> registers{};
+        ShaderSpecialRegs specials{};
+    } header;
+    const auto address = reinterpret_cast<std::uintptr_t>(code.data());
+    header.shader.file_header = 0x34333231u;
+    header.shader.version = 0x18;
+    header.shader.header_size = sizeof(header);
+    header.shader.shader_size = sizeof(code);
+    header.shader.code = code.data();
+    header.shader.sh_registers = header.registers.data();
+    header.shader.num_sh_registers = header.registers.size();
+    header.shader.specials = &header.specials;
+    header.specials.dispatch_modifier = 0x8000;
+    header.registers = {{{0x20c, static_cast<std::uint32_t>(address >> 8u)}, {0x20d, static_cast<std::uint32_t>(address >> 40u)}, {0x207, 1}, {0x208, 1}, {0x209, 1}, {0x212, 0}, {0x213, 12}, {0x207, 1}}};
+    AgcDriverRegisterShader_nid_postfix(&header.shader);
+    std::vector<std::uint32_t> commands;
+    for (const auto reg : header.registers) commands.insert(commands.end(), {0xc0017600u, reg.offset, reg.value});
+    commands.insert(commands.end(), {0xc0031500u, 1, 1, 1, 0x8041});
+    Packet packet{commands.data(), static_cast<std::uint32_t>(commands.size()), 0, {}};
+    sceAgcDriverSubmitAcb(0x20, &packet);
+    ExpectFailure([] { AgcDriverWaitIdle_nid_postfix(); }, "not statically resolvable");
+    ExpectFailure([] { AgcDriverShutdown_nid_postfix(); }, "not statically resolvable");
+}
+
 }
 
 int main(int argc, char** argv) {
     try {
-        Require(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--indirect" || std::string_view(argv[1]) == "--fail-before-registration")), "invalid test arguments");
+        Require(argc == 1 || (argc == 2 && (std::string_view(argv[1]) == "--indirect" || std::string_view(argv[1]) == "--fail-before-registration" || std::string_view(argv[1]) == "--deferred")), "invalid test arguments");
+        if (argc == 2 && std::string_view(argv[1]) == "--deferred") {
+            if (!OpenVulkanTestDevice()) return VulkanTestSkipped;
+            DeferredRegistration();
+            std::cout << "deferred shader preparation tests passed\n";
+            return 0;
+        }
         auto device = OpenVulkanTestDevice();
         if (!device) return VulkanTestSkipped;
         Run(*device);

@@ -8,7 +8,12 @@
 #include <functional>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <set>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace Relinker {
 
@@ -27,6 +32,19 @@ std::vector<std::string> ReadNeededNames(const Domain::SysVDynamicSection& dynam
         names.emplace_back(start, end);
     }
     return names;
+}
+
+std::string FoldFilename(std::string name) {
+    for (auto& character : name) if (character >= 'A' && character <= 'Z') character = static_cast<char>(character + ('a' - 'A'));
+    return name;
+}
+
+std::string ModuleStem(std::string name, const bool windows) {
+    if (windows) name = FoldFilename(std::move(name));
+    for (const std::string_view suffix : {".debug_prx", ".sprx", ".prx"}) {
+        if (name.size() > suffix.size() && name.ends_with(suffix)) return name.substr(0, name.size() - suffix.size());
+    }
+    return {};
 }
 
 }
@@ -68,22 +86,45 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
     }
     const auto neededNames = ReadNeededNames(dynamic);
     std::set<std::string> missingNeeded;
+    std::map<std::string, std::filesystem::path> neededAliases;
     for (const auto& name : neededNames) {
         if (excludedModules.contains(name)) continue;
-        if (std::none_of(paths.begin(), paths.end(), [&](const auto& path) { return path.filename().string() == name; })) missingNeeded.insert(name);
+        if (std::any_of(paths.begin(), paths.end(), [&](const auto& path) { return path.filename().string() == name || (windows && FoldFilename(path.filename().string()) == FoldFilename(name)); })) continue;
+        const auto stem = ModuleStem(name, windows);
+        const auto alias = stem.empty() ? paths.end() : std::find_if(paths.begin(), paths.end(), [&](const auto& path) { return ModuleStem(path.filename().string(), windows) == stem; });
+        if (alias != paths.end()) neededAliases.emplace(name, *alias);
+        else missingNeeded.insert(name);
     }
     if (!missingNeeded.empty()) {
         std::map<std::string, std::filesystem::path> found;
+        std::map<std::string, std::filesystem::path> foundByStem;
+        const auto record = [](std::map<std::string, std::filesystem::path>& matches, const std::string& name, const std::filesystem::path& path) {
+            if (!matches.emplace(name, path).second) throw Domain::RelinkerException("Ambiguous needed module: " + matches.at(name).string() + " and " + path.string());
+        };
         for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator(); ++it) {
             if (it->is_directory() && std::find(directories.begin(), directories.end(), it->path()) != directories.end()) {
                 it.disable_recursion_pending();
                 continue;
             }
+            if (!it->is_regular_file()) continue;
             const auto name = it->path().filename().string();
-            if (!it->is_regular_file() || !missingNeeded.contains(name) || !isElf(it->path())) continue;
-            if (!found.emplace(name, it->path()).second) throw Domain::RelinkerException("Ambiguous needed module: " + found.at(name).string() + " and " + it->path().string());
+            const auto stem = ModuleStem(name, windows);
+            std::vector<std::string> stemMatches;
+            if (!stem.empty()) {
+                for (const auto& needed : missingNeeded) if (needed != name && ModuleStem(needed, windows) == stem) stemMatches.push_back(needed);
+            }
+            if ((!missingNeeded.contains(name) && stemMatches.empty()) || !isElf(it->path())) continue;
+            if (missingNeeded.contains(name)) record(found, name, it->path());
+            for (const auto& needed : stemMatches) record(foundByStem, needed, it->path());
         }
-        for (const auto& [name, path] : found) paths.push_back(path);
+        for (const auto& name : missingNeeded) {
+            const auto exact = found.find(name);
+            const auto byStem = foundByStem.find(name);
+            if (exact == found.end() && byStem == foundByStem.end()) continue;
+            const auto& path = exact != found.end() ? exact->second : byStem->second;
+            if (exact == found.end()) neededAliases.emplace(name, path);
+            if (std::find(paths.begin(), paths.end(), path) == paths.end()) paths.push_back(path);
+        }
     }
     Io::FileReader reader;
     std::map<std::filesystem::path, GuestImage> discovered;
@@ -134,6 +175,11 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
     if (paths.empty()) return {};
     if (lazyBinding) throw Domain::RelinkerException("Guest modules require eager binding; --lazy-binding is incompatible");
     std::vector<GuestImage> images;
+    if (std::filesystem::exists(outputPath)) {
+        for (const auto& path : paths)
+            if (std::filesystem::equivalent(path, outputPath))
+                throw Domain::RelinkerException("Executable output would overwrite an input module: " + outputPath.string());
+    }
     std::map<std::string, std::vector<std::size_t>> exports;
     std::map<std::string, std::set<std::size_t>> sharedExports;
     std::set<std::string> outputNames;
@@ -177,12 +223,20 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
             const auto [found, inserted] = guestNames.emplace(name, index);
             if (!inserted && found->second != index) throw Domain::RelinkerException("Ambiguous guest dependency name: " + name);
         }
-        if (windows) windowsGuestFiles.emplace(foldFilename(images[index].SourcePath.filename().string()), index);
+        if (windows) windowsGuestFiles.emplace(FoldFilename(images[index].SourcePath.filename().string()), index);
+    }
+    for (const auto& [name, path] : neededAliases) {
+        if (guestNames.contains(name)) continue;
+        const auto image = std::find_if(images.begin(), images.end(), [&](const auto& candidate) { return candidate.SourcePath == path; });
+        if (image == images.end()) throw Domain::RelinkerException("Needed module alias has no guest image: " + name);
+        const auto index = static_cast<std::size_t>(image - images.begin());
+        const auto [found, inserted] = guestNames.emplace(name, index);
+        if (!inserted && found->second != index) throw Domain::RelinkerException("Ambiguous guest dependency name: " + name);
     }
     const auto findGuest = [&](const std::string& name) {
         const auto exact = guestNames.find(name);
         if (exact != guestNames.end() || !windows) return exact;
-        const auto file = windowsGuestFiles.find(foldFilename(name));
+        const auto file = windowsGuestFiles.find(FoldFilename(name));
         return file == windowsGuestFiles.end() ? guestNames.end() : guestNames.emplace(name, file->second).first;
     };
     const auto resolveIdentity = [&](const std::string& name) {
@@ -294,17 +348,13 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
     };
     for (const auto index : order) if (!windows) addNeeded("$ORIGIN/app0/" + images[index].SourcePath.parent_path().lexically_relative(root).generic_string() + "/" + images[index].OutputName);
     for (const auto& name : hostLibraries) addNeeded(name);
-    std::string guestRunPath = runPath;
-    if (!windows) {
-        if (guestRunPath == "$ORIGIN") guestRunPath = "$ORIGIN/../..";
-        else if (guestRunPath.starts_with("$ORIGIN/")) guestRunPath.insert(8, "../../");
-        else if (!std::filesystem::path(guestRunPath).is_absolute()) throw Domain::RelinkerException("Guest Linux run path must be absolute or begin with $ORIGIN");
-    }
+    if (!windows && runPath != "$ORIGIN" && !runPath.starts_with("$ORIGIN/") && !std::filesystem::path(runPath).is_absolute()) throw Domain::RelinkerException("Guest Linux run path must be absolute or begin with $ORIGIN");
+    const auto outputDirectory = std::filesystem::absolute(outputPath).parent_path().lexically_normal();
     std::vector<GuestArtifact> artifacts;
     for (const auto index : order) {
         const auto& image = images[index];
         const auto relativeDirectory = "app0/" + image.SourcePath.parent_path().lexically_relative(root).generic_string();
-        const auto destination = std::filesystem::absolute(outputPath).parent_path() / relativeDirectory;
+        const auto destination = outputDirectory / relativeDirectory;
         const auto target = destination / image.OutputName;
         if (target.lexically_normal() == std::filesystem::absolute(outputPath).lexically_normal()) throw Domain::RelinkerException("Guest output collides with the executable output");
         for (const auto& source : paths) if (std::filesystem::exists(target) && std::filesystem::equivalent(source, target)) throw Domain::RelinkerException("Guest output would overwrite an input module: " + target.string());
@@ -316,6 +366,11 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         std::vector<std::uint8_t> output;
         if (windows) output = Elfpatcher::GuestModuleWriter().WriteWindows(image, runtime);
         else {
+            std::string guestRunPath = runPath;
+            if (runPath == "$ORIGIN" || runPath.starts_with("$ORIGIN/")) {
+                const auto relativeRoot = outputDirectory.lexically_relative(destination.lexically_normal()).generic_string();
+                guestRunPath = "$ORIGIN/" + relativeRoot + runPath.substr(7);
+            }
             std::vector<std::string> needed;
             for (const auto dependency : dependencies[index]) {
                 const auto dependencyPath = images[dependency].SourcePath.parent_path() / images[dependency].OutputName;

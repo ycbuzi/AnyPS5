@@ -211,6 +211,13 @@ int main() {
     Require(sceKernelOpen(missingName.c_str(), 0, 0) == static_cast<int>(0x80020002u));
     Require(open_nid_postfix(presentName.c_str(), 0x0a02, 0644) == -1 && *__error_nid_postfix() == 17);
     Require(_open_nid_postfix(presentName.c_str(), 0x0a02, 0644) == -1 && *__error_nid_postfix() == 17);
+    Require(open_nid_postfix(rootName.c_str(), 0x0a02, 0644) == -1 && *__error_nid_postfix() == 17);
+    Require(open_nid_postfix(rootName.c_str(), 0x0a00, 0644) == -1 && *__error_nid_postfix() == 17);
+    Require(open_nid_postfix(rootName.c_str(), 0x0200, 0644) == -1 && *__error_nid_postfix() == 21);
+    Require(open_nid_postfix(rootName.c_str(), 0x0002, 0) == -1 && *__error_nid_postfix() == 21);
+    Require(open_nid_postfix(rootName.c_str(), 0x0001, 0) == -1 && *__error_nid_postfix() == 21);
+    const int directoryDescriptor = open_nid_postfix(rootName.c_str(), 0, 0);
+    Require(directoryDescriptor >= 0 && close_nid_postfix(directoryDescriptor) == 0);
     Require(open_nid_postfix("", 0, 0) == -1 && *__error_nid_postfix() == 2);
     Require(_open_nid_postfix("", 0) == -1 && *__error_nid_postfix() == 2);
     Require(open_nid_postfix(nullptr, 0, 0) == -1 && *__error_nid_postfix() == 14);
@@ -225,6 +232,8 @@ int main() {
     Require(sceKernelUnlink(missingName.c_str()) == static_cast<int>(0x80020002u));
     Require(unlink_nid_postfix("") == -1 && *__error_nid_postfix() == 2);
     Require(unlink_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == 14);
+    Require(unlink_nid_postfix(rootName.c_str()) == -1 && *__error_nid_postfix() == 1 && std::filesystem::is_directory(root));
+    Require(sceKernelUnlink(rootName.c_str()) == static_cast<int>(0x80020001u));
     const int closable = sceKernelOpen(presentName.c_str(), 0, 0);
     Require(closable >= 0 && sceKernelClose(closable) == 0);
     Require(sceKernelClose(closable) == static_cast<int>(0x80020009u));

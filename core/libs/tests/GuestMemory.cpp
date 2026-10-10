@@ -37,6 +37,7 @@ extern "C" {
 void* APS5_VABI mmap_nid_postfix(void*, std::size_t, int, int, int, std::int64_t) noexcept;
 int APS5_VABI munmap_nid_postfix(void*, std::size_t) noexcept;
 int APS5_VABI mprotect_nid_postfix(void*, std::size_t, int) noexcept;
+int APS5_VABI madvise_nid_postfix(void*, std::size_t, int);
 int* APS5_VABI __error_nid_postfix();
 int APS5_VABI sceKernelMapNamedFlexibleMemory(void**, std::size_t, int, int, const char*);
 int APS5_VABI sceKernelMapNamedFlexibleMemoryInternal(void**, std::size_t, int, int, const char*);
@@ -278,13 +279,17 @@ static void CheckReleaseDirectMemoryClearsMappings() {
     Require(sceKernelVirtualQuery(mapped, 0, &split, sizeof(split)) == 0);
     Require(split.is_direct && split.offset == static_cast<std::uint64_t>(phys));
     VirtualQueryInfo dropped{};
-    Require(sceKernelVirtualQuery(static_cast<unsigned char*>(mapped) + page, 0, &dropped, sizeof(dropped)) == 0);
-    Require(!dropped.is_direct && dropped.offset == 0);
+    const int droppedResult = sceKernelVirtualQuery(static_cast<unsigned char*>(mapped) + page, 0, &dropped, sizeof(dropped));
+    Require(droppedResult != 0 || !dropped.is_direct);
+    void* alias = nullptr;
+    Require(sceKernelMapDirectMemory(&alias, page, 3, 0, phys, 0) == 0);
     Require(sceKernelReleaseDirectMemory(phys, page) == 0);
-    VirtualQueryInfo cleared{};
-    Require(sceKernelVirtualQuery(mapped, 0, &cleared, sizeof(cleared)) == 0);
-    Require(!cleared.is_direct && cleared.offset == 0);
-    Require(sceKernelMunmap(mapped, page * 2) == 0);
+    for (void* view : {mapped, alias}) {
+        VirtualQueryInfo cleared{};
+        Require(sceKernelVirtualQuery(view, 0, &cleared, sizeof(cleared)) != 0);
+        VirtualQueryInfo next{};
+        if (sceKernelVirtualQuery(view, 1, &next, sizeof(next)) == 0) Require(next.start != reinterpret_cast<std::uintptr_t>(view));
+    }
 }
 
 static void CheckFixedMappingReplacesPartialOverlap() {
@@ -1080,8 +1085,85 @@ static void CheckDirectMemoryWriteWatch() {
 }
 #endif
 
+static void CheckVirtualQuerySplitFlexibleRanges() {
+    constexpr std::size_t page = 0x4000;
+    void* mapped = nullptr;
+    Require(sceKernelMapFlexibleMemory(&mapped, page * 3, 3, 0) == 0);
+    auto* bytes = static_cast<unsigned char*>(mapped);
+    bytes[0] = 17;
+    bytes[page * 2] = 29;
+    Require(sceKernelMprotect(bytes + page, page, 1) == 0);
+    for (std::size_t index = 0; index < 3; ++index) {
+        VirtualQueryInfo info{};
+        Require(sceKernelVirtualQuery(bytes + page * index, 0, &info, sizeof(info)) == 0);
+        Require(info.start == reinterpret_cast<std::uintptr_t>(bytes + page * index));
+        Require(info.end == info.start + page);
+        Require(info.protection == (index == 1 ? 1 : 3));
+        Require(info.is_committed && info.is_flexible && !info.is_direct);
+    }
+    Require(sceKernelMunmap(bytes + page, page) == 0);
+    for (std::size_t index : {std::size_t{0}, std::size_t{2}}) {
+        VirtualQueryInfo info{};
+        Require(sceKernelVirtualQuery(bytes + page * index, 0, &info, sizeof(info)) == 0);
+        Require(info.start == reinterpret_cast<std::uintptr_t>(bytes + page * index));
+        Require(info.end == info.start + page);
+    }
+    VirtualQueryInfo next{};
+    Require(sceKernelVirtualQuery(bytes + page, 1, &next, sizeof(next)) == 0);
+    Require(next.start == reinterpret_cast<std::uintptr_t>(bytes + page * 2));
+    Require(next.end == next.start + page && next.protection == 3);
+    Require(bytes[0] == 17 && bytes[page * 2] == 29);
+    Require(sceKernelMunmap(bytes, page) == 0);
+    Require(sceKernelMunmap(bytes + page * 2, page) == 0);
+}
+
+static void CheckVirtualQueryForNonReadableGuestRange() {
+    constexpr std::size_t page = 0x4000;
+    auto* mapped = static_cast<unsigned char*>(mmap_nid_postfix(nullptr, page, 3, 0x1002, -1, 0));
+    const auto failed = reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1));
+    Require(mapped != failed);
+    Require(mprotect_nid_postfix(mapped, page, 0) == 0);
+    VirtualQueryInfo info{};
+    Require(sceKernelVirtualQuery(mapped, 0, &info, sizeof(info)) == 0);
+    Require(info.start == reinterpret_cast<std::uintptr_t>(mapped));
+    Require(info.end == info.start + page && info.protection == 0);
+    Require(sceKernelMunmap(mapped, page) == 0);
+}
+
+static void CheckVirtualQueryPartialMunmap() {
+    constexpr std::size_t page = 0x4000;
+    const auto failed = reinterpret_cast<void*>(static_cast<std::uintptr_t>(-1));
+    void* raw = mmap_nid_postfix(nullptr, page * 3, 3, 0x1002, -1, 0);
+    Require(raw != failed);
+    auto* memory = static_cast<unsigned char*>(raw);
+    VirtualQueryInfo before{};
+    Require(sceKernelVirtualQuery(memory, 0, &before, sizeof(before)) == 0);
+    Require(before.start == reinterpret_cast<std::uintptr_t>(memory));
+    Require(before.end == reinterpret_cast<std::uintptr_t>(memory) + page * 3);
+    Require(munmap_nid_postfix(memory + page, page) == 0);
+    VirtualQueryInfo first{};
+    Require(sceKernelVirtualQuery(memory, 0, &first, sizeof(first)) == 0);
+    Require(first.start == reinterpret_cast<std::uintptr_t>(memory));
+    Require(first.end == reinterpret_cast<std::uintptr_t>(memory) + page);
+    VirtualQueryInfo middle{};
+    Require(sceKernelVirtualQuery(memory + page, 0, &middle, sizeof(middle)) == SCE_KERNEL_ERROR_EACCES);
+    VirtualQueryInfo next{};
+    Require(sceKernelVirtualQuery(memory + page, 1, &next, sizeof(next)) == 0);
+    Require(next.start == reinterpret_cast<std::uintptr_t>(memory) + page * 2);
+    Require(next.end == reinterpret_cast<std::uintptr_t>(memory) + page * 3);
+    VirtualQueryInfo tail{};
+    Require(sceKernelVirtualQuery(memory + page * 2, 0, &tail, sizeof(tail)) == 0);
+    Require(tail.start == reinterpret_cast<std::uintptr_t>(memory) + page * 2);
+    Require(tail.end == reinterpret_cast<std::uintptr_t>(memory) + page * 3);
+    Require(munmap_nid_postfix(memory, page) == 0);
+    Require(munmap_nid_postfix(memory + page * 2, page) == 0);
+}
+
 int main() {
+    CheckVirtualQuerySplitFlexibleRanges();
+    CheckVirtualQueryForNonReadableGuestRange();
     CheckReleaseFlexibleMemory();
+    CheckVirtualQueryPartialMunmap();
     CheckNamedAndHintedMappings();
     CheckInternalNamedFlexibleMapping();
     CheckBatchMapStopsAtInvalidEntry();
@@ -1155,6 +1237,19 @@ int main() {
         GuestAllocations::Mutation mutation;
         Require(mutation.Find(memory).writable);
     }
+    for (int advice = 0; advice <= 9; ++advice) Require(madvise_nid_postfix(memory, page * 3, advice) == 0);
+    Require(memory[0] == 42 && memory[page * 2] == 73);
+    Require(madvise_nid_postfix(memory + 1, 0, 4) == 0);
+    Require(madvise_nid_postfix(memory, page, 11) == -1 && *__error_nid_postfix() == 22);
+    *__error_nid_postfix() = 0;
+    Require(madvise_nid_postfix(memory, page, -1) == -1 && *__error_nid_postfix() == 22);
+    *__error_nid_postfix() = 0;
+    Require(madvise_nid_postfix(memory, 0, 11) == -1 && *__error_nid_postfix() == 22);
+    *__error_nid_postfix() = 0;
+    Require(madvise_nid_postfix(memory, std::numeric_limits<std::size_t>::max(), 0) == -1 && *__error_nid_postfix() == 22);
+    *__error_nid_postfix() = 0;
+    Require(madvise_nid_postfix(reinterpret_cast<void*>(0x800000000000), 1, 0) == -1 && *__error_nid_postfix() == 22);
+    Require(madvise_nid_postfix(reinterpret_cast<void*>(0x7fffffffc000), 0x4000, 4) == 0);
     Require(munmap_nid_postfix(memory + 1, page) == -1 && *__error_nid_postfix() == 22);
     Require(munmap_nid_postfix(memory, 0) == -1 && *__error_nid_postfix() == 22);
     Require(memory[0] == 42);
@@ -1164,6 +1259,7 @@ int main() {
     Require(memory[page * 2] == 73);
     Require(munmap_nid_postfix(memory + page * 2, page) == 0);
     Require(munmap_nid_postfix(memory, page) == -1);
+    Require(madvise_nid_postfix(memory, page, 4) == 0);
     *__error_nid_postfix() = 0;
     Require(mprotect_nid_postfix(memory, page, 1) == -1 && *__error_nid_postfix() == 22);
     *__error_nid_postfix() = 0;

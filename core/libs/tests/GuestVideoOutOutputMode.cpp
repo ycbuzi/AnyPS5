@@ -2,6 +2,7 @@
 #include "prx/libc/include/Shutdown.hpp"
 #include <array>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
@@ -34,12 +35,18 @@ int main() {
     for (std::size_t index = 0; index < raw.size(); ++index) Require(raw[index] == (index == 2 ? 0xFF : 0));
     Require(sceVideoOutInitializeOutputOptions(nullptr) == INVALID_ADDRESS);
 
-    for (int handle : {-1, 0, 1, 0x7FFFFFFF}) {
-        Require(sceVideoOutIsOutputSupported(handle, 1, &options, nullptr, 0) == INVALID_HANDLE);
-        Require(sceVideoOutIsOutputSupported(handle, 2, nullptr, &options, 1) == INVALID_HANDLE);
+    int handle = 0;
+    try {
+        for (int unopened : {-1, 0, 1, 0x7FFFFFFF}) {
+            Require(sceVideoOutIsOutputSupported(unopened, 1, &options, nullptr, 0) == INVALID_HANDLE);
+            Require(sceVideoOutIsOutputSupported(unopened, 2, nullptr, &options, 1) == INVALID_HANDLE);
+        }
+        handle = sceVideoOutOpen(SYSTEM_USER, MAIN_BUS, 0, nullptr);
+    } catch (const std::runtime_error& error) {
+        if (std::getenv("ANYPS5_REQUIRE_DISPLAY") != nullptr) throw;
+        std::printf("skipped, no display or Vulkan device: %s\n", error.what());
+        return 77;
     }
-
-    const int handle = sceVideoOutOpen(SYSTEM_USER, MAIN_BUS, 0, nullptr);
     Require(handle > 0);
     Require(sceVideoOutIsOutputSupported(handle, 1, &options, nullptr, 0) == 1);
     Require(sceVideoOutIsOutputSupported(handle, 1, nullptr, nullptr, 0) == 1);
