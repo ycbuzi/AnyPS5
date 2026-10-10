@@ -25,7 +25,11 @@ def resolve_additive(path):
         if base.strip(): ok[0] = False; return m.group(0)
         o = ours.splitlines(keepends=True); t = theirs.splitlines(keepends=True)
         if o and not o[-1].endswith("\n"): o[-1] += "\n"
-        return "".join(o + [l for l in t if l not in o])
+        # Only the changelog gets per-line de-duplication (both sides may add the same bullet).
+        # Code keeps every line of both sides: a repeated structural line such as a closing
+        # parenthesis is not a duplicate, and dropping it broke libc/CMakeLists.txt on 2026-10-10.
+        if path.endswith(".md"): return "".join(o + [l for l in t if l not in o])
+        return "".join(o + t)
     new = HUNK.sub(keep_both, text)
     if not ok[0] or "<<<<<<<" in new or ">>>>>>>" in new: return False
     (repo / path).write_text(new, encoding="utf-8"); return True

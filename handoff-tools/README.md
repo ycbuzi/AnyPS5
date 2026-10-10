@@ -30,6 +30,9 @@ Paths point at the cloud session's scratchpad; adjust before reuse.
 | `harvest.py` | Trial-merge every unmerged upstream PR head (`refs/pr/N`, fetched with `git fetch upstream '+refs/pull/N/head:refs/pr/N'`) into a scratch worktree and record the change in implemented/total for the libraries it touches, using `tools/progress.py`'s own scanner. |
 | `hollow.py` | Flag newly "implemented" functions whose body only returns a constant/error or throws. A heuristic: read the bodies before trusting it. |
 | `stack.py` | Stack PR heads one at a time, keeping a PR only if the % rises on our tree; changelog-only conflicts are resolved by keeping both sides. |
+| `stack2.py` | `stack.py` plus: resolves purely additive conflicts in any file by keeping both sides verbatim (changelog bullets are de-duplicated), and rejects a PR that creates a duplicate definition, test or export, or breaks `g++ -fsyntax-only`. Its first version de-duplicated code lines too and dropped eight closing lines from `libc/CMakeLists.txt`; `dropcheck.py` finds such drops and `replay_file.py` rebuilds a file by replaying its merges. |
+| `libdups.py` | Functions defined more than once across a library's sources (link-time "multiple definition"), HEAD vs a base commit. |
+| `coverage.py` | Which of our remaining unimplemented functions any unmerged upstream PR implements, and whether hollow. |
 | `syncheck.sh` | `g++ -fsyntax-only` one file; compare HEAD against the pre-stack commit to find breaks a PR introduced. |
 | `full-build.sh` | Full Linux build of a commit in its own worktree, collecting every failure. |
 | `dupcheck.py` | After a merge, find tests or exports that became duplicated. |

@@ -51,7 +51,11 @@ set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/ExtendedMath.cpp
         TARGET_DIRECTORY libc PROPERTIES COMPILE_OPTIONS "-frounding-math")
 
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/NumericHelpers.cpp
+        TARGET_DIRECTORY libc PROPERTIES COMPILE_OPTIONS "-frounding-math")
+
 set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/Rounding.cpp
+        TARGET_DIRECTORY libc PROPERTIES COMPILE_OPTIONS "-frounding-math")
+
 target_include_directories(libc PRIVATE
         ${LIBS_INCLUDE_DIR}
 )
@@ -78,34 +82,52 @@ if(BUILD_TESTING)
     target_link_libraries(guest_numeric_helpers_tests PRIVATE libc)
     configure_windows_unwind(guest_numeric_helpers_tests)
     set_source_files_properties(${LIBS_INCLUDE_DIR}/tests/GuestNumericHelpers.cpp
+            PROPERTIES COMPILE_OPTIONS "-frounding-math")
     add_test(NAME guest_numeric_helpers COMMAND guest_numeric_helpers_tests)
+    if(WIN32)
         set_tests_properties(guest_numeric_helpers PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+
     add_test_executable(guest_rounding_tests ${LIBS_INCLUDE_DIR}/tests/GuestRounding.cpp)
     target_include_directories(guest_rounding_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_rounding_tests PRIVATE libc)
     configure_windows_unwind(guest_rounding_tests)
     add_test(NAME guest_rounding COMMAND guest_rounding_tests)
+    if(WIN32)
         set_tests_properties(guest_rounding PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+
     add_test_executable(guest_math_exports_tests ${LIBS_INCLUDE_DIR}/tests/GuestMathExports.cpp)
     target_include_directories(guest_math_exports_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_math_exports_tests PRIVATE libc)
     configure_windows_unwind(guest_math_exports_tests)
     add_test(NAME guest_math_exports COMMAND guest_math_exports_tests)
+    if(WIN32)
         set_tests_properties(guest_math_exports PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
     add_test_executable(guest_hardware_concurrency_tests ${LIBS_INCLUDE_DIR}/tests/GuestHardwareConcurrency.cpp)
     target_include_directories(guest_hardware_concurrency_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_hardware_concurrency_tests PRIVATE libc)
     configure_windows_unwind(guest_hardware_concurrency_tests)
     add_test(NAME guest_hardware_concurrency COMMAND guest_hardware_concurrency_tests)
     set_tests_properties(guest_hardware_concurrency PROPERTIES TIMEOUT 30)
+    if(WIN32)
         set_tests_properties(guest_hardware_concurrency PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
     add_test_executable(guest_memmem_tests ${LIBS_INCLUDE_DIR}/tests/GuestMemmem.cpp)
     target_include_directories(guest_memmem_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_memmem_tests PRIVATE libc)
     configure_windows_unwind(guest_memmem_tests)
     add_test(NAME guest_memmem COMMAND guest_memmem_tests)
     set_tests_properties(guest_memmem PROPERTIES TIMEOUT 20)
+    if(WIN32)
         set_tests_properties(guest_memmem PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
     add_test_executable(guest_time_conversion_tests ${LIBS_INCLUDE_DIR}/tests/GuestTimeConversion.cpp)
     target_include_directories(guest_time_conversion_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_time_conversion_tests PRIVATE libc)
