@@ -72,26 +72,29 @@ merge other people's fixes), so our lead shrinks unless we keep harvesting.
 | Branch on ycbuzi/AnyPS5      | What it is |
 |------------------------------|------------|
 | `stack/open-prs`             | `70333e41`, the PC's stack as pushed (42 commits on top of upstream `4e9d298e`). Untouched. |
-| `claude/stoic-turing-wc7bje` | That stack, synced with upstream twice (latest `412fa8b0`, merge `81af6c0a`), plus 49 harvested PRs (cycle 1). |
+| `claude/stoic-turing-wc7bje` | That stack, synced with upstream three times (latest `3afc78464`, merge `9a6e26fe2`), plus 58 harvested PRs (cycles 1-2) and the fix commits listed under cycle 2. |
 
 Completion, measured in the cloud with `python3 tools/progress.py --root <tree> <out-dir>`:
 
-| Tree                                | Implemented | Total | %      |
-|-------------------------------------|-------------|-------|--------|
-| Upstream `main`, `412fa8b0`         | 2689        | 3136  | 85.75% |
-| Ours after the upstream sync        | 2733        | 3151  | 86.73% |
-| **Ours after cycle 1 (49 PRs)**     | **2886**    | **3260** | **88.53%** |
+| Tree                                     | Implemented | Total | %      |
+|------------------------------------------|-------------|-------|--------|
+| Upstream `main`, `3afc78464`             | 2690        | 3138  | 85.72% |
+| Ours after the first upstream sync       | 2733        | 3151  | 86.73% |
+| Ours after cycle 1 (49 PRs)              | 2886        | 3260  | 88.53% |
+| **Ours now, `9a6e26fe2` (cycles 1-2)**   | **2922**    | **3298** | **88.60%** |
 
-Lead over upstream: **+197 implemented functions, +2.78 points.**
+Lead over upstream: **+232 implemented functions, +2.88 points.** 375 functions remain.
 
 Build and test status:
 - Last full Windows suite: **660/660 passed**, on the 29-commit stack (`c44602f8`, base `4e9d298e`).
-- After that: **not yet built on Windows.** A full Linux build of the cycle 1 tip was started in the
-  cloud; see the log below for its result.
-- A Linux syntax check (`g++ -fsyntax-only`) of every library source the 49 PRs changed found no
-  new errors. It could not check files that need FreeType or LibAtrac9 headers.
+- After that: **not yet built on Windows.** The 217 `agc_driver_*` GPU tests can only run on the
+  PC's three GPUs (RTX 4070 SUPER, GTX 1650 SUPER, Radeon 610M); the cloud machine has no GPU.
+- Linux full builds in the cloud (`handoff-tools/cloud/full-build.sh`): build 1 of the cycle 1 tip
+  failed on duplicate definitions (fixed in cycle 2); build 3 failed only on the
+  `ShaderDiskCache.cpp` size assertion (fixed by the `3afc78464` merge); build 4 of `9a6e26fe2`
+  was running when this was written. The log at the end of this file has its result.
 
-### Cycle 1 (cloud, ~09:00-10:10 UTC)
+### Cycle 1 (cloud, ~08:50-09:12 UTC)
 
 1. Synced with upstream `412fa8b0` (+55 commits). Conflicts:
    - `core/libs/tests/GuestFont.cpp`: upstream merged its own fix for 2582 (as 2614), which our
@@ -112,16 +115,35 @@ Build and test status:
    - 2482 (`scePthreadCancel` uses `thread->cancelPending`, which doesn't exist).
    - 2533 (adds `libSceFont/src/Font.cpp` including a `Font.h` that doesn't exist).
 
-Stacked in cycle 1 (49): 867, 967, 989, 1008, 1052, 1169, 1212, 1390, 1527, 1554, 1567, 1574, 1582, 1594, 1637, 1638, 1679, 1681, 1687, 1721, 1724, 1725, 1765, 1767, 1768, 1770, 1773, 1841, 1852, 1875, 1879, 1922, 1982, 1983, 1984, 1998, 2017, 2037, 2038, 2166, 2187, 2213, 2217, 2234, 2271, 2277, 2306, 2308, 2358.
+Stacked in cycle 1 (49): 867, 967, 989, 1008, 1052, 1169, 1212, 1390, 1527, 1554, 1567, 1574, 1582, 1594, 1637, 1638, 1679, 1681, 1687, 1721, 1724, 1725, 1765, 1767, 1768, 1770, 1773, 1841, 1852, 1875, 1879, 1922, 1982, 1983, 1984, 1998, 2017, 2037, 2038, 2166, 2187, 2213, 2217, 2234, 2271, 2277, 2306, 2308, 2358. (1879 was reverted again in cycle 2.)
+
+### Cycle 2 (cloud, ~09:12-09:35 UTC)
+
+1. Re-ran the 38 cycle 1 candidates that conflicted with `handoff-tools/cloud/stack2.py`, which
+   resolves purely additive conflicts and rejects duplicate definitions, duplicate tests/exports and
+   syntax breaks. 10 applied: 1806, 1814, 2058, 2167, 2173, 2216, 2235, 2280, 2309, 2604.
+2. Build 1 of the cycle 1 tip failed: `sceFontDefineAttribute`/`sceFontGetAttribute` defined twice
+   in `libSceFont/src/Style.cpp` (PR 1879 against the base's font work) and eight libc functions
+   defined in two files by overlapping PRs. Reverted 1879's merge (`b1383ca1f`) and removed one copy
+   of each libc duplicate (`38869e765`: kept 2280's fmin/fmax/nextafter, which handle signed zeros
+   and range errors; Math.cpp's ceilf/fabsf; Strings.cpp's wcscspn).
+3. `stack2.py`'s first version de-duplicated code lines inside additive conflicts and dropped eight
+   closing lines from `libc/CMakeLists.txt` (CMake parse error). Fixed the resolver, audited every
+   additive merge (`dropcheck.py`: only that file was damaged), rebuilt it by replaying the merges
+   (`replay_file.py`, `07c08db84`).
+4. Build 3 failed only on `ShaderDiskCache.cpp`'s `sizeof(RecompileResult)` assertion: the stack
+   carried PR 1776's LDS work (`e201003ca`) with upstream's older assertion. Synced with upstream
+   `3afc78464` (+28 commits, `9a6e26fe2`), which merged 1776 and 1492 properly and also upstream's
+   own version of our 2525 fix (`0e03ad0f9`); took upstream's side in the four relinker files.
+5. Re-scored the 12 PR heads that changed upstream since cycle 1: nothing worth stacking (2633 adds
+   one hollow function; 2634 replaces every stub in the tree at once).
 
 ### What the stack has that upstream doesn't
 
 - Our own fixes:
-  - `629affd4` relinker keeps the first of repeated DT_NEEDED libraries instead of failing (2525).
-    Fixes all three sites; upstream `4fbf6ca5` still throws at all three.
-  - `977dcee3` guest_font test isolated from installed system fonts (2582). Upstream has since
-    merged its own version as 2614, so the next upstream merge will probably conflict in
-    `core/libs/tests/GuestFont.cpp`.
+  - `629affd4` (2525, repeated DT_NEEDED) and `977dcee3` (2582, guest_font isolation): upstream has
+    since merged its own versions (`0e03ad0f9` and 2614), so the stack's copies are retired and
+    those files match upstream.
 - PRs stacked at the last step: 2394, 2557, 2446, 2518, 2543 (changelog conflict resolved by hand),
   2497 (include clash in `GuestFont.cpp` resolved by hand).
 - Deliberately left out:
@@ -190,6 +212,9 @@ PC only (Windows, GPUs, posting):
 
 - 2026-10-10 ~08:30-09:00 UTC (cloud): picked up from the PC session, merged upstream `6cc33583`,
   measured 86.76% vs 85.77%, wrote this file and the harvesting plan.
-- 2026-10-10 ~09:00-10:10 UTC (cloud): cycle 1. Synced upstream `412fa8b0`, scored all 1063
+- 2026-10-10 ~08:50-09:12 UTC (cloud): cycle 1. Synced upstream `412fa8b0`, scored all 1063
   unmerged upstream PRs, stacked 49 (86.73% -> 88.53%), dropped 2482 and 2533 (won't compile),
   recovered the PC session's tools into `handoff-tools/`, drafted the 2603 reply.
+- 2026-10-10 ~09:12-09:35 UTC (cloud): cycle 2. Stacked 10 more, fixed the duplicate definitions
+  and the CMake damage, reverted 1879, synced upstream `3afc78464` (now 2922/3298 = 88.60% vs
+  upstream 85.72%), measured the GitHub ceiling for the remaining functions.
