@@ -406,9 +406,10 @@ std::vector<PreparedShaders::Entry> PrepareRegistered(const ShaderSnapshot& snap
     ShaderRecompiler::RecompileRequest request{{stage, address, code, snapshot.headerAddress, snapshot.header}, {wave, firstUser, userData, compute, pixel, vertex, memory, RegisteredFloatMode(snapshot)}, stage == Stage::Compute ? device.ComputeTarget(wave) : device.Target(), {0, 0, 0, 128}, graphics};
     if (graphics && graphics->mesh) request.layout.pushConstantSizeBytes = ShaderRecompiler::MeshDrawPushOffsetBytes;
     std::vector<PreparedShaders::Entry> entries;
+    ShaderRecompiler::ShaderPreparationContext preparation;
     const auto append = [&] {
         PerformanceTimer timing("Shader.PrepareArtifact");
-        entries.push_back({codeOffset, ShaderRecompiler::PrepareShader(request)});
+        entries.push_back({codeOffset, ShaderRecompiler::PrepareShader(request, &preparation)});
     };
     append();
     if (compute) {

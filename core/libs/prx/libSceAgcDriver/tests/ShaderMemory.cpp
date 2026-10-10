@@ -16,6 +16,7 @@
 #include <spirv/unified1/spirv.hpp>
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <iostream>
@@ -76,6 +77,258 @@ void verifyResult(const ShaderRecompiler::RecompileResult& first, const ShaderRe
         const auto& left = first.bindings[index];
         const auto& right = second.bindings[index];
         require(left.kind == right.kind && left.role == right.role && left.descriptorSet == right.descriptorSet && left.binding == right.binding && left.count == right.count && left.guestDescriptor == right.guestDescriptor && left.readOnly == right.readOnly, "replayed binding differs");
+    }
+}
+
+ShaderRecompiler::RecompileRequest FrontendRequest(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData) {
+    using namespace ShaderRecompiler;
+    RecompileRequest request{};
+    request.shader = {ShaderStage::Compute, 0x100000u, code, 0, {}};
+    request.context.waveSize = 64;
+    request.context.userDataBaseRegister = 0;
+    request.context.userData = userData;
+    request.context.compute = ShaderComputeStageInfo{{64u, 1u, 1u}, 0u, {false, false, false}, false, 1u};
+    request.target = BufferTarget();
+    request.target.vulkanVersion = 0x00401000u;
+    request.target.spirvVersion = 0x00010300u;
+    request.target.subgroupSize = 32u;
+    request.target.fragmentShaderBarycentricEnabled = false;
+    request.layout.pushConstantSizeBytes = 128;
+    request.useCache = false;
+    return request;
+}
+
+void verifyFrontendIdentity() {
+    using namespace ShaderRecompiler;
+    const bool reuse = std::getenv("APS5_NO_PERF_FRONTEND_PAIR") == nullptr;
+    const std::vector<std::uint32_t> code{0xbf800000u, 0xbf810000u};
+    const std::array<std::uint32_t, 2> userData{};
+    const auto request = FrontendRequest(code, userData);
+    ShaderPreparationContext preparation;
+    const auto first = preparation.AcquireFrontend(request);
+    require(first != nullptr, "frontend pair: no frontend was prepared");
+    require((preparation.AcquireFrontend(request) == first) == reuse, "frontend pair: repeated acquisition ignored the reuse switch");
+
+    const auto relocatedCode = code;
+    auto relocated = request;
+    relocated.shader.code = relocatedCode;
+    relocated.shader.codeAddress += 0x1000u;
+    require((preparation.AcquireFrontend(relocated) == first) == reuse, "frontend pair: identical words at another allocation or address changed reuse");
+    auto partial = request;
+    partial.context.compute->partialThreads = {33u, 1u, 1u};
+    require((preparation.AcquireFrontend(partial) == first) == reuse, "frontend pair: partial-thread state changed the frontend identity");
+    auto target = request;
+    target.target.subgroupSize = 64u;
+    target.context.waveSize = 32u;
+    target.context.compute->numThreads = {32u, 2u, 1u};
+    require((preparation.AcquireFrontend(target) == first) == reuse, "frontend pair: translation-only state changed the frontend identity");
+    const std::array<std::uint32_t, 2> changedUserData{1u, 2u};
+    auto userValues = request;
+    userValues.context.userData = changedUserData;
+    require((preparation.AcquireFrontend(userValues) == first) == reuse, "frontend pair: user-data values changed the frontend identity");
+
+    const auto verifyMiss = [&](const RecompileRequest& changed, const char* message) {
+        ShaderPreparationContext isolated;
+        const auto original = isolated.AcquireFrontend(request);
+        const auto replacement = isolated.AcquireFrontend(changed);
+        require(replacement != original, message);
+        require((isolated.AcquireFrontend(changed) == replacement) == reuse, "frontend pair: a successful miss was not retained");
+        require(isolated.AcquireFrontend(request) != original, "frontend pair: replacement retained more than the last frontend");
+    };
+    auto changed = request;
+    auto changedCode = code;
+    changedCode[0] = 0xbf800001u;
+    changed.shader.code = changedCode;
+    verifyMiss(changed, "frontend pair: changed code words reused the frontend");
+    changedCode = code;
+    changedCode.push_back(0xbf800000u);
+    changed.shader.code = changedCode;
+    verifyMiss(changed, "frontend pair: changed code length reused the frontend");
+    changed = request;
+    changed.context.userDataBaseRegister = 4u;
+    verifyMiss(changed, "frontend pair: changed user-data base reused the frontend");
+    changed = request;
+    changed.context.userData = std::span<const std::uint32_t>(userData).first(1u);
+    verifyMiss(changed, "frontend pair: changed user-data count reused the frontend");
+    changed = request;
+    changed.shader.stage = ShaderStage::Fragment;
+    changed.context.compute.reset();
+    changed.context.pixel = ShaderPixelStageInfo{};
+    verifyMiss(changed, "frontend pair: a different stage reused the frontend");
+    changed = request;
+    changed.shader.stage = ShaderStage::Vertex;
+    changed.context.compute.reset();
+    changed.context.vertex = ShaderVertexStageInfo{};
+    verifyMiss(changed, "frontend pair: a fetch-capable stage reused the compute frontend");
+
+    auto invalid = request;
+    invalid.shader.code = {};
+    bool failed = false;
+    try {
+        static_cast<void>(preparation.AcquireFrontend(invalid));
+    } catch (const std::out_of_range& error) {
+        failed = std::string_view(error.what()).find("before s_endpgm") != std::string_view::npos;
+    }
+    require(failed, "frontend pair: invalid code did not fail during frontend construction");
+    require((preparation.AcquireFrontend(request) == first) == reuse, "frontend pair: a failed miss replaced the prior frontend");
+}
+
+void verifyFrontendProgram(const ShaderRecompiler::IrProgram& reused, const ShaderRecompiler::IrProgram& fresh) {
+    using namespace ShaderRecompiler;
+    require(ProgramToString(reused) == ProgramToString(fresh), "frontend pair: reused frontend changed the IR");
+    require(reused.WaveSize() == fresh.WaveSize() && reused.Info() == fresh.Info(), "frontend pair: reused frontend changed shader information");
+    const auto& left = reused.Resources();
+    const auto& right = fresh.Resources();
+    require(left.stage == right.stage && left.shaderHash == right.shaderHash && left.userDataBase == right.userDataBase && left.userDataCount == right.userDataCount && left.srgbDecodeFormats == right.srgbDecodeFormats, "frontend pair: resource identity changed");
+    require(left.memoryInfo == right.memoryInfo && left.materializationSources == right.materializationSources && left.guardedSrtSlots == right.guardedSrtSlots && left.srtGuardOffset == right.srtGuardOffset && left.cleanFlatSlots == right.cleanFlatSlots && left.pureFlatSlots == right.pureFlatSlots, "frontend pair: resource planning changed");
+    require(left.descriptorSources.size() == right.descriptorSources.size() && left.srtReads.size() == right.srtReads.size(), "frontend pair: resource counts changed");
+    for (std::size_t index = 0; index < left.descriptorSources.size(); ++index) {
+        const auto& a = left.descriptorSources[index];
+        const auto& b = right.descriptorSources[index];
+        require(a.dwordCount == b.dwordCount && a.indirectImage == b.indirectImage, "frontend pair: descriptor planning changed");
+        for (std::size_t word = 0; word < a.dwords.size(); ++word) {
+            require((a.dwords[word] == nullptr) == (b.dwords[word] == nullptr), "frontend pair: descriptor word presence changed");
+            if (a.dwords[word] != nullptr) require(a.dwords[word] != b.dwords[word] && a.dwords[word]->Id() == b.dwords[word]->Id(), "frontend pair: descriptor values were shared or changed");
+        }
+    }
+    require(reused.BlockOrder().size() == fresh.BlockOrder().size(), "frontend pair: block count changed");
+    for (std::size_t block = 0; block < reused.BlockOrder().size(); ++block) {
+        const auto* a = reused.BlockOrder()[block];
+        const auto* b = fresh.BlockOrder()[block];
+        require(a != b && a->Instructions().size() == b->Instructions().size(), "frontend pair: mutable IR blocks were shared or changed");
+        auto other = b->Instructions().begin();
+        for (const auto* x : a->Instructions()) {
+            const auto* y = *other++;
+            require(x != y && x->Flags<std::uint64_t>() == y->Flags<std::uint64_t>(), "frontend pair: mutable IR values were shared or their flags changed");
+        }
+    }
+}
+
+void verifyFrontendPair() {
+    using namespace ShaderRecompiler;
+    verifyFrontendIdentity();
+    const bool reuse = std::getenv("APS5_NO_PERF_FRONTEND_PAIR") == nullptr;
+    const std::vector<std::uint32_t> code{0xe0700000u, 0x80000000u, 0xbf810000u};
+    const std::array<std::uint32_t, 4> buffer{0x10000000u, 0u, 0x40u, 0x00027facu};
+    const auto request = FrontendRequest(code, buffer);
+    auto partial = request;
+    partial.context.compute->partialThreads = {33u, 1u, 1u};
+    const auto freshFull = PrepareResourceProgram(request);
+    const auto freshPartial = PrepareResourceProgram(partial);
+    require(ProgramToString(freshFull) != ProgramToString(freshPartial), "frontend pair: fixture does not distinguish full and partial threads");
+    const auto storeThreadLimits = [](const IrProgram& program) {
+        std::vector<const IrValue*> pending;
+        for (const auto* block : program.BlockOrder()) {
+            for (const auto* inst : block->Instructions()) {
+                if (inst->Opcode() == IrOpcode::StoreBufferU32) pending.push_back(inst->Argument(inst->ArgumentCount() - 1u));
+            }
+        }
+        require(pending.size() == 1u, "frontend pair: fixture does not retain exactly one buffer store");
+        std::vector<const IrValue*> visited;
+        std::uint32_t axes = 0u;
+        while (!pending.empty()) {
+            const auto* value = pending.back()->Resolve();
+            pending.pop_back();
+            if (std::find(visited.begin(), visited.end(), value) != visited.end()) continue;
+            visited.push_back(value);
+            if (value->Opcode() == IrOpcode::GetBuiltin && value->Argument(0)->Resolve()->ImmediateU32() == static_cast<std::uint32_t>(StageInputKind::DispatchThreadLimit)) {
+                const auto axis = value->Argument(1)->Resolve()->ImmediateU32();
+                require(axis < 3u, "frontend pair: invalid dispatch-limit axis");
+                axes |= 1u << axis;
+            }
+            for (const auto* argument : value->Arguments()) pending.push_back(argument);
+        }
+        return axes;
+    };
+    require(storeThreadLimits(freshFull) == 0u && storeThreadLimits(freshPartial) == 7u, "frontend pair: buffer-store predicate does not retain all partial-thread bounds");
+    require(!freshFull.Resources().memoryInfo.empty() && !freshFull.Resources().descriptorSources.empty() && !freshFull.Info().buffers.empty(), "frontend pair: fixture has no buffer resources");
+
+    for (const bool partialFirst : {false, true}) {
+        ShaderPreparationContext preparation;
+        std::shared_ptr<const PreparedControlFlow> retained;
+        {
+            auto temporary = code;
+            auto borrowed = request;
+            borrowed.shader.code = temporary;
+            retained = preparation.AcquireFrontend(borrowed);
+            std::fill(temporary.begin(), temporary.end(), 0xffffffffu);
+            require((preparation.AcquireFrontend(request) == retained) == reuse, "frontend pair: mutating the caller's code changed the retained frontend");
+        }
+        require((preparation.AcquireFrontend(request) == retained) == reuse, "frontend pair: destroying the caller's code changed the retained frontend");
+        const auto first = PrepareResourceProgram(partialFirst ? partial : request, &preparation);
+        const auto second = PrepareResourceProgram(partialFirst ? request : partial, &preparation);
+        verifyFrontendProgram(first, partialFirst ? freshPartial : freshFull);
+        verifyFrontendProgram(second, partialFirst ? freshFull : freshPartial);
+        require(first.BlockOrder().front() != second.BlockOrder().front(), "frontend pair: full and partial variants share mutable IR");
+        const auto repeated = PrepareResourceProgram(partialFirst ? partial : request, &preparation);
+        verifyFrontendProgram(repeated, first);
+        auto translated = request;
+        translated.context.waveSize = 32u;
+        translated.context.compute->numThreads = {32u, 2u, 1u};
+        const auto changed = PrepareResourceProgram(translated, &preparation);
+        const auto freshChanged = PrepareResourceProgram(translated);
+        verifyFrontendProgram(changed, freshChanged);
+        require(changed.WaveSize() != freshFull.WaveSize(), "frontend pair: changed translation inputs were ignored");
+        require((preparation.AcquireFrontend(request) == retained) == reuse, "frontend pair: translating a variant replaced the frontend");
+    }
+
+    for (const bool partialFirst : {false, true}) {
+        auto pairCode = code;
+        pairCode.insert(pairCode.begin(), 0xbf800000u | static_cast<std::uint32_t>(partialFirst));
+        auto full = request;
+        full.shader.code = pairCode;
+        auto limited = partial;
+        limited.shader.code = pairCode;
+        const auto fullReference = Recompile(full);
+        const auto partialReference = Recompile(limited);
+        ShaderPreparationContext preparation;
+        const auto first = PrepareShader(partialFirst ? limited : full, &preparation);
+        const auto second = PrepareShader(partialFirst ? full : limited, &preparation);
+        const auto& fullHandle = partialFirst ? second : first;
+        const auto& partialHandle = partialFirst ? first : second;
+        const auto& fullArtifact = GetPreparedArtifact(*fullHandle);
+        const auto& partialArtifact = GetPreparedArtifact(*partialHandle);
+        require(first->source != second->source, "frontend pair: full and partial fixtures did not exercise separate sources");
+        require(fullArtifact.spirv != partialArtifact.spirv, "frontend pair: full and partial threads share the same artifact");
+        SrtRuntime runtime{};
+        runtime.userData = buffer;
+        runtime.shaderBase = full.shader.codeAddress;
+        const auto fullCapture = CaptureResources(full, runtime, *fullHandle);
+        const auto partialCapture = CaptureResources(limited, runtime, *partialHandle);
+        const auto fullResult = MaterializeShader(full, *fullCapture, *fullHandle);
+        const auto partialResult = MaterializeShader(limited, *partialCapture, *partialHandle);
+        verifyResult(fullReference, *fullResult);
+        verifyResult(partialReference, *partialResult);
+    }
+
+    const std::array<std::uint32_t, 1> color{0x3f800000u};
+    for (const bool zeroFirst : {false, true}) {
+        const std::vector<std::uint32_t> pixelCode{0xbf800000u | static_cast<std::uint32_t>(zeroFirst), 0x7e000200u, 0xf800180fu, 0u, 0xbf810000u};
+        auto pixel = FrontendRequest(pixelCode, color);
+        pixel.shader.stage = ShaderStage::Fragment;
+        pixel.context.compute.reset();
+        pixel.context.pixel = ShaderPixelStageInfo{};
+        pixel.context.pixel->wave32 = true;
+        pixel.context.pixel->targetOutputMode[0] = 9u;
+        pixel.context.waveSize = 32u;
+        auto zero = pixel;
+        zero.layout.pushConstantSizeBytes = 0u;
+        const auto pixelReference = Recompile(pixel);
+        const auto zeroReference = Recompile(zero);
+        ShaderPreparationContext preparation;
+        const auto first = PrepareShader(zeroFirst ? zero : pixel, &preparation);
+        const auto second = PrepareShader(zeroFirst ? pixel : zero, &preparation);
+        const auto& pixelHandle = zeroFirst ? second : first;
+        const auto& zeroHandle = zeroFirst ? first : second;
+        require(first->source == second->source, "frontend pair: pixel capacities did not exercise the same source");
+        require(GetPreparedArtifact(*pixelHandle).spirv != GetPreparedArtifact(*zeroHandle).spirv, "frontend pair: pixel fixture does not distinguish push-constant capacities");
+        SrtRuntime runtime{};
+        runtime.userData = color;
+        runtime.shaderBase = pixel.shader.codeAddress;
+        const auto pixelCapture = CaptureResources(pixel, runtime, *pixelHandle);
+        const auto zeroCapture = CaptureResources(zero, runtime, *zeroHandle);
+        verifyResult(pixelReference, *MaterializeShader(pixel, *pixelCapture, *pixelHandle));
+        verifyResult(zeroReference, *MaterializeShader(zero, *zeroCapture, *zeroHandle));
     }
 }
 
@@ -2221,6 +2474,11 @@ void verifyGuardedNullPointers() {
 int main(int argc, char** argv) {
     try {
         using namespace ShaderRecompiler;
+        if (argc == 2 && std::string_view(argv[1]) == "--frontend-pair") {
+            verifyFrontendPair();
+            std::cout << "Prepared frontend reuse preserves full and partial-thread programs\n";
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--bindless") {
             verifyBindlessTable();
             std::cout << "Bindless mapping, indexing capabilities and strict validation passed\n";
@@ -2229,6 +2487,7 @@ int main(int argc, char** argv) {
         require(argc == 1, "unknown shader memory test arguments");
         verifyRegisterSources();
         verifyEvaluatedValues();
+        verifyFrontendPair();
         verifyPureFlatSlots();
         verifyBindlessTable();
         verifyDescriptorPhis();

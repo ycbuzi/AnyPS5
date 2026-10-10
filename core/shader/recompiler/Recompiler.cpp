@@ -100,22 +100,54 @@ ShaderStageInputInfo RequestInputInfo(const RecompileRequest& request) {
 
 }
 
+struct PreparedControlFlow {
+    PreparedControlFlow(const RecompileRequest& request, const SwappcInfo& swappcInfo)
+        : stage(request.shader.stage), swappc(swappcInfo), code(request.shader.code.begin(), request.shader.code.end()),
+          decoded(RdnaInstructionDecoder{}.Decode(code)), cfg(GraphBuilder{}.Build(decoded, &swappc)) {
+        Structurizer{}.Structurize(cfg);
+    }
+
+    PreparedControlFlow(const PreparedControlFlow&) = delete;
+    PreparedControlFlow& operator=(const PreparedControlFlow&) = delete;
+
+    bool Matches(const RecompileRequest& request, const SwappcInfo& swappcInfo) const {
+        return stage == request.shader.stage && swappc.fetchCallAllowed == swappcInfo.fetchCallAllowed &&
+               swappc.userDataBaseRegister == swappcInfo.userDataBaseRegister && swappc.userDataCount == swappcInfo.userDataCount &&
+               std::ranges::equal(code, request.shader.code);
+    }
+
+    ShaderStage stage;
+    SwappcInfo swappc;
+    std::vector<std::uint32_t> code;
+    RdnaProgram decoded;
+    ControlFlowGraph cfg;
+};
+
+std::shared_ptr<const PreparedControlFlow> ShaderPreparationContext::AcquireFrontend(const RecompileRequest& request) {
+    const auto inputInfo = RequestInputInfo(request);
+    const SwappcInfo swappc{inputInfo.vertex != nullptr, request.context.userDataBaseRegister, static_cast<std::uint32_t>(request.context.userData.size())};
+    static const bool reuse = std::getenv("APS5_NO_PERF_FRONTEND_PAIR") == nullptr;
+    if (reuse && frontend != nullptr && frontend->Matches(request, swappc)) {
+        return frontend;
+    }
+    auto prepared = std::make_shared<const PreparedControlFlow>(request, swappc);
+    if (reuse) {
+        frontend = prepared;
+    }
+    return prepared;
+}
+
 IrProgram PrepareResourceProgram(const RecompileRequest& request) {
+    return PrepareResourceProgram(request, nullptr);
+}
+
+IrProgram PrepareResourceProgram(const RecompileRequest& request, ShaderPreparationContext* preparation) {
+    ShaderPreparationContext local;
+    const auto frontend = (preparation != nullptr ? *preparation : local).AcquireFrontend(request);
     const auto stageKind = toShaderStageKind(request.shader.stage);
     const auto inputInfo = RequestInputInfo(request);
-
-    constexpr RdnaInstructionDecoder decoder;
-    const auto decoded = decoder.Decode(request.shader.code);
-
-    constexpr GraphBuilder graphBuilder;
-    SwappcInfo swappcInfo;
-    swappcInfo.fetchCallAllowed = inputInfo.vertex != nullptr;
-    swappcInfo.userDataBaseRegister = request.context.userDataBaseRegister;
-    swappcInfo.userDataCount = static_cast<std::uint32_t>(request.context.userData.size());
-    auto cfg = graphBuilder.Build(decoded, &swappcInfo);
-
-    constexpr Structurizer structurizer;
-    structurizer.Structurize(cfg);
+    const auto& decoded = frontend->decoded;
+    const auto& cfg = frontend->cfg;
 
     TranslateOptions translateOptions {};
     translateOptions.stage = stageKind;
@@ -238,7 +270,7 @@ struct SourceEntry {
 namespace {
 
 struct ResourceProgram {
-    explicit ResourceProgram(const RecompileRequest& request) : program(std::make_unique<IrProgram>(PrepareResourceProgram(request))), plan(std::make_shared<const IrResourcePlan>(ResourceMaterializer{}.ExtractPlan(*program))) {}
+    explicit ResourceProgram(const RecompileRequest& request, ShaderPreparationContext* preparation = nullptr) : program(std::make_unique<IrProgram>(PrepareResourceProgram(request, preparation))), plan(std::make_shared<const IrResourcePlan>(ResourceMaterializer{}.ExtractPlan(*program))) {}
 
     std::unique_ptr<IrProgram> program;
     std::shared_ptr<const IrResourcePlan> plan;
@@ -264,7 +296,7 @@ bool FailureMemo() {
     return memo;
 }
 
-std::shared_ptr<SourceEntry> getSource(const RecompileRequest& request) {
+std::shared_ptr<SourceEntry> getSource(const RecompileRequest& request, ShaderPreparationContext* preparation = nullptr) {
     static std::shared_mutex mutex;
     // Entries whose code hashes alike share a bucket; the code comparison picks the right one.
     static std::unordered_map<std::vector<std::uint64_t>, std::vector<std::shared_ptr<SourceEntry>>, SourceKeyHash> sources;
@@ -308,7 +340,7 @@ std::shared_ptr<SourceEntry> getSource(const RecompileRequest& request) {
         if (source->plan == nullptr) {
             if (FailureMemo() && source->planFailure) std::rethrow_exception(source->planFailure);
             try {
-                ResourceProgram resource(request);
+                ResourceProgram resource(request, preparation);
                 source->plan = std::move(resource.plan);
                 source->program = std::move(resource.program);
             } catch (...) {
@@ -735,7 +767,7 @@ bool sameLayout(const BindingLayout& left, const BindingLayout& right) {
     return left.descriptorSet == right.descriptorSet && left.firstBinding == right.firstBinding && left.pushConstantOffsetBytes == right.pushConstantOffsetBytes && left.pushConstantSizeBytes == right.pushConstantSizeBytes;
 }
 
-std::shared_ptr<const CompiledVariant> findOrCompileVariant(SourceEntry& source, const RecompileRequest& request, bool& cacheHit) {
+std::shared_ptr<const CompiledVariant> findOrCompileVariant(SourceEntry& source, const RecompileRequest& request, bool& cacheHit, ShaderPreparationContext* preparation = nullptr) {
     for (const auto& candidate : source.variants) {
         if (sameLayout(candidate->layout, request.layout)) {
             cacheHit = true;
@@ -759,7 +791,7 @@ std::shared_ptr<const CompiledVariant> findOrCompileVariant(SourceEntry& source,
         }
     }
     if (variant == nullptr) {
-        auto program = source.program != nullptr ? std::move(*source.program) : PrepareResourceProgram(request);
+        auto program = source.program != nullptr ? std::move(*source.program) : PrepareResourceProgram(request, preparation);
         source.program.reset();
         std::exception_ptr emissionFailure;
         try {
@@ -1031,15 +1063,19 @@ std::shared_ptr<const SourceHandle> ResolveSource(const RecompileRequest& reques
 }
 
 std::shared_ptr<const SourceHandle> PrepareShader(const RecompileRequest& request) {
+    return PrepareShader(request, nullptr);
+}
+
+std::shared_ptr<const SourceHandle> PrepareShader(const RecompileRequest& request, ShaderPreparationContext* preparation) {
     return recompileReporting(request, [&]() -> std::shared_ptr<const SourceHandle> {
         static_cast<void>(RequestInputInfo(request));
         auto handle = std::make_shared<SourceHandle>();
-        handle->source = getSource(request);
+        handle->source = getSource(request, preparation);
         RecompileCacheKey::BuildInterface(request, handle->staticKey);
         handle->staticKey.push_back(HostSubgroupSize(request));
         bool cacheHit = false;
         std::lock_guard lock(handle->source->mutex);
-        handle->artifact = findOrCompileVariant(*handle->source, request, cacheHit);
+        handle->artifact = findOrCompileVariant(*handle->source, request, cacheHit, preparation);
         return handle;
     });
 }
