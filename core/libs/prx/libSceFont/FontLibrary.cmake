@@ -2,6 +2,7 @@ function(add_sce_font_library target)
     set(fontDir ${CMAKE_CURRENT_FUNCTION_LIST_DIR})
     add_library(${target} SHARED EXCLUDE_FROM_ALL
             ${fontDir}/src/Layout.cpp
+            ${fontDir}/src/GlyphRender.cpp
             ${fontDir}/src/Library.cpp
             ${fontDir}/src/Open.cpp
             ${fontDir}/src/Render.cpp

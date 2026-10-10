@@ -273,9 +273,9 @@ bool Font::ForgetGeneratedGlyph(FontGlyph glyph) {
 }
 
 Font::GeneratedGlyph* Font::TryGetGeneratedGlyph(FontGlyph glyph) {
-    if (!glyph || glyph->magic != GLYPH_MAGIC) return nullptr;
+    if (!glyph) return nullptr;
     std::lock_guard lock(glyphMutex);
-    if (!generatedGlyphs.contains(glyph)) return nullptr;
+    if (!generatedGlyphs.contains(glyph) || glyph->magic != GLYPH_MAGIC) return nullptr;
     return reinterpret_cast<GeneratedGlyph*>(glyph);
 }
 

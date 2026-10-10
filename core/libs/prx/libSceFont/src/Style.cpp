@@ -122,6 +122,28 @@ float ClampWeightDelta(float scale) {
 
 extern "C" {
 
+int APS5_VABI sceFontDefineAttribute(FontHandle fontHandle, int attribute, int* oldAttribute) {
+    if (oldAttribute) *oldAttribute = 0;
+    if (attribute != 0x40 && attribute != 0x41) return SCE_FONT_ERROR_NO_SUPPORT_FUNCTION;
+    return UpdateFontStyle(fontHandle, [&](FontHandleNative* font) {
+        const int previous = 0x40 | ((font->flags >> 15) & 1);
+        if (oldAttribute) *oldAttribute = previous;
+        font->flags = static_cast<std::uint16_t>((font->flags & 0x7FFFu) | ((attribute & 1) << 15));
+        if (previous != attribute) CachedStyleSetCacheFlags(font->cached_style, 0);
+        return previous != attribute;
+    });
+}
+
+int APS5_VABI sceFontGetAttribute(FontHandle fontHandle, int attribute, int* nowAttribute) {
+    if (!nowAttribute) return SCE_FONT_ERROR_INVALID_PARAMETER;
+    *nowAttribute = 0;
+    if (attribute != 0x40 && attribute != 0x41) return SCE_FONT_ERROR_NO_SUPPORT_FUNCTION;
+    return ReadFontStyle(fontHandle, true, [&](FontHandleNative* font) {
+        *nowAttribute = 0x40 | ((font->flags >> 15) & 1);
+        return SCE_FONT_OK;
+    });
+}
+
 int APS5_VABI sceFontSetScalePixel(FontHandle fontHandle, float w, float h) {
     return UpdateFontStyle(fontHandle, [&](FontHandleNative* font) {
         const int changed = StyleStateSetScalePixel(&font->style, w, h);

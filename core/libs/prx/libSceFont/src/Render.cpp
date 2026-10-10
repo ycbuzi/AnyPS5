@@ -386,7 +386,7 @@ int APS5_VABI sceFontGenerateCharGlyph(FontHandle fontHandle, std::uint32_t code
     FontGlyphMetrics metrics{};
     const int rc = GetCharGlyphMetrics(fontHandle, code, &metrics, false);
     if (rc != SCE_FONT_OK) return rc;
-    auto* generated = new (std::nothrow) GeneratedGlyph();
+    auto generated = std::unique_ptr<GeneratedGlyph>(new (std::nothrow) GeneratedGlyph());
     if (!generated) return SCE_FONT_ERROR_ALLOCATION_FAILED;
     generated->codepoint = code;
     generated->metrics = metrics;
@@ -404,9 +404,26 @@ int APS5_VABI sceFontGenerateCharGlyph(FontHandle fontHandle, std::uint32_t code
     generated->glyph.memory = glyphMemory;
     generated->owner = fontHandle;
     generated->outline.outline_flags = generated->glyph.flags;
+    const int captureResult = CaptureGeneratedGlyph(*generated, fontHandle, *state);
+    if (captureResult != SCE_FONT_OK) return captureResult;
     TrackGeneratedGlyph(&generated->glyph);
-    *pGlyph = &generated->glyph;
+    *pGlyph = &generated.release()->glyph;
     return SCE_FONT_OK;
+}
+
+int APS5_VABI sceFontGlyphRenderImage(FontGlyph glyph, FontStyleFrame* frame, FontRenderer renderer, FontRenderSurface* surface,
+                                     float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* output) {
+    return RenderGeneratedGlyph(glyph, frame, renderer, surface, x, y, metrics, output, 0);
+}
+
+int APS5_VABI sceFontGlyphRenderImageHorizontal(FontGlyph glyph, FontStyleFrame* frame, FontRenderer renderer, FontRenderSurface* surface,
+                                               float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* output) {
+    return RenderGeneratedGlyph(glyph, frame, renderer, surface, x, y, metrics, output, 1);
+}
+
+int APS5_VABI sceFontGlyphRenderImageVertical(FontGlyph glyph, FontStyleFrame* frame, FontRenderer renderer, FontRenderSurface* surface,
+                                             float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* output) {
+    return RenderGeneratedGlyph(glyph, frame, renderer, surface, x, y, metrics, output, 2);
 }
 
 int APS5_VABI sceFontDeleteGlyph(const FontMemory* memory, FontGlyph* pGlyph) {
@@ -419,10 +436,23 @@ int APS5_VABI sceFontDeleteGlyph(const FontMemory* memory, FontGlyph* pGlyph) {
     return SCE_FONT_OK;
 }
 
-int APS5_VABI sceFontGlyphDefineAttribute(FontGlyph glyph, std::uint32_t attribute, std::uint64_t value) {
-    (void)attribute;
-    (void)value;
-    if (!glyph || glyph->magic != GLYPH_MAGIC) return SCE_FONT_ERROR_INVALID_GLYPH;
+int APS5_VABI sceFontGlyphDefineAttribute(FontGlyph glyph, int attribute, int* oldAttribute) {
+    if (oldAttribute) *oldAttribute = 0;
+    auto* generated = TryGetGeneratedGlyph(glyph);
+    if (!generated) return SCE_FONT_ERROR_INVALID_GLYPH;
+    if (attribute != 0x40 && attribute != 0x41) return SCE_FONT_ERROR_NO_SUPPORT_FUNCTION;
+    const bool previous = generated->defaultVertical.exchange(attribute == 0x41, std::memory_order_relaxed);
+    if (oldAttribute) *oldAttribute = previous ? 0x41 : 0x40;
+    return SCE_FONT_OK;
+}
+
+int APS5_VABI sceFontGlyphGetAttribute(FontGlyph glyph, int attribute, int* nowAttribute) {
+    if (!nowAttribute) return SCE_FONT_ERROR_INVALID_PARAMETER;
+    *nowAttribute = 0;
+    const auto* generated = TryGetGeneratedGlyph(glyph);
+    if (!generated) return SCE_FONT_ERROR_INVALID_GLYPH;
+    if (attribute != 0x40 && attribute != 0x41) return SCE_FONT_ERROR_NO_SUPPORT_FUNCTION;
+    *nowAttribute = generated->defaultVertical.load(std::memory_order_relaxed) ? 0x41 : 0x40;
     return SCE_FONT_OK;
 }
 

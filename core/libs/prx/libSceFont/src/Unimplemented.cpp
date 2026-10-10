@@ -78,26 +78,6 @@ int APS5_VABI sceFontGetTypographicDesign() {
     return 0;
 }
 
-int APS5_VABI sceFontGlyphGetAttribute() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImage() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImageHorizontal() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImageVertical() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
 int APS5_VABI sceFontGraphicsBeginFrame() {
     NotImplemented_nid_no_patch(__func__);
     return 0;
