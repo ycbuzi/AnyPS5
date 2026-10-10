@@ -23,7 +23,16 @@ int APS5_VABI _Mbtowcx_nid_postfix(std::uint16_t* dst, const char* src, std::siz
 int APS5_VABI _Wctombx_nid_postfix(char* dst, std::uint16_t src, std::mbstate_t* st);
 void APS5_VABI _Locksyslock_nid_postfix();
 void APS5_VABI _Unlocksyslock_nid_postfix();
-
+struct MtxInternal;
+struct CndInternal;
+int APS5_VABI _Mtx_init_nid_postfix(MtxInternal** mtx, int type);
+void APS5_VABI _Mtx_destroy_nid_postfix(MtxInternal* mtx);
+int APS5_VABI _Mtx_lock_nid_postfix(MtxInternal* mtx);
+int APS5_VABI _Mtx_unlock_nid_postfix(MtxInternal* mtx);
+int APS5_VABI _Cnd_init_nid_postfix(CndInternal** cnd);
+void APS5_VABI _Cnd_destroy_nid_postfix(CndInternal* cnd);
+int APS5_VABI _Cnd_wait_nid_postfix(CndInternal* cnd, MtxInternal* mtx);
+int APS5_VABI _Cnd_broadcast_nid_postfix(CndInternal* cnd);
 }
 
 static void Require(bool condition) {
@@ -144,6 +153,43 @@ static void CheckStreamDestruction() {
     Require(object.stream.locale == &_ZSt21_sceLibcClassicLocale_nid_postfix);
 }
 
+static void CheckThreadPrimitives() {
+    Require(_Mtx_init_nid_postfix(nullptr, 0) != 0);
+    Require(_Mtx_lock_nid_postfix(nullptr) != 0);
+    Require(_Mtx_unlock_nid_postfix(nullptr) != 0);
+    Require(_Cnd_init_nid_postfix(nullptr) != 0);
+    Require(_Cnd_wait_nid_postfix(nullptr, nullptr) != 0);
+    Require(_Cnd_broadcast_nid_postfix(nullptr) != 0);
+
+    MtxInternal* mtx = nullptr;
+    Require(_Mtx_init_nid_postfix(&mtx, 0) == 0 && mtx != nullptr);
+    Require(_Mtx_lock_nid_postfix(mtx) == 0);
+    Require(_Mtx_lock_nid_postfix(mtx) == 0);
+    Require(_Mtx_unlock_nid_postfix(mtx) == 0);
+    Require(_Mtx_unlock_nid_postfix(mtx) == 0);
+
+    CndInternal* cnd = nullptr;
+    Require(_Cnd_init_nid_postfix(&cnd) == 0 && cnd != nullptr);
+
+    bool ready = false;
+    std::thread worker([&] {
+        _Mtx_lock_nid_postfix(mtx);
+        ready = true;
+        _Cnd_broadcast_nid_postfix(cnd);
+        _Mtx_unlock_nid_postfix(mtx);
+    });
+
+    _Mtx_lock_nid_postfix(mtx);
+    while (!ready) {
+        _Cnd_wait_nid_postfix(cnd, mtx);
+    }
+    _Mtx_unlock_nid_postfix(mtx);
+    worker.join();
+
+    _Cnd_destroy_nid_postfix(cnd);
+    _Mtx_destroy_nid_postfix(mtx);
+}
+
 int main() {
     CheckGuestCalls();
     CheckLocinfoAlignment();
@@ -154,5 +200,7 @@ int main() {
     _Locksyslock_nid_postfix();
     _Unlocksyslock_nid_postfix();
     _Unlocksyslock_nid_postfix();
+    CheckThreadPrimitives();
     std::cout << "Guest locale checks passed\n";
 }
+
