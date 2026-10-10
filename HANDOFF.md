@@ -19,15 +19,15 @@ Everything is on `ycbuzi/AnyPS5`:
   worktrees under `/home/user/AnyPS5/.claude/worktrees/` in the cloud container. If the container
   is gone, their work is lost unless it was pushed; check `git ls-remote --heads origin 'agent/*'`.
 
-Update 10:25 UTC: `agent/usbd` and `agent/ssl` are merged into the stack (`279ad9d74`,
-`b58de57bb`): **2994/3353 = 89.29%**, libSceUsbd 29 done, libSceSsl 15 done. Build 8 of
-`b58de57bb` (first build with the libusb and mbedtls submodules) was started in the cloud; its
-result is in the log at the end if the session lived long enough to record it.
+Update 10:35 UTC: `agent/usbd` and `agent/ssl` are merged into the stack (`279ad9d74`,
+`b58de57bb`): **2994/3353 = 89.29%**, libSceUsbd 29 done, libSceSsl 15 done. **Build 8 of
+`b58de57bb` passed on Linux (981 targets rebuilt, 0 failures) and its suite passed 406/406**, the
+first build with the libusb and mbedtls submodules (`git submodule update --init 3rdparty/libusb
+3rdparty/mbedtls`, then `git -C 3rdparty/mbedtls submodule update --init framework`).
 
 Next steps, in order:
-1. If build 8's result is not recorded: build `b58de57bb` (`git submodule update --init
-   3rdparty/libusb 3rdparty/mbedtls`, then `git -C 3rdparty/mbedtls submodule update --init
-   framework`), run the suite, fix what breaks.
+1. Merge whatever `agent/pr2503`, `agent/posix`, `agent/kernel-raise` and `agent/kevent` delivered
+   (check their last commits and the agents' reports in this file), build, run the suite.
 2. On the PC: Windows build + full suite + GPU matrix of the result; run ps5-opengl (PPSA99005)
    for the 2631 fix; test 2640's branch; reproduce 2652 with DOOM.
 3. Only then consider posting anything, re-checking each thread first.
