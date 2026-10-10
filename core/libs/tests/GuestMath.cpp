@@ -34,6 +34,10 @@ float APS5_VABI hypotf_nid_postfix(float, float);
 double APS5_VABI hypot_nid_postfix(double, double);
 float APS5_VABI tanf_nid_postfix(float);
 float APS5_VABI log10f_nid_postfix(float);
+double APS5_VABI floor_nid_postfix(double);
+double APS5_VABI ceil_nid_postfix(double);
+float APS5_VABI floorf_nid_postfix(float);
+float APS5_VABI ceilf_nid_postfix(float);
 float APS5_VABI logbf_nid_postfix(float);
 double APS5_VABI exp2_nid_postfix(double);
 double APS5_VABI ldexp_nid_postfix(double, int);
@@ -238,6 +242,16 @@ static void CheckFloatClassification() {
 int main() {
     CheckFloatClassification();
     CheckIntegerConversions();
+    Require(floor_nid_postfix(2.75) == 2.0 && floor_nid_postfix(-2.25) == -3.0);
+    Require(ceil_nid_postfix(2.25) == 3.0 && ceil_nid_postfix(-2.75) == -2.0);
+    Require(floorf_nid_postfix(2.75f) == 2.0f && floorf_nid_postfix(-2.25f) == -3.0f);
+    Require(ceilf_nid_postfix(2.25f) == 3.0f && ceilf_nid_postfix(-2.75f) == -2.0f);
+    Require(std::signbit(floor_nid_postfix(-0.0)) && std::signbit(ceil_nid_postfix(-0.0)));
+    Require(std::signbit(floorf_nid_postfix(-0.0f)) && std::signbit(ceilf_nid_postfix(-0.0f)));
+    Require(std::isinf(floor_nid_postfix(std::numeric_limits<double>::infinity())));
+    Require(std::isinf(ceilf_nid_postfix(-std::numeric_limits<float>::infinity())));
+    Require(std::isnan(floor_nid_postfix(std::numeric_limits<double>::quiet_NaN())));
+    Require(std::isnan(ceilf_nid_postfix(std::numeric_limits<float>::quiet_NaN())));
     Require(atof_nid_postfix(" -12.5tail") == -12.5);
     char* end = nullptr;
     const char input[] = "0x1.8p+2 remainder";

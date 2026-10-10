@@ -90,6 +90,10 @@ float APS5_VABI roundf_nid_postfix(float x) { return std::round(x); }
 double APS5_VABI round_nid_postfix(double x) { return std::round(x); }
 float APS5_VABI cbrtf_nid_postfix(float x) { return std::cbrt(x); }
 float APS5_VABI remainderf_nid_postfix(float x, float y) { return std::remainder(x, y); }
+double APS5_VABI floor_nid_postfix(double x) { return std::floor(x); }
+double APS5_VABI ceil_nid_postfix(double x) { return std::ceil(x); }
+float APS5_VABI floorf_nid_postfix(float x) { return std::floor(x); }
+float APS5_VABI ceilf_nid_postfix(float x) { return std::ceil(x); }
 int APS5_VABI __isfinite_nid_postfix(double x) { return std::isfinite(x) ? 1 : 0; }
 int APS5_VABI __isnan_nid_postfix(double x) { return std::isnan(x) ? 1 : 0; }
 int APS5_VABI __signbit_nid_postfix(double x) { return std::signbit(x) ? 1 : 0; }
