@@ -81,9 +81,10 @@ Completion, measured in the cloud with `python3 tools/progress.py --root <tree> 
 | Upstream `main`, `3afc78464`             | 2690        | 3138  | 85.72% |
 | Ours after the first upstream sync       | 2733        | 3151  | 86.73% |
 | Ours after cycle 1 (49 PRs)              | 2886        | 3260  | 88.53% |
-| **Ours now, `9a6e26fe2` (cycles 1-2)**   | **2922**    | **3298** | **88.60%** |
+| Ours after cycle 2, `9a6e26fe2`          | 2922        | 3298  | 88.60% |
+| **Ours now (cycle 3), tip of the branch** | **2945**   | **3300** | **89.24%** |
 
-Lead over upstream: **+232 implemented functions, +2.88 points.** 375 functions remain.
+Lead over upstream: **+255 implemented functions, +3.52 points.** 355 functions remain.
 
 Build and test status:
 - Last full Windows suite: **660/660 passed**, on the 29-commit stack (`c44602f8`, base `4e9d298e`).
@@ -91,8 +92,11 @@ Build and test status:
   PC's three GPUs (RTX 4070 SUPER, GTX 1650 SUPER, Radeon 610M); the cloud machine has no GPU.
 - Linux full builds in the cloud (`handoff-tools/cloud/full-build.sh`): build 1 of the cycle 1 tip
   failed on duplicate definitions (fixed in cycle 2); build 3 failed only on the
-  `ShaderDiskCache.cpp` size assertion (fixed by the `3afc78464` merge); build 4 of `9a6e26fe2`
-  was running when this was written. The log at the end of this file has its result.
+  `ShaderDiskCache.cpp` size assertion (fixed by the `3afc78464` merge); **build 4 of `9a6e26fe2`
+  passed: 1515/1515 targets, 0 failures** (Linux, GCC 13, Release). The CPU-side suite
+  (`ctest -E '^agc_|video_out'`) was started on it; result in the log at the end of this file.
+- The cycle 3 merges (1886, 1583, 2012, 1689, 1985, 1952) came after build 4 and are not yet
+  built anywhere.
 
 ### Cycle 1 (cloud, ~08:50-09:12 UTC)
 
@@ -137,6 +141,20 @@ Stacked in cycle 1 (49): 867, 967, 989, 1008, 1052, 1169, 1212, 1390, 1527, 1554
    own version of our 2525 fix (`0e03ad0f9`); took upstream's side in the four relinker files.
 5. Re-scored the 12 PR heads that changed upstream since cycle 1: nothing worth stacking (2633 adds
    one hollow function; 2634 replaces every stub in the tree at once).
+
+### Cycle 3 (cloud, ~09:40-09:55 UTC)
+
+Candidates: the PRs holding real implementations of what we lack (see "How far can this go").
+- `stack2.py` run on 33 of them: only 1886 applied (+3); the rest conflict for real, 6 of them only
+  in the changelog where both sides edited the same bullets.
+- Taught the resolver to merge any changelog conflict (ours + the other side's new bullets):
+  1583, 2012, 1689, 1985 applied (+10). 1141 and 1108 rejected: duplicate definitions.
+- 1952 hand-merged (+10): kept our `libc/Export.cpp`, deleted the eight `_Cnd_*`/`_Mtx_*` stubs
+  that its new `src/Threads.cpp` implements.
+- Left out after inspection: 1884 (rewrites libSceSsl on mbedtls, a dependency the project does
+  not have), 2393/1802/1431 (written against the pre-1988 thread model; need re-implementation),
+  2503 (34 files, 10 real conflict hunks), 82 (needs `Ngs2WaveformFormat` from 1021, which
+  conflicts), 850/852 (need FreeType headers to check here), 1616 (duplicates Stdio functions).
 
 ### What the stack has that upstream doesn't
 
@@ -200,8 +218,16 @@ PRs holding the 66, with the close reason checked on GitHub:
   layout is guessed; GPU work, left out.
 - 492 (10 libc) and 2499 (4): rejected on quality; left out. 1879: reverted (duplicates), left out.
 
-Our 88.6% is other contributors' work assembled, not ours: do not report it upstream as a
+Our lead is other contributors' work assembled, not ours: do not report it upstream as a
 completion claim. Upstream's lower number is a policy (merge only what a title needs), not a lag.
+
+**Audit of our own lead (the check the PC session said it owed, done 2026-10-10 ~10:00 UTC):** of
+the 255 functions our tree implements and upstream doesn't, 15 are constant or error returns by the
+same test applied to everyone else's PRs: libSceSystemGesture (5), libSceAgc
+`sceAgcDcbEndOcclusionQueryGetSize` and `sceAgcDcbSetIndexIndirectArgsGetSize` (both `return 16`,
+which is the correct answer for a size query), libSceNpManager (2), and one each in NpAuth
+(`SIGNED_OUT` after argument checks), NpTrophy2, PlayerSelectionDialog, RazorCpu, SigninDialog and
+VideoRecordingP. So the honest count of behaviour-adding functions in the lead is about 240.
 
 ## Open work
 
@@ -256,3 +282,7 @@ PC only (Windows, GPUs, posting):
 - 2026-10-10 ~09:12-09:35 UTC (cloud): cycle 2. Stacked 10 more, fixed the duplicate definitions
   and the CMake damage, reverted 1879, synced upstream `3afc78464` (now 2922/3298 = 88.60% vs
   upstream 85.72%), measured the GitHub ceiling for the remaining functions.
+- 2026-10-10 ~09:38 UTC (cloud): **build 4 of `9a6e26fe2` passed on Linux (1515/1515 targets)**
+  and its CPU-side suite passed, **398/398** (`ctest -E '^agc_|video_out'`).
+- 2026-10-10 ~09:40-09:57 UTC (cloud): cycle 3. 1886, 1583, 2012, 1689, 1985 stacked, 1952
+  hand-merged (now 2945/3300 = 89.24%). Build 5 of that tip started.
