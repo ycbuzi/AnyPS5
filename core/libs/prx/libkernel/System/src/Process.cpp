@@ -91,7 +91,7 @@ ProcessArguments& getProcessArguments() {
 }
 
 void validateSchedulingPolicy(int policy) {
-    if (policy != 1 && policy != 3)
+    if (policy < 1 || policy > 3)
         throw std::invalid_argument("Unsupported guest scheduling policy");
 }
 

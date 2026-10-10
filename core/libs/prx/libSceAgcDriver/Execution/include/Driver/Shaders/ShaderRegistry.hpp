@@ -6,8 +6,10 @@
 #include <array>
 #include <optional>
 #include <atomic>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -58,6 +60,9 @@ struct PreparedShaderState {
 };
 struct PreparedShaders : PreparedShaderState {
     std::mutex mutex;
+    std::condition_variable settled;
+    std::exception_ptr failure;
+    bool pending = false;
 };
 
 struct RegisteredShaderState {

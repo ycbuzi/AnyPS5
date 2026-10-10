@@ -22,6 +22,24 @@ int APS5_VABI isxdigit_nid_postfix(int);
 int APS5_VABI isblank_nid_postfix(int);
 int APS5_VABI tolower_nid_postfix(int);
 int APS5_VABI toupper_nid_postfix(int);
+int APS5_VABI iswalnum_nid_postfix(std::uint32_t);
+int APS5_VABI iswalpha_nid_postfix(std::uint32_t);
+int APS5_VABI iswblank_nid_postfix(std::uint32_t);
+int APS5_VABI iswcntrl_nid_postfix(std::uint32_t);
+int APS5_VABI iswdigit_nid_postfix(std::uint32_t);
+int APS5_VABI iswgraph_nid_postfix(std::uint32_t);
+int APS5_VABI iswlower_nid_postfix(std::uint32_t);
+int APS5_VABI iswprint_nid_postfix(std::uint32_t);
+int APS5_VABI iswpunct_nid_postfix(std::uint32_t);
+int APS5_VABI iswspace_nid_postfix(std::uint32_t);
+int APS5_VABI iswupper_nid_postfix(std::uint32_t);
+int APS5_VABI iswxdigit_nid_postfix(std::uint32_t);
+int APS5_VABI iswctype_nid_postfix(std::uint32_t, std::uint64_t);
+std::uint64_t APS5_VABI wctype_nid_postfix(const char*);
+std::uint32_t APS5_VABI towlower_nid_postfix(std::uint32_t);
+std::uint32_t APS5_VABI towupper_nid_postfix(std::uint32_t);
+std::uint32_t APS5_VABI btowc_nid_postfix(int);
+int APS5_VABI wctob_nid_postfix(std::uint32_t);
 }
 
 void Require(bool condition, std::source_location location = std::source_location::current()) {
@@ -71,5 +89,41 @@ int main() {
         Require(Field<std::int32_t>(locale, 3136 + 4 * c) == toupper_nid_postfix(c));
     }
     Require(Field<std::uint64_t>(locale, 64 + 8 * 0x80) == 0 && Field<std::uint64_t>(locale, 64 + 8 * 0xff) == 0);
+
+    const struct {
+        const char* name;
+        std::uint64_t mask;
+        int (APS5_VABI* wide)(std::uint32_t);
+        int (APS5_VABI* narrow)(int);
+    } wide[] = {
+        {"alnum", 0x400100, iswalnum_nid_postfix, nullptr}, {"alpha", 0x100, iswalpha_nid_postfix, isalpha_nid_postfix},
+        {"blank", 0x20000, iswblank_nid_postfix, isblank_nid_postfix}, {"cntrl", 0x200, iswcntrl_nid_postfix, iscntrl_nid_postfix},
+        {"digit", 0x400, iswdigit_nid_postfix, isdigit_nid_postfix}, {"graph", 0x800, iswgraph_nid_postfix, isgraph_nid_postfix},
+        {"lower", 0x1000, iswlower_nid_postfix, islower_nid_postfix}, {"print", 0x40000, iswprint_nid_postfix, isprint_nid_postfix},
+        {"punct", 0x2000, iswpunct_nid_postfix, ispunct_nid_postfix}, {"space", 0x4000, iswspace_nid_postfix, isspace_nid_postfix},
+        {"upper", 0x8000, iswupper_nid_postfix, isupper_nid_postfix}, {"xdigit", 0x10000, iswxdigit_nid_postfix, isxdigit_nid_postfix},
+    };
+    for (const auto& entry : wide) {
+        Require(wctype_nid_postfix(entry.name) == entry.mask);
+        for (std::uint32_t c = 0; c < 300; ++c) {
+            const int expected = c < 256 && (entry.narrow ? entry.narrow(static_cast<int>(c)) : isalpha_nid_postfix(static_cast<int>(c)) || isdigit_nid_postfix(static_cast<int>(c)));
+            Require((entry.wide(c) != 0) == (expected != 0));
+            Require((iswctype_nid_postfix(c, entry.mask) != 0) == (expected != 0));
+        }
+        Require(entry.wide(0xffffffff) == 0 && iswctype_nid_postfix(0xffffffff, entry.mask) == 0);
+    }
+    Require(wctype_nid_postfix("ideogram") == 0x80000 && wctype_nid_postfix("special") == 0x100000);
+    Require(wctype_nid_postfix("phonogram") == 0x200000 && wctype_nid_postfix("number") == 0x400000);
+    Require(wctype_nid_postfix("rune") == 0xffffff00 && wctype_nid_postfix("") == 0 && wctype_nid_postfix("Alpha") == 0);
+    Require(iswctype_nid_postfix('A', 0) == 0 && iswctype_nid_postfix('7', wctype_nid_postfix("number")) != 0);
+    for (std::uint32_t c = 0; c < 300; ++c) {
+        Require(towlower_nid_postfix(c) == (c < 256 ? static_cast<std::uint32_t>(tolower_nid_postfix(static_cast<int>(c))) : c));
+        Require(towupper_nid_postfix(c) == (c < 256 ? static_cast<std::uint32_t>(toupper_nid_postfix(static_cast<int>(c))) : c));
+    }
+    Require(towlower_nid_postfix(0xffffffff) == 0xffffffff && towupper_nid_postfix(0xffffffff) == 0xffffffff);
+    Require(btowc_nid_postfix(-1) == 0xffffffff && btowc_nid_postfix(0) == 0);
+    Require(btowc_nid_postfix('A') == 'A' && btowc_nid_postfix(0xe9) == 0xe9 && btowc_nid_postfix(-23) == 0xe9);
+    Require(wctob_nid_postfix('A') == 'A' && wctob_nid_postfix(0xe9) == 0xe9 && wctob_nid_postfix(0) == 0);
+    Require(wctob_nid_postfix(0x100) == -1 && wctob_nid_postfix(0x20ac) == -1 && wctob_nid_postfix(0xffffffff) == -1);
     return 0;
 }

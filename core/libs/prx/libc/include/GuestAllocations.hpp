@@ -48,7 +48,7 @@ void GuestAllocationsInvalidate_nid_postfix(std::uintptr_t address, std::size_t 
 // and finishes the GPU work that holds leases; it returns whether it finished any (a round that found
 // nothing to wait for counts against the same bound as a plain spin). Without one the mutation spins
 // until the lease is dropped by another thread.
-void GuestAllocationsSetPinWaiter_nid_postfix(bool (*callback)());
+void GuestAllocationsSetPinWaiter_nid_postfix(bool (*callback)(std::uintptr_t address, std::size_t bytes));
 }
 
 class Mutation {

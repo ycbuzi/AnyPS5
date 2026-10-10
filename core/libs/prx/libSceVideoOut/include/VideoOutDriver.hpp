@@ -173,6 +173,7 @@ struct FlipRequest final : AgcDriver::IFlipRequest, std::enable_shared_from_this
     VideoOutBuffer buffer;
     BufferAttributeGroup group;
     bool reserved = false;
+    bool unregistered = false;
     bool ready = false;
     bool gpuComplete = false;
     bool terminal = false;
