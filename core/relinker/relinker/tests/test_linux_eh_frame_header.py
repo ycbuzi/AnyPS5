@@ -11,7 +11,7 @@ PT_SCE_VERSION = 0x6FFFFF01
 EH_FRAME_HEADER = (PT_GNU_EH_FRAME, 4, 0x4800, 0x800, 0x800, 16, 16, 4)
 
 
-def fixture(header_count):
+def fixture(header_count, with_frame=True):
     image = bytearray(0x8000)
     image[:16] = b"\x7fELF\x02\x01\x01" + bytes(9)
     struct.pack_into("<HHIQQQIHHHHHH", image, 16,
@@ -22,7 +22,8 @@ def fixture(header_count):
                      PT_LOAD, 5, 0x4000, 0, 0, 0x1000, 0x1000, 0x4000)
     struct.pack_into("<IIQQQQQQ", image, 120,
                      PT_DYNAMIC, 6, 0x600 + 0x4000, 0x600, 0x600, len(tags) * 16, len(tags) * 16, 8)
-    struct.pack_into("<IIQQQQQQ", image, 176, *EH_FRAME_HEADER)
+    struct.pack_into("<IIQQQQQQ", image, 176,
+                     *(EH_FRAME_HEADER if with_frame else (PT_SCE_VERSION, 0, 0, 0, 0, 0, 0, 1)))
     for index in range(3, header_count):
         struct.pack_into("<IIQQQQQQ", image, 64 + index * 56, PT_SCE_VERSION, 0, 0, 0, 0, 0, 0, 1)
     for index, tag in enumerate(tags):
@@ -34,7 +35,12 @@ def fixture(header_count):
 def program_headers(elf):
     phoff, = struct.unpack_from("<Q", elf, 0x20)
     phentsize, phnum = struct.unpack_from("<HH", elf, 0x36)
-    return [struct.unpack_from("<IIQQQQQQ", elf, phoff + index * phentsize) for index in range(phnum)]
+    headers = [struct.unpack_from("<IIQQQQQQ", elf, phoff + index * phentsize) for index in range(phnum)]
+    phdr = next(header for header in headers if header[0] == 6)
+    assert phdr[5:7] == (phnum * phentsize, phnum * phentsize), ("PT_PHDR must cover every output header", phdr, phnum)
+    header_load = next(header for header in headers if header[0] == PT_LOAD and header[2] == 0)
+    assert header_load[5:7] == (phoff + phnum * phentsize, phoff + phnum * phentsize), ("Header PT_LOAD must cover every output header", header_load, phnum)
+    return headers
 
 
 def relink(relinker, directory, name, image):
@@ -79,22 +85,57 @@ def main():
     relinker = Path(sys.argv[1]).resolve()
     with tempfile.TemporaryDirectory(prefix="anyps5-eh-frame-") as directory:
         header_bounds(relinker, directory)
-        image = fixture(7)
-        result, elf = relink(relinker, directory, "spare-slot", image)
-        assert "PT_GNU_EH_FRAME" not in result.stderr, result.stderr
-        headers = program_headers(elf)
-        frames = [header for header in headers if header[0] == PT_GNU_EH_FRAME]
-        assert frames == [EH_FRAME_HEADER], ("PT_GNU_EH_FRAME must be kept unchanged", headers)
-        offset, size = EH_FRAME_HEADER[2], EH_FRAME_HEADER[5]
-        assert elf[offset:offset + size] == image[offset:offset + size], "eh_frame_hdr bytes changed"
-        assert all(header[0] != PT_SCE_VERSION for header in headers), headers
-
-        for header_count in (5, 6):
-            result, elf = relink(relinker, directory, "full-slots-" + str(header_count), fixture(header_count))
+        for header_count in (7, 8):
+            image = fixture(header_count)
+            result, elf = relink(relinker, directory, "available-slots-" + str(header_count), image)
+            assert "PT_GNU_EH_FRAME" not in result.stderr, result.stderr
             headers = program_headers(elf)
-            assert all(header[0] != PT_GNU_EH_FRAME for header in headers), (header_count, headers)
-            assert len(headers) == 6, (header_count, headers)
-            assert "No free program header slot for PT_GNU_EH_FRAME" in result.stderr, (header_count, result.stderr)
+            frames = [header for header in headers if header[0] == PT_GNU_EH_FRAME]
+            assert frames == [EH_FRAME_HEADER], ("PT_GNU_EH_FRAME must be kept unchanged", headers)
+            offset, size = EH_FRAME_HEADER[2], EH_FRAME_HEADER[5]
+            assert elf[offset:offset + size] == image[offset:offset + size], "eh_frame_hdr bytes changed"
+            assert all(header[0] != PT_SCE_VERSION for header in headers), headers
+
+        result, elf = relink(relinker, directory, "full-slots", fixture(6))
+        headers = program_headers(elf)
+        assert all(header[0] != PT_GNU_EH_FRAME for header in headers), headers
+        assert len(headers) == 6, headers
+        assert "No free program header slot for PT_GNU_EH_FRAME" in result.stderr, result.stderr
+
+        image = fixture(6, with_frame=False)
+        table_end = 64 + 6 * 56
+        image[table_end:table_end + 56] = bytes([0xa5]) * 56
+        result, elf = relink(relinker, directory, "no-frame-exact-slots", image)
+        headers = program_headers(elf)
+        assert len(headers) == 6, headers
+        assert "PT_GNU_EH_FRAME" not in result.stderr, result.stderr
+        assert elf[table_end:table_end + 56] == image[table_end:table_end + 56], "Bytes after the program header table changed"
+
+        for with_frame in (False, True):
+            source = Path(directory) / ("insufficient-slots-" + str(with_frame) + ".elf")
+            output = source.with_suffix(".out")
+            image = fixture(5, with_frame=with_frame)
+            image[64 + 5 * 56:64 + 6 * 56] = bytes([0xa5]) * 56
+            source.write_bytes(image)
+            result = subprocess.run([str(relinker), "--skip-sce-module", str(source), str(output)], capture_output=True, text=True, timeout=20)
+            assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+            assert "Not enough program header slots: need 6, available 5" in result.stderr, result.stderr
+            assert not output.exists(), "Insufficient program header slots must not produce an executable"
+            assert source.read_bytes() == image, "Input changed while rejecting insufficient program header slots"
+
+        image = fixture(5, with_frame=False)
+        headers = image[64:64 + 4 * 56]
+        headers += struct.pack("<IIQQQQQQ", 4, 0, 0, 0, 0, 0, 0, 1) * 65530
+        struct.pack_into("<Q", image, 32, len(image))
+        struct.pack_into("<H", image, 56, 65534)
+        image += headers
+        source = Path(directory) / "overflowing-header-count.elf"
+        output = source.with_suffix(".out")
+        source.write_bytes(image)
+        result = subprocess.run([str(relinker), "--skip-sce-module", str(source), str(output)], capture_output=True, text=True, timeout=20)
+        assert result.returncode == 2, (result.returncode, result.stdout, result.stderr)
+        assert "Not enough program header slots: need 65536, available 65534" in result.stderr, result.stderr
+        assert not output.exists(), "An unrepresentable header count must not produce an executable"
     print("Linux eh_frame header test passed")
 
 

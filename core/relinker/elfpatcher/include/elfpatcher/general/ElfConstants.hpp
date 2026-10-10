@@ -55,7 +55,7 @@ inline constexpr std::uint64_t kDefaultLoadAlignment = 0x1000;
 inline constexpr std::uint64_t kPhdrHeaderAlignment = 8;
 inline constexpr std::uint64_t kDynamicHeaderAlignment = 8;
 inline constexpr std::uint64_t kInterpHeaderAlignment = 1;
-inline constexpr std::uint16_t kSyntheticProgramHeaderCount = 4;
+inline constexpr std::uint16_t kSyntheticProgramHeaderCount = 5;
 
 inline constexpr std::uint32_t PT_LOAD = 1;
 inline constexpr std::uint32_t PT_DYNAMIC = 2;
@@ -97,6 +97,8 @@ inline constexpr std::int64_t DT_INIT_ARRAYSZ = 27;
 inline constexpr std::int64_t DT_FINI_ARRAYSZ = 28;
 inline constexpr std::int64_t DT_RUNPATH = 29;
 inline constexpr std::int64_t DT_FLAGS = 30;
+inline constexpr std::int64_t DT_PREINIT_ARRAY = 32;
+inline constexpr std::int64_t DT_PREINIT_ARRAYSZ = 33;
 inline constexpr std::uint64_t DF_BIND_NOW = 0x8;
 
 inline constexpr std::int64_t DT_OS_INIT = 0x6000000c;
@@ -105,6 +107,8 @@ inline constexpr std::int64_t DT_OS_INIT_ARRAY = 0x60000019;
 inline constexpr std::int64_t DT_OS_FINI_ARRAY = 0x6000001a;
 inline constexpr std::int64_t DT_OS_INIT_ARRAYSZ = 0x6000001b;
 inline constexpr std::int64_t DT_OS_FINI_ARRAYSZ = 0x6000001c;
+inline constexpr std::int64_t DT_OS_PREINIT_ARRAY = 0x60000020;
+inline constexpr std::int64_t DT_OS_PREINIT_ARRAYSZ = 0x60000021;
 inline constexpr std::int64_t DT_OS_PLTGOT = 0x61000027;
 inline constexpr std::int64_t DT_OS_JMPREL = 0x61000029;
 inline constexpr std::int64_t DT_OS_PLTREL = 0x6100002b;

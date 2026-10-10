@@ -134,7 +134,7 @@ std::uint16_t ProgramHeaderLayoutBuilder::WriteLayout(
     const ProgramHeaderLayoutRequest& request
 ) const {
     std::vector<Domain::ProgramHeader> kept;
-    std::uint16_t frameCount = 0;
+    std::size_t frameCount = 0;
     for (const auto& ph : request.OriginalHeaders) {
         if (_segmentFilter->ShouldSkip(ph))
             continue;
@@ -143,15 +143,14 @@ std::uint16_t ProgramHeaderLayoutBuilder::WriteLayout(
             frameCount++;
     }
 
-    const bool keepFrames = kept.size() + kSyntheticProgramHeaderCount < request.PhNum;
+    const bool keepFrames = kept.size() + kSyntheticProgramHeaderCount <= request.PhNum;
     if (!keepFrames && frameCount > 0) {
         std::erase_if(kept, [](const Domain::ProgramHeader& ph) { return ph.Type == PT_GNU_EH_FRAME; });
         std::cerr << "WARNING: No free program header slot for PT_GNU_EH_FRAME; C++ exceptions thrown in the executable cannot be caught.\n";
     }
     _sortLoadHeaders(kept);
 
-    const auto keptCount = static_cast<std::uint16_t>(kept.size());
-    const std::uint16_t neededPh = keptCount + kSyntheticProgramHeaderCount;
+    const std::size_t neededPh = kept.size() + kSyntheticProgramHeaderCount;
     if (neededPh > request.PhNum)
         throw Domain::RelinkerException(
             "Not enough program header slots: need " + std::to_string(neededPh) +

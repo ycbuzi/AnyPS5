@@ -1,6 +1,7 @@
 #include <relinker/analysis/UnusedNidFilter/IEntryPointCollector.hpp>
 #include <elfpatcher/general/ElfConstants.hpp>
 #include <cstring>
+#include <limits>
 
 namespace Relinker::UnusedNidFilter {
 
@@ -30,6 +31,12 @@ bool fitsAt(std::uint64_t base, std::uint64_t offset, std::uint64_t length, std:
     return base <= size && offset <= size - base && length <= size - base - offset;
 }
 
+struct LoadSegment {
+    VirtualAddress vaddr;
+    std::uint64_t fileOffset;
+    std::uint64_t fileSize;
+};
+
 bool inText(VirtualAddress va, VirtualAddress textVaddr, std::size_t textSize) {
     return va >= textVaddr && va < textVaddr + static_cast<VirtualAddress>(textSize);
 }
@@ -41,7 +48,8 @@ public:
     std::vector<VirtualAddress> Collect(
         const std::vector<std::uint8_t>& elfBytes,
         VirtualAddress textVaddr,
-        std::size_t textSize
+        std::size_t textSize,
+        const IRelativeRelocationIndex& relativeRelocations
     ) const override {
         if (elfBytes.size() < 64) throw RelinkerException("ELF too small for header");
         if (elfBytes[0] != 0x7f || elfBytes[1] != 'E' ||
@@ -66,6 +74,14 @@ public:
 
         if (phEntSize < 56) throw RelinkerException("ELF program header entry too small");
 
+        std::vector<LoadSegment> loads;
+        for (std::uint16_t i = 0; i < phCount; ++i) {
+            std::size_t phPos = static_cast<std::size_t>(phOff) + i * phEntSize;
+            if (phPos + 56 > elfBytes.size()) throw RelinkerException("Program header out of bounds");
+            if (read32(elfBytes, phPos) != PT_LOAD) continue;
+            loads.push_back({read64(elfBytes, phPos + 16), read64(elfBytes, phPos + 8), read64(elfBytes, phPos + 32)});
+        }
+
         for (std::uint16_t i = 0; i < phCount; ++i) {
             const std::uint64_t phIndexOff = static_cast<std::uint64_t>(i) * phEntSize;
             if (!fitsAt(phOff, phIndexOff, 56, elfBytes.size())) throw RelinkerException("Program header out of bounds");
@@ -84,6 +100,8 @@ public:
             std::uint64_t initArraySz = 0;
             VirtualAddress finiArrayVa = 0;
             std::uint64_t finiArraySz = 0;
+            VirtualAddress preinitArrayVa = 0;
+            std::uint64_t preinitArraySz = 0;
 
             for (std::uint64_t off = 0; off + 16 <= segSz; off += 16) {
                 std::size_t pos = static_cast<std::size_t>(segOff + off);
@@ -97,24 +115,37 @@ public:
                 if (tag == DT_INIT_ARRAYSZ || tag == DT_OS_INIT_ARRAYSZ) initArraySz = val;
                 if (tag == DT_FINI_ARRAY || tag == DT_OS_FINI_ARRAY) finiArrayVa = val;
                 if (tag == DT_FINI_ARRAYSZ || tag == DT_OS_FINI_ARRAYSZ) finiArraySz = val;
+                if (tag == DT_PREINIT_ARRAY || tag == DT_OS_PREINIT_ARRAY) preinitArrayVa = val;
+                if (tag == DT_PREINIT_ARRAYSZ || tag == DT_OS_PREINIT_ARRAYSZ) preinitArraySz = val;
             }
 
             auto collectArray = [&](VirtualAddress arrayVa, std::uint64_t arraySz) {
                 if (arrayVa == 0 || arraySz == 0) return;
-                std::uint64_t phFileOff = read64(elfBytes, phPos + 8);
-                std::uint64_t phVaddr = read64(elfBytes, phPos + 16);
-                if (arrayVa < phVaddr || !fitsAt(phFileOff, arrayVa - phVaddr, 0, elfBytes.size())) return;
-                std::uint64_t arrayFileOff = phFileOff + (arrayVa - phVaddr);
-                std::uint64_t count = arraySz / 8;
-                for (std::uint64_t k = 0; k < count; ++k) {
-                    if (!fitsAt(arrayFileOff, k * 8, 8, elfBytes.size())) break;
-                    std::size_t entPos = static_cast<std::size_t>(arrayFileOff + k * 8);
-                    addIfInText(read64(elfBytes, entPos));
+                if (arraySz % 8 != 0) throw RelinkerException("Init/fini array size is not a multiple of 8", arrayVa);
+                const LoadSegment* container = nullptr;
+                for (const auto& load : loads) {
+                    if (arrayVa >= load.vaddr && arrayVa - load.vaddr <= load.fileSize &&
+                        arraySz <= load.fileSize - (arrayVa - load.vaddr)) {
+                        container = &load;
+                        break;
+                    }
+                }
+                if (!container) throw RelinkerException("Init/fini array is not file-backed", arrayVa);
+                std::uint64_t arrayFileOff = container->fileOffset + (arrayVa - container->vaddr);
+                if (arrayFileOff > elfBytes.size() || arraySz > elfBytes.size() - arrayFileOff)
+                    throw RelinkerException("Init/fini array is out of bounds", arrayVa);
+                for (std::uint64_t k = 0; k < arraySz / 8; ++k) {
+                    VirtualAddress slot = arrayVa + k * 8;
+                    auto relocated = relativeRelocations.TargetOfSlot(slot);
+                    std::uint64_t target = relocated ? *relocated : read64(elfBytes, static_cast<std::size_t>(arrayFileOff + k * 8));
+                    if (target == 0 || target == std::numeric_limits<std::uint64_t>::max()) continue;
+                    addIfInText(target);
                 }
             };
 
             collectArray(initArrayVa, initArraySz);
             collectArray(finiArrayVa, finiArraySz);
+            collectArray(preinitArrayVa, preinitArraySz);
 
             break;
         }
