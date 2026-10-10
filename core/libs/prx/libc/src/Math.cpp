@@ -174,4 +174,18 @@ void APS5_VABI srand_nid_postfix(unsigned int seed) {
     g_randState = seed;
 }
 
+static constexpr std::uint64_t Rand48Mask = (std::uint64_t{1} << 48) - 1;
+static std::uint64_t g_rand48State = 0x1234ABCD330Eull;
+
+std::int64_t APS5_VABI lrand48_nid_postfix() {
+    std::lock_guard lock(g_randLock);
+    g_rand48State = (g_rand48State * 0x5DEECE66Dull + 0xB) & Rand48Mask;
+    return static_cast<std::int64_t>(g_rand48State >> 17);
+}
+
+void APS5_VABI srand48_nid_postfix(std::int64_t seed) {
+    std::lock_guard lock(g_randLock);
+    g_rand48State = ((static_cast<std::uint64_t>(seed) << 16) | 0x330E) & Rand48Mask;
+}
+
 }
