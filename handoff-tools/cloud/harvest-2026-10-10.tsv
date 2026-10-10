@@ -1,0 +1,1064 @@
+pr	result	d_done	d_total	libs	conflicts
+2	no-merge-base	0	0		
+3	no-merge-base	0	0		
+5	no-merge-base	0	0		
+6	no-merge-base	0	0		
+7	no-merge-base	0	0		
+8	no-merge-base	0	0		
+9	no-merge-base	0	0		
+10	no-merge-base	0	0		
+11	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc	.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+12	no-merge-base	0	0		
+14	no-merge-base	0	0		
+15	no-merge-base	0	0		
+16	no-merge-base	0	0		
+18	no-merge-base	0	0		
+19	no-merge-base	0	0		
+20	no-merge-base	0	0		
+21	no-merge-base	0	0		
+23	no-merge-base	0	0		
+24	no-merge-base	0	0		
+25	no-merge-base	0	0		
+26	no-merge-base	0	0		
+27	no-merge-base	0	0		
+28	no-merge-base	0	0		
+29	no-merge-base	0	0		
+30	no-merge-base	0	0		
+31	no-merge-base	0	0		
+32	no-merge-base	0	0		
+33	no-merge-base	0	0		
+34	no-merge-base	0	0		
+35	no-merge-base	0	0		
+36	no-merge-base	0	0		
+37	no-merge-base	0	0		
+39	no-merge-base	0	0		
+40	no-merge-base	0	0		
+41	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	.github/workflows/build.yml,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+43	no-merge-base	0	0		
+44	no-merge-base	0	0		
+45	no-merge-base	0	0		
+46	no-merge-base	0	0		
+47	no-merge-base	0	0		
+48	no-merge-base	0	0		
+49	no-merge-base	0	0		
+50	no-merge-base	0	0		
+51	no-merge-base	0	0		
+52	no-merge-base	0	0		
+53	no-merge-base	0	0		
+54	no-merge-base	0	0		
+55	conflict	0	0	libc	core/libs/prx/libc/src/Mspace.cpp
+56	no-merge-base	0	0		
+57	no-merge-base	0	0		
+58	no-merge-base	0	0		
+59	no-merge-base	0	0		
+60	no-merge-base	0	0		
+61	no-merge-base	0	0		
+62	no-merge-base	0	0		
+63	no-merge-base	0	0		
+64	no-merge-base	0	0		
+65	no-merge-base	0	0		
+66	no-merge-base	0	0		
+67	no-merge-base	0	0		
+69	no-merge-base	0	0		
+70	no-merge-base	0	0		
+71	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+72	no-merge-base	0	0		
+73	no-merge-base	0	0		
+74	no-prx-change	0	0		
+76	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Recorder.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp
+77	conflict	0	0	libSceSaveData,libSceSaveData.native,libSceSaveDataDialog	core/libs/prx/libSceSaveData.native/Export.cpp,core/libs/prx/libSceSaveData/SaveDataCore.hpp
+78	conflict	0	0	libSceMsgDialog	core/libs/HitLog.hpp
+79	conflict	0	0	libSceNet,libSceRudp	core/libs/prx/libSceNet/Export.cpp,core/libs/prx/libSceRudp/Export.cpp
+80	conflict	0	0	libSceAvPlayer,libSceAvPlayer.native	core/libs/HitLog.hpp,core/libs/prx/libSceAvPlayer.native/Export.cpp,core/libs/prx/libSceAvPlayer/Export.cpp
+81	conflict	0	0	libc,libkernel	.gitmodules,README.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+82	conflict	0	0	libSceNgs2,libSceNgs2.native,libc	core/libs/prx/libSceNgs2.native/Export.cpp,core/libs/prx/libSceNgs2/Export.cpp
+83	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Acb/src/Memory.cpp,core/libs/prx/libSceAgc/Command/include/Memory.hpp,core/libs/prx/libSceAgc/Command/src/Control.cpp,core/libs/prx/libSceAgc/Command/src/Memory.cpp,core/libs/prx/libSceAgc/Misc/src/PacketInfo.cpp,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp
+84	conflict	0	0	libScePad,libSceVideoOut	core/libs/SceTypes.hpp,core/libs/prx/libScePad/Export.cpp,core/libs/prx/libScePad/include/PadState.hpp,core/libs/prx/libScePad/src/PadState.cpp,core/libs/prx/libSceVideoOut/src/PadInput.cpp
+87	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Recorder.cpp
+88	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Recorder.cpp
+89	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	.github/pull_request_template.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+90	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Recorder.cpp
+91	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut	.github/workflows/area-labels.yml,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+93	conflict	0	0	libSceAgcDriver,libSceFiber,libSceMouse,libScePad,libSceSystemService,libSceUserService,libSceVideoOut,libc,libkernel	README.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+94	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc	core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+95	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc	.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+97	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+99	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libcohtml,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+100	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libcohtml,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+101	no-prx-change	0	0		
+102	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+103	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libcohtml,libfmod	.github/workflows/progress-report.yml,.github/workflows/release.yml,README.md,core/libs/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp
+104	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libcohtml,libfmod,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+106	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+107	conflict	0	0	libSceAgcDriver,libSceMouse,libSceVideoOut,libc,libkernel	.github/pull_request_template.md,.github/workflows/area-labels.yml,.github/workflows/build.yml,.github/workflows/progress-report.yml,README.md,core/libs/CMakeLists.txt
+110	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp
+111	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp
+113	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/BdaResources.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+122	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/GuestBufferMemory.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/tests/BdaResources.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+124	conflict	0	0	libSceAgc,libSceAgcDriver	core/libs/prx/libSceAgc/CMakeLists.txt,core/libs/prx/libSceAgc/Misc/include/ShaderFusion.hpp,core/libs/prx/libSceAgc/Misc/src/ShaderFusion.cpp,core/libs/prx/libSceAgc/tests/ShaderFusion.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp
+127	conflict	0	0	libSceAgcDriver,libSceContentExport	core/libs/CMakeLists.txt
+128	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/src/Output.cpp,core/libs/prx/libSceVideoOut/tests/Flip.cpp
+130	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/GuestTextureResource.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestTextureResource.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp
+131	conflict	0	0	libSceAgc,libSceAgcDriver	core/libs/prx/libSceAgc/CMakeLists.txt,core/libs/prx/libSceAgc/Misc/include/ShaderFusion.hpp,core/libs/prx/libSceAgc/Misc/src/ShaderFusion.cpp,core/libs/prx/libSceAgc/tests/ShaderFusion.cpp,core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp
+133	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Mesh.cpp
+134	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/ControlFlow.cpp,core/libs/prx/libSceAgcDriver/tools/ShaderReplay.cpp,core/shader/recompiler/ControlFlow/src/Structurizer.cpp
+135	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderValidation.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+136	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderInputState.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/ControlFlow/src/RequestSerializer.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/ProgramMetadata.hpp
+137	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderInputState.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/ControlFlow/src/RequestSerializer.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/ProgramMetadata.hpp
+138	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/tests/Submit.cpp
+140	no-prx-change	0	0		
+144	conflict	0	0	libSceAgc,libSceAgcDriver,libSceAjm.native,libSceAppContent,libSceAudioOut,libSceContentDelete,libSceContentExport,libSceContentSearch,libSceGameLiveStreaming,libSceIme,libSceMsgDialog.native,libSceNpCommerce,libSceNpEntitlementAccess,libSceNpManager,libSceNpUtility,libScePad,libScePlayerInvitationDialog,libScePlayerSelectionDialog,libSceRazorCpu,libSceRemoteplay,libSceSharePlay,libSceSystemService,libSceVideoOut,libSceVideoRecordingP,libSceVoice,libSceWebBrowserDialog,libc,libkernel,ulobjmgr	CMakeLists.txt,core/libs/CMakeLists.txt,core/libs/prx/libSceAgc/Acb/src/Control.cpp,core/libs/prx/libSceAgc/Acb/src/Dispatch.cpp,core/libs/prx/libSceAgc/Acb/src/Memory.cpp,core/libs/prx/libSceAgc/Acb/src/Sync.cpp
+145	conflict	0	0	libSceAgc,libScePad,libSceVideoOut,libc,libkernel	.gitmodules,README.md,core/libs/CMakeLists.txt,core/libs/SceTypes.hpp,core/libs/prx/libSceAgc/Acb/src/Memory.cpp,core/libs/prx/libSceAgc/Command/include/Memory.hpp
+147	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Mesh.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/ControlFlow/src/RequestSerializer.cpp
+149	no-prx-change	0	0		
+150	conflict	0	0	libSceRandom,libSceRtc,libkernel	core/libs/CMakeLists.txt
+156	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/src/Mutex.cpp,core/libs/tests/GuestKernelErrors.cpp
+161	conflict	0	0	libc	core/libs/CMakeLists.txt,core/libs/prx/libc/Export.cpp,core/libs/prx/libc/src/LocaleSupport.cpp,core/libs/tests/GuestLifecycle.cpp
+162	no-prx-change	0	0		
+163	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DccMetadata.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DccMetadata.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp
+164	conflict	0	0	libSceAgcDriver,libc,libkernel	core/libs/prx/libkernel/DirectMemory/DirectMemory.cpp
+165	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver.cpp
+167	conflict	0	0	libSceAgcDriver,libSceMsgDialog.native,libSceNpAuth,libSceNpCommerce,libSceNpEntitlementAccess,libSceNpManager,libSceNpUtility,libScePlayerInvitationDialog,libScePlayerSelectionDialog,libSceSigninDialog,libSceSystemService,libSceWebBrowserDialog,libkernel	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCacheStatistics.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawRegisterKey.cpp
+168	conflict	0	0	libkernel	core/libs/CMakeLists.txt
+169	conflict	0	0	libkernel	core/libs/CMakeLists.txt,core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/prx/libkernel/Socket/src/Socket.cpp,core/libs/prx/libkernel/Unimplemented.cpp,core/libs/tests/GuestFilesystem.cpp,core/libs/tests/GuestUdp.cpp
+171	conflict	0	0	libkernel	core/libs/prx/libkernel/Socket/src/Socket.cpp,core/libs/tests/GuestSignals.cpp
+174	no-prx-change	0	0		
+182	conflict	0	0	libkernel	core/libs/prx/libkernel/Apr/src/Apr.cpp,core/libs/prx/libkernel/File/src/Stdio.cpp
+186	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libSceAgcDriver/Graphics/include/GuestBufferMemory.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libc/include/GuestArena.hpp,core/libs/prx/libc/include/WindowsMappings.hpp
+188	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/Resources.hpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaDescriptorFormat.cpp,core/shader/recompiler/ShaderDiskCache.cpp
+194	no-prx-change	0	0		
+196	conflict	0	0	libc	core/libs/prx/libc/src/GuestArena.cpp
+218	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/CacheKey.hpp,core/shader/recompiler/Recompiler.cpp
+231	conflict	0	0	libc	core/libs/prx/libc/src/GuestArena.cpp
+232	conflict	0	0	libc,libkernel	core/libs/prx/libc/src/GuestArena.cpp,core/libs/prx/libkernel/Aio/src/Aio.cpp,core/libs/prx/libkernel/Apr/src/Apr.cpp,core/libs/prx/libkernel/File/src/Open.cpp,core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/tests/GuestMemory.cpp
+234	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/RdnaDecoder/src/RdnaScalarOpDecoder.cpp,core/shader/recompiler/Translation/src/IntegerInstructions.cpp
+235	no-prx-change	0	0		
+244	conflict	0	0	libSceSaveData,libSceSaveData.native	core/libs/CMakeLists.txt,core/libs/prx/libSceSaveData/SaveDataCore.hpp
+256	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+262	conflict	0	0	libc	core/libs/prx/libc/src/StdioExtras.cpp,core/libs/tests/ApplicationHeap.cpp
+263	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/FmaRounding.cpp,core/shader/recompiler/Translation/src/VectorInstructions.cpp
+265	no-prx-change	0	0		
+266	no-prx-change	0	0		
+267	no-prx-change	0	0		
+268	no-prx-change	0	0		
+269	no-prx-change	0	0		
+270	no-prx-change	0	0		
+271	no-prx-change	0	0		
+272	no-prx-change	0	0		
+288	conflict	0	0	libSceJpegDec	core/libs/prx/libSceJpegDec/Export.cpp
+290	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Packets/PacketExecution.cpp
+291	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCacheStatistics.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawRegisterKey.cpp
+293	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp
+298	no-prx-change	0	0		
+302	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp
+310	clean	0	0	libSceAgcDriver	
+314	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+315	clean	0	0	libkernel	
+317	no-prx-change	0	0		
+336	conflict	0	0	libSceNpAuth,libSceNpManager	core/libs/prx/libSceNpAuth/Export.cpp,core/libs/prx/libSceNpManager/Export.cpp
+345	no-prx-change	0	0		
+346	conflict	0	0	libSceNpAuth,libSceNpManager	core/libs/prx/libSceNpAuth/Export.cpp,core/libs/prx/libSceNpManager/CMakeLists.txt,core/libs/prx/libSceNpManager/Export.cpp
+347	conflict	0	0	libkernel	core/libs/tests/GuestMemory.cpp
+348	clean	0	0	libSceAudio3d	
+352	conflict	0	0	libSceSaveData.native	core/libs/prx/libSceSaveData.native/CMakeLists.txt,core/libs/prx/libSceSaveData.native/Export.cpp,core/libs/tests/GuestSaveDataDelete.cpp
+353	no-prx-change	0	0		
+356	no-prx-change	0	0		
+372	clean	0	0	libSceAgcDriver	
+374	clean	0	0	libSceAgcDriver	
+378	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/tests/GuestFilesystem.cpp
+381	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+386	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/IntegerDot.cpp,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaOpcode.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaVectorOpDecoder.cpp,core/shader/recompiler/Translation/src/VectorInstructions.cpp
+387	clean	0	0	libSceAgcDriver	
+390	conflict	0	0	libSceAgcDriver	core/shader/recompiler/Optimization/src/ResourceTracker.cpp,core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvBda.hpp,core/shader/recompiler/SpirvBackend/src/SpirvBdaRead.cpp
+395	no-prx-change	0	0		
+398	conflict	0	0	libc	core/libs/prx/libc/src/FileAndHeap.cpp
+407	clean	0	49	libSceAmpr,libSceHttp,libSceJson2,libSceNetCtlApDialog,libc,libkernel	
+408	clean	0	0	libSceAgcDriver	
+410	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/VertexInput.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+412	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+413	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ControlFlow.cpp,core/libs/prx/libSceAgcDriver/tests/Structurizer.cpp
+414	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/Optimization/src/ResourceTracker.cpp
+415	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/Optimization/include/Optimization/SrtWalker/SrtEvaluator.hpp
+417	conflict	0	0	libSceAgcDriver,libSceVideoOut	core/libs/prx/libSceVideoOut/tests/Flip.cpp
+418	no-prx-change	0	0		
+419	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+420	conflict	0	0	libSceAjm.native	core/libs/prx/libSceAjm.native/src/Ajm.cpp
+421	no-prx-change	0	0		
+423	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderValidation.cpp
+425	clean	0	0	libSceAgcDriver	
+426	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCacheStatistics.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+428	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt
+429	conflict	0	0	libSceRtc	core/libs/prx/libSceRtc/Export.cpp,core/libs/tests/GuestRtc.cpp
+448	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderInputState.cpp
+450	no-prx-change	0	0		
+451	conflict	0	0	libSceNgs2,libSceNgs2.native	core/libs/prx/libSceNgs2.native/CMakeLists.txt,core/libs/prx/libSceNgs2.native/Ngs2Library.cmake,core/libs/prx/libSceNgs2/CMakeLists.txt
+454	clean	0	0	libSceAgcDriver	
+468	conflict	0	0	libSceAjm.native	core/libs/prx/libSceAjm.native/src/Ajm.cpp,core/libs/tests/GuestAjm.cpp,docs/dev/TechnicalDebt.md
+473	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/shader/recompiler/CMakeLists.txt,core/shader/recompiler/Recompiler.cpp
+480	no-prx-change	0	0		
+483	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/GuestTextureResource.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestTextureResource.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/GuestTextureResource.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/Resources.hpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp
+488	conflict-docs-only	0	0	libSceJson2	docs/dev/TechnicalDebt.md
+492	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+494	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+502	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/PackedIntegerClamp.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaVectorOpDecoder.cpp
+512	no-prx-change	0	0		
+520	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/tests/VectorFusedMultiplyAdd.cpp,tools/progress.py
+527	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/Vop3CarryOut.cpp
+529	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ControlFlow.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaInstructionDecoder.cpp
+530	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/GlobalLoadAddtid.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/include/Translation/TranslationContext.hpp,core/shader/recompiler/Translation/src/MemoryInstructions/FlatInstructions.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+545	conflict	0	0	libSceAmpr,libSceHttp,libSceJson2,libSceNetCtlApDialog,libc,libkernel	core/libs/prx/libc/src/Strings.cpp,core/libs/prx/libc/src/Time.cpp
+551	clean	0	0	libSceNpAuth	
+560	conflict-docs-only	0	0	libSceSigninDialog	docs/dev/TechnicalDebt.md
+566	clean	1	0	libSceSsl	
+570	conflict	0	0	libSceAudioIn	core/libs/prx/libSceAudioIn/Export.cpp
+571	conflict-docs-only	0	0	libSceVoice	docs/dev/TechnicalDebt.md
+572	conflict-docs-only	0	0	libSceSystemGesture	docs/dev/TechnicalDebt.md
+600	no-prx-change	0	0		
+615	no-prx-change	0	0		
+637	conflict	0	0	libc,libkernel	core/libs/prx/libc/src/GuestArena.cpp,core/libs/prx/libkernel/DirectMemory/DirectMemory.cpp,core/libs/tests/GuestMemory.cpp
+646	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/CMakeLists.txt,core/libs/prx/libSceAgc/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+651	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/CMakeLists.txt,core/libs/prx/libSceAgc/Shader/src/InterpolantMapping.cpp,core/libs/prx/libSceAgc/tests/InterpolantMapping.cpp,docs/dev/TechnicalDebt.md
+674	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/CMakeLists.txt,docs/dev/BUILD.md
+687	clean	0	0	libSceAgcDriver	
+690	no-prx-change	0	0		
+715	conflict	0	0	libc	core/libs/prx/libc/Export.cpp,core/libs/prx/libc/src/exception/StandardExceptions.cpp,core/libs/tests/ExceptionRuntime.cpp
+718	conflict	0	0	libc	core/libs/prx/libc/Export.cpp,core/libs/prx/libc/src/Strings.cpp
+725	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Unimplemented.cpp
+728	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Unimplemented.cpp
+755	no-prx-change	0	0		
+757	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/Recompiler.cpp,core/shader/recompiler/ShaderDiskCache.cpp,core/shader/recompiler/ShaderDiskCache.hpp
+758	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/Recompiler.cpp,core/shader/recompiler/ShaderDiskCache.cpp,core/shader/recompiler/ShaderDiskCache.hpp
+780	conflict	0	0	libc,libkernel	core/libs/prx/libc/src/ApplicationHeap.cpp,core/libs/prx/libkernel/Module/src/DynamicLoader.cpp
+816	conflict	0	0	libSceRtc	core/libs/prx/libSceRtc/Export.cpp,core/libs/tests/GuestRtc.cpp,docs/dev/TechnicalDebt.md
+817	no-prx-change	0	0		
+818	no-prx-change	0	0		
+820	no-prx-change	0	0		
+821	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,docs/dev/TechnicalDebt.md
+822	clean	0	0	libSceAgcDriver	
+830	conflict	0	0	libSceAudio3d	core/libs/tests/GuestAudio3dPort.cpp
+834	conflict	0	0	libkernel	core/libs/tests/GuestThreadSelf.cpp,docs/dev/TechnicalDebt.md
+838	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaScalarOpDecoder.cpp,core/shader/recompiler/Translation/include/Translation/TranslationContext.hpp,core/shader/recompiler/Translation/src/IntegerInstructions.cpp
+845	conflict	0	0	libSceIme	core/libs/prx/libSceIme/Export.cpp,core/libs/tests/GuestImeParameters.cpp
+846	conflict	0	0	libkernel	core/libs/prx/libkernel/Module/src/Module.cpp,core/relinker/cli/src/CliArgs.cpp,core/relinker/main.cpp,core/relinker/relinker/include/relinker/guest/GuestImage.hpp,core/relinker/relinker/src/guest/GuestModuleBuilder.cpp
+847	no-prx-change	0	0		
+848	no-prx-change	0	0		
+850	conflict	0	0	libSceFont	core/libs/prx/libSceFont/CMakeLists.txt
+852	conflict	0	0	libSceFont	core/libs/prx/libSceFont/src/Style.cpp,docs/dev/TechnicalDebt.md
+854	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp
+855	clean	0	0	libSceAgcDriver	
+857	clean	0	0	libSceAgcDriver	
+858	clean	0	0	libSceAgcDriver	
+859	conflict	0	0	libSceFont	core/libs/prx/libSceFont/src/Library.cpp,core/libs/prx/libSceFont/src/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+861	conflict	0	0	libc,libkernel	core/libs/tests/GuestMemory.cpp
+862	clean	0	0	libSceAgcDriver	
+867	clean	1	0	libSceAjm.native	
+897	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/LdsCondxchg.cpp,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+901	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/ControlFlow.cpp,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaScalarOpDecoder.cpp,core/shader/recompiler/Translation/src/ScalarInstructions.cpp
+907	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/EmulatedColorCompare.cpp,core/shader/recompiler/SpirvBackend/src/SpirvImageEmitter.cpp,docs/dev/TechnicalDebt.md
+908	no-prx-change	0	0		
+920	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/ShaderMemory.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/DispatchInsert.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/ShaderMemory.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp
+921	conflict	0	0	libSceAgc,libSceAgcDriver,libSceAudioIn,libSceAudioOut,libSceKeyboard,libSceMouse,libScePad,libSceVideoOut	core/libs/prx/libSceAgcDriver/CMakeLists.txt,docs/dev/BUILD.md
+922	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp,docs/dev/TechnicalDebt.md
+925	clean	0	0	libSceNpAuth	
+926	conflict-docs-only	0	0	libSceNpManager	docs/dev/TechnicalDebt.md
+937	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/TextureSwizzleEquations.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestTextureResource.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/TextureTiling.cpp,core/libs/prx/libSceAgcDriver/tests/GuestTextureResource.cpp,core/libs/prx/libSceAgcDriver/tests/TextureDetiler.cpp,core/libs/prx/libSceAgcDriver/tests/TextureTiling.cpp
+946	conflict	0	0	libSceAppContent	core/libs/prx/libSceAppContent/Export.cpp,core/libs/tests/GuestAppContent.cpp,docs/dev/TechnicalDebt.md
+949	conflict	0	0	libSceAudioOut	core/libs/prx/libSceAudioOut/tests/AudioOut2Latency.cpp,docs/dev/TechnicalDebt.md
+950	conflict	0	0	libkernel	core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp,docs/dev/TechnicalDebt.md
+952	conflict	0	0	libkernel	core/libs/tests/GuestMemory.cpp,docs/dev/TechnicalDebt.md
+953	conflict	0	0	libSceVideoRecordingP	core/libs/prx/libSceVideoRecordingP/Export.cpp,docs/dev/TechnicalDebt.md
+958	conflict-docs-only	0	0	libSceNgs2.native	docs/dev/TechnicalDebt.md
+960	no-prx-change	0	0		
+967	clean	1	0	libSceShare.native	
+970	clean	1	0	libSceNpSessionSignaling	
+971	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/CMakeLists.txt,core/libs/prx/libSceAgc/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+974	conflict	0	0	libSceNpManager	core/libs/prx/libSceNpManager/CMakeLists.txt,core/libs/prx/libSceNpManager/Export.cpp,core/libs/tests/GuestNpManager.cpp
+976	no-prx-change	0	0		
+980	conflict	0	0	libSceAgcDriver	core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+983	conflict	0	0	libSceSystemService	core/libs/prx/libSceSystemService/Export.cpp,core/libs/tests/GuestSystemService.cpp,docs/dev/TechnicalDebt.md
+984	conflict	0	0	libSceSystemService	core/libs/prx/libSceSystemService/Export.cpp,core/libs/tests/GuestSystemService.cpp,docs/dev/TechnicalDebt.md
+986	conflict-docs-only	1	0	libSceNpTrophy2	docs/dev/TechnicalDebt.md
+987	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+988	no-prx-change	0	0		
+989	conflict-docs-only	1	0	libSceShare	docs/dev/TechnicalDebt.md
+990	conflict	0	0	libSceSystemService	core/libs/tests/GuestSystemService.cpp,docs/dev/TechnicalDebt.md
+991	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+996	conflict	0	0	libSceSigninDialog	core/libs/prx/libSceSigninDialog/CMakeLists.txt,core/libs/prx/libSceSigninDialog/Export.cpp,docs/dev/TechnicalDebt.md
+998	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+999	conflict	0	0	libSceVoiceQoS	core/libs/tests/GuestVoiceQoS.cpp,docs/dev/TechnicalDebt.md
+1000	conflict	0	0	libSceFont	core/libs/prx/libSceFont/include/FontTypes.hpp,core/libs/prx/libSceFont/src/Render.cpp,core/libs/prx/libSceFont/src/Text.cpp,docs/dev/TechnicalDebt.md
+1002	conflict-docs-only	1	0	libSceWebBrowserDialog	docs/dev/TechnicalDebt.md
+1003	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+1007	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+1008	conflict-docs-only	1	0	libSceIme	docs/dev/TechnicalDebt.md
+1009	no-prx-change	0	0		
+1010	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+1011	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaMemoryOpDecoder.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/MemoryInstructionDispatch.cpp
+1014	conflict	0	0	libSceFont	core/libs/prx/libSceFont/include/FontTypes.hpp,core/libs/prx/libSceFont/src/Render.cpp,core/libs/prx/libSceFont/src/Text.cpp,docs/dev/TechnicalDebt.md
+1021	conflict	0	0	libSceNgs2.native	core/libs/prx/libSceNgs2.native/CMakeLists.txt,core/libs/prx/libSceNgs2.native/src/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+1024	clean	1	4	libSceShare.native	
+1027	conflict-docs-only	6	0	libSceVrSetupDialog	docs/dev/TechnicalDebt.md
+1036	clean	0	0	libSceAgcDriver	
+1045	conflict	0	0	libSceAjm.native	core/libs/tests/GuestAjm.cpp,docs/dev/TechnicalDebt.md
+1046	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1048	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/CMakeLists.txt
+1049	conflict	0	0	libSceAgcDriver	tools/progress.py
+1050	clean	0	0	libSceVideoOut	
+1052	clean	2	0	libSceAgc	
+1053	no-prx-change	0	0		
+1054	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Misc/src/ShaderFusion.cpp,core/libs/prx/libSceAgc/tests/InterpolantMapping.cpp,docs/dev/TechnicalDebt.md
+1055	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+1056	conflict	0	0	libSceAvPlayer,libSceFont,libScePlayGo,libc,libkernel	core/libs/prx/libc/CMakeLists.txt,core/libs/prx/libc/src/Directory.cpp,core/libs/prx/libc/src/FileAndHeap.cpp,core/libs/prx/libc/src/Filesystem.cpp,core/libs/prx/libc/src/General.cpp,core/libs/prx/libkernel/Aio/src/Aio.cpp
+1060	clean	0	0	libSceAgc	
+1061	conflict	0	0	libSceSysmodule	core/libs/prx/libSceSysmodule/Export.cpp,core/libs/tests/GuestSysmodule.cpp,docs/dev/TechnicalDebt.md
+1062	conflict-docs-only	5	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+1064	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+1067	conflict	0	0	libSceSystemService	core/libs/prx/libSceSystemService/Export.cpp,core/libs/tests/GuestSystemService.cpp,docs/dev/TechnicalDebt.md
+1068	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/RdnaDecoder/src/RdnaScalarOpDecoder.cpp,docs/dev/TechnicalDebt.md
+1070	conflict-docs-only	1	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+1075	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/tests/ContextStateSize.cpp,docs/dev/TechnicalDebt.md
+1076	clean	0	0	libScePad	
+1077	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderValidation.cpp
+1079	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt,core/libs/prx/libc/src/General.cpp,core/libs/tests/GuestPathCase.cpp
+1081	conflict	0	0	libkernel	core/libs/prx/libkernel/Equeue/Equeue.cpp
+1087	no-prx-change	0	0		
+1090	conflict	0	0	libkernel	core/libs/tests/GuestUdp.cpp
+1091	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt,core/libs/prx/libkernel/Socket/include/SocketRuntime.hpp,docs/dev/TechnicalDebt.md
+1092	conflict	0	0	libSceHttp2	core/libs/prx/libSceHttp2/Export.cpp,core/libs/tests/GuestHttp2.cpp,docs/dev/TechnicalDebt.md
+1096	clean	0	0	libSceNet	
+1097	conflict	0	0	libc	core/libs/prx/libc/Export.cpp,core/libs/prx/libc/src/Math.cpp
+1108	conflict	0	0	libkernel	core/libs/prx/libkernel/File/include/File.hpp,core/libs/prx/libkernel/File/src/Open.cpp,core/libs/prx/libkernel/File/src/Stdio.cpp,docs/dev/TechnicalDebt.md
+1114	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/GuestMemory.cpp
+1119	conflict	0	0	libSceHttp2,libSceNet,libSceSsl	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp
+1121	conflict	0	0	libSceAppContent	core/libs/prx/libSceAppContent/Export.cpp,docs/dev/TechnicalDebt.md
+1128	conflict	0	0	libReactNative.Modules.Vsh,libReactNative.Modules.Vsh.WebAppLauncher,libSceAcm,libSceAgc,libSceAgcDriver,libSceAgcVsh,libSceAjm,libSceAjm.native,libSceAjmi,libSceAmpr,libSceAppContent,libSceAudio,libSceAudio3d,libSceAudioIn,libSceAudioOut,libSceAudioPropagation,libSceAudiodec,libSceAvPlayer,libSceCesCs,libSceCommonDialog,libSceContentDelete,libSceContentExport,libSceContentSearch,libSceConvertKeycode,libSceErrorDialog,libSceFiber,libSceFont,libSceFontFt,libSceGameLiveStreaming,libSceGameUpdate,libSceHmd,libSceHttp,libSceHttp2,libSceIme,libSceImeDialog,libSceJpegDec,libSceJpegEnc,libSceJson2,libSceKeyboard,libSceLibcInternal,libSceLoginDialog,libSceMouse,libSceMsgDialog,libSceMsgDialog.native,libSceNet,libSceNetCtl,libSceNgs2.native,libSceNpAuth,libSceNpCommerce,libSceNpEntitlementAccess,libSceNpGameIntent,libSceNpManager,libSceNpPartner001,libSceNpSessionSignaling,libSceNpTrophy2,libSceNpUniversalDataSystem,libSceNpUtility,libSceNpWebApi2,libScePad,libScePlayGo,libScePlayGoDialog,libScePlayerInvitationDialog,libScePlayerSelectionDialog,libScePngDec,libScePngEnc,libScePosixForWebKit,libSceProprietaryVoiceChatHelperPrx,libScePsml_debug,libSceRandom,libSceRazorCpu,libSceRemoteplay,libSceRtc,libSceRudp,libSceSaveData,libSceSaveData.native,libSceSaveDataDialog,libSceSaveDataDialog.native,libSceShare,libSceShare.native,libSceSharePlay,libSceSigninDialog,libSceSsl,libSceSysmodule,libSceSystemGesture,libSceSystemService,libSceUlt,libSceUsbd,libSceUserService,libSceVideoOut,libSceVideoRecordingP,libSceVideodec2,libSceVoice,libSceVoiceChat,libSceVoiceQoS,libSceVrSetupDialog,libSceWebBrowserDialog,libc,libkernel,libkernel_sys,libkernel_web,ulobjmgr	core/libs/SceTypes.hpp,core/libs/prx/libSceAgc/Acb/src/Control.cpp,core/libs/prx/libSceAgc/Cb/src/Branch.cpp,core/libs/prx/libSceAgc/DcbDraw/src/IndexBuffer.cpp,core/libs/prx/libSceAgc/Misc/include/ShaderFusion.hpp,core/libs/prx/libSceAgc/Misc/src/ShaderFusion.cpp
+1136	no-prx-change	0	0		
+1138	no-prx-change	0	0		
+1140	no-prx-change	0	0		
+1141	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/src/Cond.cpp,core/libs/prx/libkernel/Pthread/src/Thread.cpp,docs/dev/TechnicalDebt.md
+1147	clean	0	0	libSceAgcDriver	
+1148	clean	0	0	libSceNetCtl	
+1151	clean	0	0	libSceNpUniversalDataSystem	
+1154	no-prx-change	0	0		
+1155	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/Posix/Attr.cpp,core/libs/tests/GuestPthreadAttr.cpp
+1157	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp
+1158	conflict	0	0	libSceRudp,libSceVoiceChat	core/libs/prx/libSceRudp/Export.cpp,core/libs/prx/libSceVoiceChat/Export.cpp,docs/dev/TechnicalDebt.md
+1159	no-prx-change	0	0		
+1160	conflict	0	0	libSceFont	core/libs/tests/GuestFont.cpp,docs/dev/TechnicalDebt.md
+1166	no-prx-change	0	0		
+1169	conflict-docs-only	2	0	libSceAgc	docs/dev/TechnicalDebt.md
+1171	clean	0	0	libSceAgcDriver	
+1174	clean	0	0	libSceAudioOut	
+1175	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Unimplemented.cpp,docs/dev/TechnicalDebt.md
+1180	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/Recorder.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp
+1181	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp
+1183	conflict	0	0	libSceAgcDriver	core/shader/recompiler/Optimization/src/ResourceTracker.cpp,core/shader/recompiler/SpirvBackend/src/SpirvMemory/SpirvMemoryInstructions.cpp,docs/dev/TechnicalDebt.md
+1184	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderDiskCache.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp
+1186	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+1189	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+1190	clean	0	0	libSceAgcDriver	
+1191	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+1193	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp,core/shader/recompiler/Optimization/include/Optimization/SrtWalker/SrtEvaluator.hpp
+1195	conflict	0	0	libScePad	core/libs/tests/GuestPad.cpp,docs/dev/TechnicalDebt.md
+1199	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+1200	clean	0	0	libkernel	
+1201	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/Dispatch.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp
+1202	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/Dispatch.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp
+1205	conflict	0	0	libkernel	core/libs/tests/GuestAio.cpp,docs/dev/TechnicalDebt.md
+1207	clean	1	0	libSceNpWebApi2	
+1208	conflict	0	0	libSceVdecsw	core/libs/prx/libSceVdecsw/CMakeLists.txt,core/libs/prx/libSceVdecsw/Export.cpp,core/libs/tests/GuestVdecsw.cpp,core/libs/tests/GuestVideodec2.cpp,docs/dev/TechnicalDebt.md
+1211	no-prx-change	0	0		
+1212	clean	1	1	libSceAgcDriver	
+1219	conflict	0	0	libSceAgc,libSceAgcDriver,libSceVideoOut,libc	core/libs/prx/libSceAgc/Shader/src/LinkShaders.cpp,core/libs/prx/libSceAgc/Shader/src/PrimState.cpp,core/libs/prx/libSceAgc/tests/InterpolantMapping.cpp,core/libs/prx/libSceAgc/tests/ShaderHelpers.cpp,core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp
+1220	conflict	0	0	libkernel	core/libs/tests/GuestPthreadAttr.cpp
+1221	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/VulkanDevice.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/Dispatch.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/GuestSamplerResource.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Sampler.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp
+1224	no-prx-change	0	0		
+1226	no-prx-change	0	0		
+1227	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/BdaDevice.cpp,core/libs/prx/libSceAgcDriver/tests/BdaExecution.cpp,core/libs/prx/libSceAgcDriver/tests/BdaShader.hpp
+1228	no-prx-change	0	0		
+1230	clean	0	0	libSceSaveData.native	
+1231	conflict	0	0	libkernel	core/libs/prx/libkernel/Module/src/DynamicLoader.cpp,core/libs/tests/GuestDynamicLoader.cpp
+1232	no-prx-change	0	0		
+1237	no-prx-change	0	0		
+1240	conflict	0	0	libc	core/libs/prx/libc/src/exception/StandardExceptions.cpp,core/libs/tests/ExceptionRuntime.cpp
+1241	conflict	0	0	libSceNpManager	core/libs/prx/libSceNpManager/Export.cpp,core/libs/tests/GuestNpManager.cpp
+1245	clean	2	0	libSceAgc	
+1250	no-prx-change	0	0		
+1255	clean	1	0	libSceNpSessionSignaling	
+1261	clean	0	0	libSceAgcDriver	
+1262	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/EmulatedColorCompare.cpp,core/shader/recompiler/SpirvBackend/src/SpirvImageEmitter.cpp,docs/dev/TechnicalDebt.md
+1263	clean	0	0	libSceGameLiveStreaming	
+1271	conflict-docs-only	0	0	libScePngDec	docs/dev/TechnicalDebt.md
+1273	no-prx-change	0	0		
+1282	conflict	0	0	libSceAgcDriver	core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvBda.hpp,core/shader/recompiler/SpirvBackend/src/SpirvBdaRead.cpp
+1287	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp
+1290	conflict	0	0	libSceAgcDriver	core/shader/recompiler/Translation/src/FloatInstructions.cpp,core/shader/recompiler/Translation/src/VectorInstructions.cpp,docs/dev/TechnicalDebt.md
+1294	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp
+1296	conflict	0	0	libScePad	core/libs/tests/GuestPad.cpp
+1297	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp,docs/dev/TechnicalDebt.md
+1298	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/Recompiler.cpp
+1299	conflict	0	0	libSceNpEntitlementAccess	core/libs/prx/libSceNpEntitlementAccess/Export.cpp,docs/dev/TechnicalDebt.md
+1306	conflict	0	0	libSceAgcDriver	core/shader/recompiler/ControlFlow/src/GraphBuilder.cpp,core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaScalarOpDecoder.cpp,core/shader/recompiler/Translation/src/ScalarInstructions.cpp,docs/dev/TechnicalDebt.md
+1307	conflict	0	0	libkernel	core/libs/CMakeLists.txt,core/libs/prx/libkernel/File/src/Stdio.cpp
+1311	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Draw/DrawCache.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+1312	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Draw/DrawCache.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+1313	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Draw/DrawCache.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp
+1314	conflict	0	0	libSceAgcDriver	core/shader/recompiler/RdnaDecoder/include/RdnaDecoder/RdnaOpcode.hpp,core/shader/recompiler/RdnaDecoder/src/RdnaImageOpDecoder.cpp,core/shader/recompiler/RdnaDecoder/src/RdnaOpcode.cpp,core/shader/recompiler/Translation/src/MemoryInstructions/ImageInstructions.cpp,docs/dev/TechnicalDebt.md
+1315	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1316	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/VertexInput.hpp
+1318	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp
+1323	no-prx-change	0	0		
+1324	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libc/include/GuestAllocations.hpp,core/libs/prx/libc/src/GuestAllocations.cpp
+1325	no-prx-change	0	0		
+1330	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libSceAgcDriver/Execution/src/GuestMemory.cpp,core/libs/prx/libc/include/GuestAllocations.hpp,core/libs/prx/libc/src/GuestAllocations.cpp
+1332	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1333	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,docs/dev/TechnicalDebt.md
+1334	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1336	conflict	0	0	libc	core/libs/prx/libc/src/Strings.cpp
+1337	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1341	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/Optimization/src/SrtWalker/SrtDescriptorEvaluation.cpp
+1342	clean	0	0	libc	
+1344	clean	0	0	libkernel	
+1345	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libSceAgcDriver/Execution/src/GuestMemory.cpp,core/libs/prx/libc/include/GuestAllocations.hpp,core/libs/prx/libc/src/GuestAllocations.cpp
+1349	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,docs/dev/TechnicalDebt.md
+1352	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Packets/PacketExecution.cpp
+1357	conflict	0	0	libSceAgcDriver,libc,libkernel	core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,core/libs/prx/libc/include/GuestAllocations.hpp,core/libs/prx/libc/include/GuestArena.hpp
+1359	conflict	0	0	libSceAgcDriver,libc,libkernel	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1360	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libc/CMakeLists.txt,core/libs/prx/libc/include/GuestAllocations.hpp,core/libs/prx/libc/src/GuestAllocations.cpp
+1361	conflict	0	0	libSceAgcDriver,libc,libkernel	core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,core/libs/prx/libc/CMakeLists.txt,core/libs/prx/libc/include/GuestAllocations.hpp
+1364	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/Recorder.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1365	clean	0	0	libc	
+1366	conflict	0	0	libSceAgcDriver,libc	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/Recorder.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/ShaderResources.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+1368	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,core/libs/prx/libSceAgcDriver/tests/shaders/SampleArray.comp
+1372	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+1377	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp
+1378	clean	0	0	libkernel	
+1380	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,docs/dev/TechnicalDebt.md
+1384	conflict	0	0	libSceNgs2,libSceNgs2.native	core/libs/prx/libSceNgs2.native/CMakeLists.txt,core/libs/prx/libSceNgs2.native/include/Ngs2Types.hpp,core/libs/prx/libSceNgs2.native/src/Ngs2Internal.hpp,core/libs/prx/libSceNgs2.native/src/Rack.cpp,core/libs/prx/libSceNgs2.native/src/Render.cpp,core/libs/prx/libSceNgs2.native/src/Reverb.cpp
+1386	clean	0	0	libkernel	
+1388	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/EmulatedColorCompare.cpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp
+1389	conflict-docs-only	0	6	libSceHttp2	docs/dev/TechnicalDebt.md
+1390	conflict-docs-only	3	3	libSceJson2	docs/dev/TechnicalDebt.md
+1391	conflict	0	0	libc	core/libs/prx/libc/src/exception/StandardExceptions.cpp
+1392	conflict	0	0	libkernel	core/libs/tests/GuestMemory.cpp,docs/dev/TechnicalDebt.md
+1395	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/QueueState.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawPrecheck.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+1396	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/ImageConvertedUnorm.cpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp,core/shader/recompiler/Optimization/src/DescriptorBindingBuilder.cpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/ShaderDiskCache.cpp,core/shader/recompiler/ShaderDiskCache.hpp
+1405	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+1415	clean	0	0	libSceAgcDriver	
+1416	conflict	0	0	libSceAgcDriver	core/shader/recompiler/SpirvBackend/src/SpirvImageEmitter.cpp
+1418	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderDiskCache.cpp,core/shader/recompiler/Optimization/include/Optimization/ResourceMaterializer.hpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/ShaderDiskCache.cpp,core/shader/recompiler/ShaderDiskCache.hpp
+1422	no-prx-change	0	0		
+1423	clean	0	0	libc	
+1426	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,docs/dev/TechnicalDebt.md
+1430	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp
+1431	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/include/Pthread.hpp,core/libs/prx/libkernel/Pthread/src/Thread.cpp,core/libs/prx/libkernel/System/src/Exception.cpp,core/libs/tests/GuestRaiseException.cpp
+1433	conflict	0	0	libc	core/libs/prx/libc/src/General.cpp
+1438	no-prx-change	0	0		
+1439	no-prx-change	0	0		
+1442	conflict-docs-only	0	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+1449	no-prx-change	0	0		
+1450	clean	14	0	libSceFontFt	
+1456	conflict	0	0	libSceAgcDriver	CMakeLists.txt,CONTRIBUTING.md,docs/dev/ARCHITECTURE.md
+1463	no-prx-change	0	0		
+1464	conflict	0	0	libkernel	core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp,core/libs/tests/GuestEqueueEvents.cpp
+1465	no-prx-change	0	0		
+1479	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+1482	clean	0	0	libkernel	
+1484	clean	0	0	libSceAgcDriver	
+1490	no-prx-change	0	0		
+1491	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/shader/recompiler/Recompiler.cpp,core/shader/recompiler/Translation/src/InstructionTranslator.cpp,docs/dev/TechnicalDebt.md
+1492	clean	0	0	libSceAgcDriver	
+1498	conflict	0	0	libSceAgcDriver,libSceFont,libSceFontFt,libScePsml_debug,libSceSystemGesture,libSceVoiceQoS,libc,libkernel	core/libs/prx/libSceFont/include/FontTypes.hpp,core/libs/prx/libSceFont/src/Library.cpp,core/libs/prx/libSceFont/src/Text.cpp,core/libs/prx/libSceFont/src/Unimplemented.cpp,core/libs/prx/libScePsml_debug/Export.cpp,core/libs/prx/libSceSystemGesture/Export.cpp
+1502	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,docs/dev/TechnicalDebt.md
+1505	clean	0	0	libSceAgcDriver	
+1508	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/BdaExecution.cpp
+1512	conflict	0	0	libc	core/libs/tests/GuestWideFormatting.cpp,docs/dev/TechnicalDebt.md
+1513	no-prx-change	0	0		
+1516	conflict	0	0	libSceCdlgPlayerReview,libSceIme,libSceLibcInternal	core/libs/prx/libSceIme/Export.cpp
+1517	conflict	0	0	libSceNpPartner001	core/libs/prx/libSceNpPartner001/Export.cpp,docs/dev/TechnicalDebt.md
+1521	no-prx-change	0	0		
+1523	no-prx-change	0	0		
+1524	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/RdnaDecoder/src/RdnaVectorOpDecoder.cpp,docs/dev/TechnicalDebt.md
+1525	conflict	0	0	libSceSystemService	core/libs/tests/GuestSystemExit.cpp
+1526	no-prx-change	0	0		
+1527	clean	1	0	libSceNpWebApi2	
+1529	no-prx-change	0	0		
+1530	conflict	0	0	libSceNpEntitlementAccess	core/libs/SceTypes.hpp
+1531	conflict	0	0	libSceAppContent,libSceNpEntitlementAccess,libkernel	docs/dev/TechnicalDebt.md,docs/user/USAGE.md
+1533	clean	0	0	libSceAgc	
+1536	clean	1	0	libSceNpManager	
+1537	clean	4	0	libSceContentExport	
+1538	conflict	0	0	libSceShare,libSceShare.native	core/libs/tests/GuestShare.cpp,docs/dev/TechnicalDebt.md
+1539	no-prx-change	0	0		
+1540	no-prx-change	0	0		
+1541	conflict-docs-only	1	0	libSceAjm.native	docs/dev/TechnicalDebt.md
+1545	conflict	0	0	libSceGameLiveStreaming	core/libs/prx/libSceGameLiveStreaming/Export.cpp
+1546	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Pipeline.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderDiskCache.cpp,core/shader/recompiler/CacheKey.hpp
+1548	no-prx-change	0	0		
+1549	conflict	0	0	libSceAgcDriver,libSceAjm.native,libc	core/libs/prx/libc/src/FileAndHeap.cpp
+1554	clean	1	0	libSceAjm.native	
+1557	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+1560	no-prx-change	0	0		
+1561	no-prx-change	0	0		
+1562	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt,core/libs/prx/libkernel/Pthread/src/Thread.cpp
+1564	clean	5	0	libSceContentSearch	
+1566	no-prx-change	0	0		
+1567	clean	4	4	libc	
+1568	conflict	0	0	libc	core/libs/prx/libc/src/FileAndHeap.cpp
+1569	no-prx-change	0	0		
+1570	no-prx-change	0	0		
+1572	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/libs/prx/libSceAgcDriver/tests/execution/InterpolationF16.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrOpcode.hpp,core/shader/recompiler/IntermediateRepresentation/src/IrOpcode.cpp,core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvEmitterInstructions.hpp,core/shader/recompiler/SpirvBackend/src/SpirvAlu/SpirvAluEmitterFloat64.cpp
+1573	clean	0	0	libc	
+1574	clean	5	5	libSceUserService	
+1575	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/CMakeLists.txt,core/libs/prx/libSceVideoOut/src/VideoOutDriver.cpp,tools/check_test_registration.py
+1576	clean	0	0	libSceAgcDriver,libSceFont,libkernel	
+1577	clean	0	0	libc	
+1579	conflict	0	0	libc	core/libs/prx/libc/src/RuntimeSupport.cpp,core/libs/tests/GuestMath.cpp
+1582	conflict-docs-only	3	0	libSceNpSessionSignaling	docs/dev/TechnicalDebt.md
+1583	conflict-docs-only	3	0	libSceWebBrowserDialog	docs/dev/TechnicalDebt.md
+1584	clean	3	0	libSceAgc	
+1585	clean	2	0	libSceAgc,libSceAgcDriver	
+1591	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+1592	clean	1	1	libc	
+1593	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/Posix/Thread.cpp,core/libs/tests/GuestPthreadAttr.cpp
+1594	clean	1	1	libc	
+1595	clean	1	1	libc	
+1596	clean	0	0	libSceVideoOut	
+1598	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+1601	conflict	0	0	libSceAvPlayer	core/libs/tests/GuestAvPlayer.cpp
+1608	clean	0	0	libSceAgcDriver	
+1609	clean	0	0	libSceAgcDriver	
+1610	no-prx-change	0	0		
+1611	conflict	0	0	libc	core/libs/prx/libc/src/ApplicationHeap.cpp
+1614	clean	0	0	libc	
+1616	conflict	0	0	libSceAgcDriver,libSceAmpr,libSceHttp,libkernel	core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp,core/libs/tests/GuestAmpr.cpp,core/libs/tests/GuestHttp.cpp,docs/dev/TechnicalDebt.md
+1617	no-prx-change	0	0		
+1618	conflict	0	0	libScePosixForWebKit	core/libs/prx/libScePosixForWebKit/CMakeLists.txt
+1619	conflict-docs-only	0	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+1623	no-prx-change	0	0		
+1625	clean	0	0	libSceAjm.native	
+1628	clean	0	0	libkernel	
+1630	clean	0	0	libSceVideoOut	
+1632	clean	0	0	libSceAgcDriver	
+1633	conflict	0	0	libkernel	core/libs/prx/libkernel/DirectMemory/PosixMemory.cpp
+1637	clean	1	1	libScePosixForWebKit	
+1638	conflict-docs-only	6	0	libSceVrSetupDialog	docs/dev/TechnicalDebt.md
+1639	clean	0	0	libSceAgcDriver	
+1642	no-prx-change	0	0		
+1643	clean	0	0	libc	
+1644	clean	0	0	libc	
+1646	clean	0	0	libkernel	
+1647	clean	0	0	libc	
+1649	clean	0	0	libkernel	
+1652	clean	0	0	libkernel	
+1653	clean	0	0	libSceAgcDriver	
+1654	conflict	0	0	libc	core/libs/prx/libc/src/Directory.cpp,core/libs/tests/GuestDirectory.cpp
+1655	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/src/VideoOutDriver.cpp
+1656	conflict	0	0	libc	core/libs/prx/libc/include/ApplicationHeap.hpp,core/libs/prx/libc/src/ApplicationHeap.cpp
+1657	conflict	0	0	libSceSigninDialog	core/libs/prx/libSceSigninDialog/CMakeLists.txt,core/libs/prx/libSceSigninDialog/Export.cpp,core/libs/tests/GuestSigninDialog.cpp,docs/dev/TechnicalDebt.md
+1658	clean	0	0	libc	
+1660	no-prx-change	0	0		
+1661	clean	0	0	libSceSaveData.native	
+1662	no-prx-change	0	0		
+1663	clean	0	0	libc	
+1664	conflict	0	0	libc	core/libs/prx/libc/src/FileAndHeap.cpp
+1665	clean	0	0	libc	
+1672	conflict	0	0	libScePad	core/libs/prx/libScePad/Export.cpp,docs/dev/TechnicalDebt.md
+1674	clean	0	0	libSceAudiodec	
+1677	no-prx-change	0	0		
+1678	no-prx-change	0	0		
+1679	clean	1	1	libc	
+1680	clean	0	0	libSceSaveData.native	
+1681	clean	1	1	libc	
+1682	no-prx-change	0	0		
+1683	conflict	0	0	libc	core/libs/prx/libc/src/Filesystem.cpp
+1684	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+1687	clean	1	1	libc	
+1688	clean	0	0	libSceAgcDriver	
+1689	conflict-docs-only	3	0	libSceVideoRecordingP	docs/dev/TechnicalDebt.md
+1690	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+1692	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+1693	clean	0	0	libSceRazorCpu	
+1694	clean	0	1	libc	
+1695	clean	0	0	libc	
+1696	clean	0	0	libSceKeyboard	
+1698	clean	1	1	libc	
+1699	clean	1	1	libc	
+1700	clean	1	1	libc	
+1702	clean	1	1	libc	
+1703	clean	1	1	libc	
+1706	clean	0	0	libkernel	
+1708	conflict-docs-only	0	0	libc	docs/dev/TechnicalDebt.md
+1709	clean	0	0	libSceAgcDriver	
+1716	clean	1	1	libc	
+1717	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+1718	clean	1	1	libc	
+1719	clean	1	1	libc	
+1720	clean	1	1	libc	
+1721	clean	1	1	libc	
+1722	clean	1	1	libc	
+1723	clean	1	1	libc	
+1724	clean	1	1	libc	
+1725	clean	1	1	libc	
+1726	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+1727	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Open.cpp
+1728	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt,core/libs/prx/libkernel/Socket/src/Udp.cpp,docs/dev/TechnicalDebt.md
+1730	clean	3	3	libc	
+1731	conflict	0	0	libkernel	core/libs/tests/GuestMemory.cpp
+1732	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+1739	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/src/Thread.cpp,docs/dev/TechnicalDebt.md
+1741	no-prx-change	0	0		
+1743	conflict-docs-only	25	0	libSceUsbd	docs/dev/TechnicalDebt.md
+1745	clean	0	0	libSceAgcDriver	
+1746	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/src/Thread.cpp
+1747	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/Dispatch.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp
+1749	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+1750	conflict	0	0	libScePosixForWebKit	core/libs/prx/libScePosixForWebKit/CMakeLists.txt
+1751	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+1753	clean	1	1	libc	
+1756	no-prx-change	0	0		
+1757	clean	0	0	libc	
+1758	clean	1	1	libc	
+1759	conflict	0	0	libc	core/libs/prx/libc/src/StringExtensions.cpp
+1760	clean	1	1	libc	
+1761	conflict	0	0	libc	core/libs/prx/libc/src/StringExtensions.cpp,core/libs/tests/GuestStrings.cpp
+1765	clean	2	2	libc	
+1766	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+1767	clean	1	1	libc	
+1768	clean	4	4	libc	
+1769	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/VertexInput.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp
+1770	clean	4	4	libc	
+1772	clean	0	0	libc	
+1773	clean	1	1	libc	
+1776	clean	0	0	libSceAgcDriver	
+1779	no-prx-change	0	0		
+1780	conflict	0	0	libSceAvPlayer	core/libs/tests/GuestAvPlayer.cpp
+1782	no-prx-change	0	0		
+1784	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+1786	clean	0	0	libSceNet,libkernel	
+1792	clean	0	0	libSceVideoOut	
+1795	conflict	0	0	libkernel	core/libs/CMakeLists.txt,core/libs/prx/libkernel/File/src/Open.cpp,core/libs/prx/libkernel/Socket/include/SocketRuntime.hpp
+1800	no-prx-change	0	0		
+1801	conflict	0	0	libSceAgcDriver,libSceCommonDialog,libSceMsgDialog,libSceMsgDialog.native,libSceVideoOut	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Presentation.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Presentation.cpp,core/libs/prx/libSceVideoOut/CMakeLists.txt,core/libs/prx/libSceVideoOut/src/VideoOutDriver.cpp,docs/dev/TechnicalDebt.md
+1802	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/include/Pthread.hpp,core/libs/prx/libkernel/Pthread/src/Thread.cpp,docs/dev/ARCHITECTURE.md,docs/dev/TechnicalDebt.md
+1804	clean	0	0	libc	
+1805	conflict	0	0	libScePosixForWebKit	core/libs/prx/libScePosixForWebKit/CMakeLists.txt,core/libs/prx/libScePosixForWebKit/Resolver.cpp,core/libs/tests/GuestResolver.cpp
+1806	clean	3	3	libc	
+1808	conflict	0	0	libSceNet	core/libs/tests/GuestSceNet.cpp
+1810	clean	0	0	libSceAgcDriver	
+1813	clean	9	0	libSceAgcDriver	
+1814	clean	1	1	libc	
+1822	no-prx-change	0	0		
+1825	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+1829	conflict	0	0	libSceAgcDriver,libSceOpusCeltDec	core/relinker/relinker/tests/test_tls_function_coverage.py,core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvBda.hpp,core/shader/recompiler/SpirvBackend/src/SpirvBdaLookup.cpp
+1830	no-prx-change	0	0		
+1832	conflict-docs-only	0	0	libkernel	docs/dev/TechnicalDebt.md
+1833	no-prx-change	0	0		
+1834	no-prx-change	0	0		
+1835	no-prx-change	0	0		
+1836	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/execution/PreparedShaders.cpp
+1839	conflict	0	0	libSceLibcInternal,libSceVideoOut,libkernel	core/libs/SceTypes.hpp,core/libs/prx/libSceVideoOut/src/Output.cpp,core/libs/prx/libkernel/Socket/src/Udp.cpp,core/libs/tests/GuestSyslog.cpp
+1841	clean	2	2	libSceLibcInternal,libc,libkernel	
+1842	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+1843	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+1844	clean	0	0	libc	
+1845	conflict	0	0	libSceNet	core/libs/tests/GuestSceNet.cpp,docs/dev/TechnicalDebt.md
+1847	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/GuestMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,docs/dev/TechnicalDebt.md
+1852	clean	1	1	libSceLibcInternal	
+1853	clean	1	1	libc	
+1855	clean	0	0	libkernel	
+1858	no-prx-change	0	0		
+1865	clean	0	0	libSceAgcDriver	
+1868	clean	1	1	libc	
+1869	clean	1	1	libSceLibcInternal	
+1870	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/tests/GuestFilesystem.cpp
+1871	conflict	0	0	libc	core/libs/prx/libc/src/Time.cpp
+1872	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/Posix/Thread.cpp
+1873	conflict-docs-only	0	0	libSceAgcDriver,libSceVideoOut	docs/dev/TechnicalDebt.md
+1875	conflict-docs-only	2	0	libSceNgs2,libSceNgs2.native	docs/dev/TechnicalDebt.md
+1876	conflict-docs-only	0	0	libSceNgs2,libSceNgs2.native	docs/dev/TechnicalDebt.md
+1877	conflict	0	0	libkernel	core/libs/prx/libkernel/Aio/src/Aio.cpp,core/libs/tests/GuestAio.cpp,docs/dev/TechnicalDebt.md
+1879	conflict-docs-only	4	0	libSceFont	docs/dev/TechnicalDebt.md
+1880	conflict-docs-only	25	0	libSceUsbd	docs/dev/TechnicalDebt.md
+1881	conflict	0	0	libSceVdecsw	core/libs/prx/libSceVdecsw/CMakeLists.txt,core/libs/prx/libSceVdecsw/Export.cpp,core/libs/tests/GuestVdecsw.cpp,docs/dev/TechnicalDebt.md
+1882	conflict-docs-only	2	0	libSceAgc	docs/dev/TechnicalDebt.md
+1883	conflict	0	0	libSceHttp2	core/libs/prx/libSceHttp2/Export.cpp,docs/dev/TechnicalDebt.md
+1884	conflict	0	0	libSceSsl	core/libs/prx/libSceSsl/Export.cpp,docs/dev/TechnicalDebt.md
+1885	conflict	0	0	libSceAgc,libSceAgcDriver	core/libs/prx/libSceAgc/Unimplemented.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Pm4.cpp,docs/dev/TechnicalDebt.md
+1886	clean	3	0	libSceAgc	
+1887	clean	4	0	libSceAgc	
+1888	conflict	0	0	libSceAjm.native	core/libs/prx/libSceAjm.native/src/Ajm.cpp,docs/dev/TechnicalDebt.md
+1889	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp,docs/dev/TechnicalDebt.md
+1890	conflict	0	0	libSceAudioIn	core/libs/tests/GuestAudioIn.cpp
+1891	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt
+1896	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Dispatch/Dispatch.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawCapture.cpp
+1899	conflict	0	0	libSceAvPlayer	core/libs/prx/libSceAvPlayer/src/Source.cpp
+1900	clean	0	0	libc	
+1905	clean	0	0	libSceAgcDriver,libc,libkernel	
+1906	clean	1	1	libSceLibcInternal	
+1907	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/Visual.cpp
+1912	conflict	0	0	libkernel	core/libs/tests/GuestPthreadAttr.cpp
+1918	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,docs/dev/TechnicalDebt.md
+1922	clean	1	1	libkernel	
+1932	no-prx-change	0	0		
+1937	no-prx-change	0	0		
+1938	no-prx-change	0	0		
+1939	no-prx-change	0	0		
+1940	conflict-docs-only	0	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+1942	no-prx-change	0	0		
+1943	no-prx-change	0	0		
+1950	conflict	0	0	libSceNpWebApi2	core/libs/CMakeLists.txt
+1951	no-prx-change	0	0		
+1952	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+1953	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/GuestMemory.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,docs/dev/TechnicalDebt.md
+1954	no-prx-change	0	0		
+1956	no-prx-change	0	0		
+1961	clean	0	0	libSceAgcDriver,libc,libkernel	
+1974	conflict	0	0	libc	core/libs/prx/libc/src/StringExtensions.cpp,core/libs/tests/GuestStrings.cpp
+1975	conflict-docs-only	1	1	libSceLibcInternal	docs/dev/TechnicalDebt.md
+1976	conflict	0	0	libc	core/libs/prx/libc/src/StringExtensions.cpp
+1977	conflict	0	0	libc	core/libs/prx/libc/src/Math.cpp,core/libs/tests/GuestMath.cpp
+1980	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+1981	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+1982	conflict-docs-only	4	3	libc	docs/dev/TechnicalDebt.md
+1983	conflict-docs-only	1	0	libSceNpCommerce	docs/dev/TechnicalDebt.md
+1984	clean	1	0	libSceAppContent	
+1985	conflict-docs-only	2	0	libSceNpTrophy2	docs/dev/TechnicalDebt.md
+1986	clean	0	0	libSceAgcDriver	
+1990	no-prx-change	0	0		
+1991	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Queues/QueueWorker.cpp
+1993	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+1994	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp,docs/dev/TechnicalDebt.md,docs/user/USAGE.md
+1997	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp,docs/dev/TechnicalDebt.md
+1998	clean	1	0	libSceAgc	
+1999	conflict	0	0	libSceAgcDriver	core/relinker/relinker/tests/test_tls_function_coverage.py,core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvBda.hpp,core/shader/recompiler/SpirvBackend/src/SpirvBdaLookup.cpp
+2001	conflict	0	0	libREDGalaxy64,libRenoirCore.PS5,libSceAcm,libSceAgc,libSceAgcDriver,libSceAjm.native,libSceAmpr,libSceAppContent,libSceAudio3d,libSceAudioIn,libSceAudioOut,libSceAudioPropagation,libSceAudiodec,libSceAudiodec.native,libSceAvPlayer,libSceAvPlayer.native,libSceBluetoothHid,libSceCdlgPlayerReview,libSceCesCs,libSceContentExport,libSceConvertKeycode,libSceErrorDialog,libSceFiber,libSceFont,libSceFontFt,libSceGameLiveStreaming,libSceGameUpdate,libSceHmd2,libSceHttp,libSceHttp2,libSceIme,libSceJpegDec,libSceJpegEnc,libSceJson2,libSceKeyboard,libSceLibcInternal,libSceLoginDialog,libSceMbus,libSceMsgDialog.native,libSceNet,libSceNgs2,libSceNgs2.native,libSceNpCommerce,libSceNpCppWebApi,libSceNpEntitlementAccess,libSceNpManager,libSceNpPartner001,libSceNpSessionSignaling,libSceNpTrophy2,libSceNpWebApi2,libScePad,libScePlayGo,libScePlayGoDialog,libScePlayerInvitationDialog,libScePngDec,libScePngEnc,libScePosixForWebKit,libSceProprietaryVoiceChatHelperPrx,libScePsml_debug,libSceRandom,libSceRazorCpu,libSceRtc,libSceRudp,libSceSaveData,libSceSaveData.native,libSceSaveDataDialog.native,libSceShare,libSceSsl,libSceSysmodule,libSceSystemService,libSceTextToSpeech2,libSceUlt,libSceUsbd,libSceUserService,libSceVdecsw,libSceVideoOut,libSceVideoRecordingP,libSceVideodec2,libSceVoice,libSceVoiceChat,libSceVoiceQoS,libSceVrSetupDialog,libSceVrTracker2,libSceWebBrowserDialog,libc,libcohtml,libfmod,libfmodstudio,libkernel,ulobjmgr	.github/workflows/build.yml,.github/workflows/conventions.yml,CMakeLists.txt,CONTRIBUTING.md,core/libs/CMakeLists.txt,core/libs/SceTypes.hpp
+2002	conflict	0	0	libkernel	core/libs/prx/libkernel/DirectMemory/Export.cpp
+2003	conflict	0	0	libkernel	core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp,core/libs/tests/GuestEqueueEvents.cpp
+2005	no-prx-change	0	0		
+2006	conflict	0	0	libSceNpAuth	core/libs/prx/libSceNpAuth/Export.cpp
+2007	conflict	0	0	libSceNpManager	core/libs/tests/GuestNpManager.cpp
+2008	conflict	0	0	libSceSigninDialog	core/libs/prx/libSceSigninDialog/CMakeLists.txt,core/libs/tests/GuestSigninDialog.cpp,docs/dev/TechnicalDebt.md
+2012	conflict	0	0	libSceVoice	core/libs/prx/libSceVoice/CMakeLists.txt,docs/dev/TechnicalDebt.md
+2014	conflict-docs-only	1	0	libSceHttp	docs/dev/TechnicalDebt.md
+2015	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,docs/dev/TechnicalDebt.md
+2017	clean	1	0	libReactNative.Modules.Vsh	
+2018	conflict	0	0	libkernel	core/libs/tests/GuestAio.cpp
+2019	clean	1	1	libc	
+2024	clean	1	1	libSceLibcInternal	
+2029	conflict-docs-only	0	0	libkernel	docs/dev/TechnicalDebt.md
+2030	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt
+2037	clean	4	4	libc	
+2038	clean	2	2	libc	
+2040	clean	2	2	libc	
+2041	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp
+2044	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Packets/PacketMemory.cpp
+2047	clean	0	0	libSceVideoOut	
+2048	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Pm4.cpp,core/libs/prx/libSceAgcDriver/tests/Pm4.cpp
+2049	conflict	0	0	libkernel	core/libs/prx/libkernel/System/src/Process.cpp,core/libs/tests/GuestProcessArguments.cpp
+2050	clean	0	0	libc	
+2051	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/src/Mutex.cpp,core/libs/prx/libkernel/Pthread/src/Rwlock.cpp
+2053	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2054	conflict	0	0	libc,libkernel	core/libs/prx/libkernel/DirectMemory/DirectMemory.cpp,core/libs/tests/GuestMemory.cpp
+2055	no-prx-change	0	0		
+2057	conflict	0	0	libc	core/libs/prx/libc/CMakeLists.txt
+2058	clean	1	1	libc	
+2059	clean	1	1	libc	
+2060	conflict	0	0	libc	core/libs/prx/libc/include/FileStream.hpp,core/libs/prx/libc/src/FileAndHeap.cpp
+2061	no-prx-change	0	0		
+2064	clean	0	0	libkernel	
+2065	clean	0	0	libSceSystemService	
+2067	clean	0	0	libkernel	
+2068	no-prx-change	0	0		
+2069	clean	0	0	libSceJson2	
+2070	conflict	0	0	libSceSystemService	core/libs/tests/GuestSystemService.cpp,docs/dev/TechnicalDebt.md
+2076	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2078	no-prx-change	0	0		
+2079	clean	0	0	libkernel	
+2080	clean	0	0	libkernel	
+2082	clean	0	0	libkernel	
+2084	clean	0	0	libSceJson2	
+2086	clean	0	0	libkernel	
+2087	no-prx-change	0	0		
+2088	no-prx-change	0	0		
+2089	conflict	0	0	libkernel	core/libs/prx/libkernel/Time/Time.cpp
+2093	clean	0	0	libSceAgc,libSceAgcDriver	
+2094	conflict	0	0	libc	core/libs/tests/Formatting.cpp
+2100	no-prx-change	0	0		
+2101	clean	0	0	libSceAgcDriver	
+2104	clean	0	0	libkernel	
+2106	conflict	0	0	libkernel	core/libs/tests/GuestSignals.cpp
+2108	no-prx-change	0	0		
+2109	conflict	0	0	libc	core/libs/tests/GuestWideFormatting.cpp,docs/dev/TechnicalDebt.md
+2110	clean	0	0	libSceSaveData.native	
+2111	clean	0	0	libkernel	
+2115	clean	0	0	libkernel	
+2116	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt
+2119	no-prx-change	0	0		
+2120	conflict	0	0	libkernel	core/libs/tests/GuestAio.cpp,docs/dev/TechnicalDebt.md
+2121	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+2124	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/shader/recompiler/SpirvBackend/src/SpirvImageEmitter.cpp
+2127	no-prx-change	0	0		
+2129	conflict	0	0	libkernel	core/libs/tests/GuestFont.cpp
+2132	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Texture.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp
+2140	conflict	0	0	libSceAgcDriver	core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/SpirvBackend/src/SpirvImageEmitter.cpp
+2144	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Open.cpp,core/libs/tests/GuestFileVector.cpp
+2145	no-prx-change	0	0		
+2146	clean	0	0	libSceAgcDriver	
+2148	no-prx-change	0	0		
+2149	no-prx-change	0	0		
+2150	conflict	0	0	libSceFont	core/libs/tests/GuestFont.cpp
+2156	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Pm4.cpp
+2158	conflict	0	0	libc	core/libs/prx/libc/Export.cpp
+2160	no-prx-change	0	0		
+2161	conflict	0	0	libSceVideodec2	core/libs/tests/GuestVideodec2.cpp,docs/dev/TechnicalDebt.md
+2165	no-prx-change	0	0		
+2166	clean	8	8	libc	
+2167	clean	4	4	libc	
+2168	no-prx-change	0	0		
+2169	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp
+2170	conflict	0	0	libc,libkernel	core/libs/CMakeLists.txt,core/libs/prx/libc/include/FileStream.hpp,core/libs/prx/libc/src/FileAndHeap.cpp,core/libs/prx/libc/src/Formatting.cpp,core/libs/prx/libkernel/CMakeLists.txt,core/libs/prx/libkernel/File/src/Open.cpp
+2173	clean	3	3	libc	
+2174	clean	1	1	libc	
+2180	clean	0	0	libkernel	
+2181	no-prx-change	0	0		
+2182	conflict-docs-only	0	0	libSceNet	docs/dev/TechnicalDebt.md
+2183	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp
+2185	conflict-docs-only	0	0	libSceNet,libkernel	docs/dev/TechnicalDebt.md
+2186	conflict	0	0	libc	core/libs/tests/GuestMath.cpp
+2187	clean	1	1	libc	
+2189	clean	1	1	libc	
+2192	clean	1	1	libc	
+2193	conflict	0	0	libSceAgcDriver,libSceAjm.native,libSceAudioIn,libSceAudioOut,libSceFont,libSceFontFt,libSceNgs2.native,libScePsml_debug,libSceSsl,libSceSystemGesture,libSceVoiceQoS,libc,libkernel	core/libs/prx/libSceAudioIn/Export.cpp,core/libs/prx/libSceFont/include/FontTypes.hpp,core/libs/prx/libSceFont/src/Text.cpp,core/libs/prx/libSceFont/src/Unimplemented.cpp,core/libs/prx/libSceNgs2.native/include/Ngs2Types.hpp,core/libs/prx/libSceNgs2.native/src/Unimplemented.cpp
+2195	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,docs/dev/TechnicalDebt.md
+2206	no-prx-change	0	0		
+2212	conflict	0	0	libkernel	core/libs/prx/libkernel/Module/src/Module.cpp,core/relinker/CMakeLists.txt,core/relinker/cli/src/CliArgs.cpp,core/relinker/main.cpp,core/relinker/relinker/include/relinker/guest/GuestImage.hpp,core/relinker/relinker/src/guest/GuestModuleBuilder.cpp
+2213	clean	5	5	libc	
+2214	conflict-docs-only	0	0	libSceAgcDriver,libSceNet	docs/dev/TechnicalDebt.md
+2216	clean	1	1	libc	
+2217	clean	1	1	libc	
+2218	clean	1	1	libSceLibcInternal	
+2220	clean	1	1	libc	
+2223	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/StorageCacheBudget.cpp
+2224	conflict-docs-only	22	0	libSceUsbd	docs/dev/TechnicalDebt.md
+2225	no-prx-change	0	0		
+2228	conflict-docs-only	24	0	libSceUsbd	docs/dev/TechnicalDebt.md
+2231	conflict	0	0	libc	core/libs/tests/GuestStrings.cpp
+2232	conflict-docs-only	5	0	libSceContentExport	docs/dev/TechnicalDebt.md
+2233	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/Resources.cpp
+2234	conflict-docs-only	10	0	libSceContentExport,libSceContentSearch	docs/dev/TechnicalDebt.md
+2235	clean	9	9	libc	
+2252	clean	1	0	libSceAppContent	
+2254	conflict	0	0	libc	core/libs/tests/GuestMemory.cpp
+2258	clean	0	0	libSceAgcDriver	
+2259	clean	0	0	libSceAgcDriver	
+2260	clean	0	0	libkernel	
+2261	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/Draw.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Draw/DrawDecode.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/libs/prx/libSceAgcDriver/tests/Submit.cpp,core/libs/prx/libSceAgcDriver/tests/execution/PreparedShaders.cpp
+2263	no-prx-change	0	0		
+2265	clean	0	34	libSceHttp	
+2266	conflict-docs-only	0	21	libSceNet	docs/dev/TechnicalDebt.md
+2267	conflict	0	0	libkernel	core/libs/tests/GuestMemory.cpp
+2268	no-prx-change	0	0		
+2269	clean	0	19	libkernel	
+2270	clean	0	18	libSceAudioOut,libSceHttp2,libSceImeDialog,libScePad,libSceSysmodule,libSceSystemService,libSceVideoOut	
+2271	clean	43	43	libc	
+2272	no-prx-change	0	0		
+2277	clean	6	6	libc	
+2278	no-prx-change	0	0		
+2280	clean	24	24	libc	
+2281	conflict	0	0	libSceNet	core/libs/prx/libSceNet/Export.cpp,core/libs/tests/GuestSceNet.cpp,docs/dev/TechnicalDebt.md
+2283	clean	0	0	libSceAgcDriver	
+2287	conflict	0	0	libScePad	core/libs/prx/libScePad/Export.cpp,core/libs/tests/GuestPad.cpp,docs/dev/TechnicalDebt.md
+2288	conflict-docs-only	1	0	libScePad	docs/dev/TechnicalDebt.md
+2290	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/Context.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Pipeline.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderValidation.cpp
+2298	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/Recorder.cpp
+2302	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/shader/recompiler/CMakeLists.txt,core/shader/recompiler/ControlFlow/include/ControlFlow/GraphBuilder.hpp,core/shader/recompiler/ControlFlow/src/GraphBuilder.cpp,core/shader/recompiler/Recompiler.cpp,docs/dev/TechnicalDebt.md
+2303	conflict-docs-only	0	0	libSceAjm.native	docs/dev/TechnicalDebt.md
+2306	conflict-docs-only	1	0	libScePad	docs/dev/TechnicalDebt.md
+2307	no-prx-change	0	0		
+2308	conflict-docs-only	1	0	libSceJson2	docs/dev/TechnicalDebt.md
+2309	clean	1	0	libSceJson2	
+2310	conflict	0	0	libc	core/libs/tests/WindowsExceptions.cpp
+2311	conflict	0	0	libSceAgcDriver	core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvModule.hpp,core/shader/recompiler/SpirvBackend/src/SpirvFlowEmitter.cpp
+2314	clean	0	0	libSceAgcDriver	
+2316	conflict	0	0	libc	core/libs/prx/libc/Export.cpp,core/libs/prx/libc/src/Math.cpp,core/libs/tests/GuestMath.cpp
+2317	no-prx-change	0	0		
+2318	no-prx-change	0	0		
+2323	conflict	0	0	libkernel	core/libs/prx/libkernel/Module/src/Module.cpp,core/relinker/cli/src/CliArgs.cpp,core/relinker/elfpatcher/src/linux/LinuxGuestModuleWriter.cpp,core/relinker/main.cpp,core/relinker/relinker/include/relinker/guest/GuestImage.hpp,core/relinker/relinker/src/guest/GuestModuleBuilder.cpp
+2325	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2326	conflict	0	0	libc	core/libs/prx/libc/src/Multibyte.cpp,core/libs/prx/libc/src/Strings.cpp,core/libs/tests/GuestWcsrtombs.cpp,core/libs/tests/GuestWideFormatting.cpp,docs/dev/TechnicalDebt.md
+2331	no-prx-change	0	0		
+2332	no-prx-change	0	0		
+2333	conflict-docs-only	4	3	libc	docs/dev/TechnicalDebt.md
+2338	clean	0	0	libSceAgcDriver	
+2343	no-prx-change	0	0		
+2346	conflict	0	0	libSceSigninDialog	core/libs/prx/libSceSigninDialog/CMakeLists.txt,core/libs/prx/libSceSigninDialog/Export.cpp,core/libs/tests/GuestSigninDialog.cpp,docs/dev/TechnicalDebt.md
+2349	clean	0	0	libSceAgcDriver	
+2353	no-prx-change	0	0		
+2354	clean	1	1	libc	
+2358	clean	2	0	libSceNpPartner001	
+2361	conflict	0	0	libc	core/libs/prx/libc/include/FileStream.hpp,core/libs/prx/libc/src/FileAndHeap.cpp
+2362	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/NativeStat.cpp,core/libs/tests/GuestFilesystem.cpp
+2363	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp
+2364	conflict	0	0	libSceNpAuth	core/libs/prx/libSceNpAuth/CMakeLists.txt,core/libs/prx/libSceNpAuth/Export.cpp,core/libs/tests/GuestNpAuth.cpp
+2367	clean	2	0	libSceAgc	
+2368	no-prx-change	0	0		
+2369	conflict	0	0	libSceAgcDriver	core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/ProgramMetadata.hpp
+2372	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/VertexInput.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/execution/ZeroStrideVertexFetch.cpp,docs/dev/TechnicalDebt.md
+2373	no-prx-change	0	0		
+2375	no-prx-change	0	0		
+2377	no-prx-change	0	0		
+2379	no-prx-change	0	0		
+2382	no-prx-change	0	0		
+2383	clean	0	23	libkernel	
+2384	clean	0	44	libSceAgc,libSceAgcDriver	
+2385	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/tests/GuestFilesystem.cpp
+2386	clean	0	0	libSceAgcDriver	
+2387	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderDeviceProfile.cpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/RuntimeAbi.hpp,docs/dev/TechnicalDebt.md
+2389	clean	0	0	libSceAudioOut	
+2390	no-prx-change	0	0		
+2391	no-prx-change	0	0		
+2392	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/include/GuestSamplerResource.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/Sampler.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/GuestSamplerResource.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/Sampler.cpp,core/libs/prx/libSceAgcDriver/Graphics/src/ShaderResources.cpp,core/shader/recompiler/Optimization/src/DescriptorBindingBuilder.cpp
+2393	conflict	0	0	libkernel	core/libs/prx/libkernel/Pthread/include/Pthread.hpp,core/libs/prx/libkernel/Pthread/src/Thread.cpp
+2394	in-stack	0	0		
+2395	clean	0	0	libSceAjm.native	
+2396	clean	0	0	libc	
+2397	clean	0	0	libc	
+2398	conflict	0	0	libSceNpManager	core/libs/prx/libSceNpManager/Export.cpp,core/libs/tests/GuestNpManager.cpp
+2399	clean	1	0	libSceNpWebApi2	
+2401	conflict	0	0	libkernel	core/libs/prx/libkernel/CMakeLists.txt,core/libs/prx/libkernel/Module/src/Module.cpp,core/libs/tests/GuestUnwindModuleInfoLinux.cpp,docs/dev/TechnicalDebt.md
+2402	no-prx-change	0	0		
+2404	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/ShaderDiskCache.cpp,core/shader/recompiler/IntermediateRepresentation/include/IntermediateRepresentation/IrMetadata/Resources.hpp,core/shader/recompiler/Optimization/src/ResourceMaterializer.cpp,core/shader/recompiler/Optimization/src/ResourceTracker.cpp,core/shader/recompiler/ShaderDiskCache.cpp,docs/dev/TechnicalDebt.md
+2405	clean	0	0	libkernel	
+2406	conflict	0	0	libSceNet	core/libs/tests/GuestSceNet.cpp
+2407	no-prx-change	0	0		
+2408	clean	0	0	libSceAgcDriver	
+2409	conflict	0	0	libSceRudp	core/libs/tests/GuestOfflineImports.cpp,docs/dev/TechnicalDebt.md
+2410	clean	0	0	libSceAgcDriver	
+2411	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/Graphics.cpp,core/shader/recompiler/SpirvBackend/src/SpirvAlu/SpirvAluEmitterMath.cpp
+2412	clean	0	1	libScePsml,libScePsml_debug	
+2413	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/execution/PreparedShaders.cpp
+2416	no-prx-change	0	0		
+2417	no-prx-change	0	0		
+2418	clean	0	0	libSceAudio3d	
+2422	no-prx-change	0	0		
+2425	no-prx-change	0	0		
+2426	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+2427	no-prx-change	0	0		
+2428	conflict	0	0	libSceAgcDriver	core/shader/recompiler/SpirvBackend/include/SpirvBackend/SpirvEmitterState.hpp
+2429	in-stack	0	0		
+2430	no-prx-change	0	0		
+2432	clean	0	0	libSceRandom	
+2434	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp
+2435	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/Unimplemented.cpp
+2437	conflict	0	0	libSceAgc	core/libs/prx/libSceAgc/tests/Commands.cpp
+2438	conflict	0	0	libScePlayerSelectionDialog	core/libs/prx/libScePlayerSelectionDialog/Export.cpp,core/libs/tests/GuestPlayerSelectionDialog.cpp
+2439	conflict	0	0	libc	core/libs/prx/libc/src/Formatting.cpp,core/libs/prx/libc/src/Strings.cpp,docs/dev/TechnicalDebt.md
+2440	clean	0	0	libSceAgcDriver	
+2441	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp,core/libs/prx/libkernel/Socket/src/Udp.cpp
+2442	conflict	0	0	libc	core/libs/prx/libc/src/RuntimeSupport.cpp,core/libs/tests/GuestMath.cpp
+2443	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp
+2444	no-prx-change	0	0		
+2445	conflict	0	0	libkernel	core/libs/tests/GuestPthreadRwlock.cpp
+2446	in-stack	0	0		
+2447	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/BdaExecution.cpp,core/libs/prx/libSceAgcDriver/tests/BdaShader.cpp,core/libs/prx/libSceAgcDriver/tests/BdaShader.hpp
+2448	clean	0	0	libSceAgc	
+2452	clean	0	7	libc	
+2453	no-prx-change	0	0		
+2454	clean	4	0	libSceNpEntitlementAccess	
+2455	conflict	0	0	libSceAmpr,libkernel	core/libs/prx/libkernel/Apr/src/Apr.cpp
+2456	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp
+2457	no-prx-change	0	0		
+2463	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/tests/execution/Vop3CubeClamp.cpp,docs/dev/TechnicalDebt.md
+2465	clean	2	1	libc	
+2466	no-prx-change	0	0		
+2467	conflict	0	0	libSceAudioOut,libScePad,libSceVideoOut	core/libs/prx/libSceAudioOut/src/AudioOut2Port.cpp,core/libs/prx/libSceAudioOut/tests/AudioOut2PortLayouts.cpp
+2468	no-prx-change	0	0		
+2471	clean	0	0	libSceAgcDriver	
+2472	conflict	0	0	libSceAudio3d	core/libs/prx/libSceAudio3d/Export.cpp
+2474	conflict	0	0	libc	core/libs/prx/libc/include/FileStream.hpp,core/libs/prx/libc/src/FileAndHeap.cpp
+2478	conflict	0	0	libkernel	core/libs/prx/libkernel/File/src/Stdio.cpp,docs/dev/TechnicalDebt.md
+2479	clean	0	0	libSceAgcDriver	
+2480	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+2481	clean	0	0	libSceAgcDriver	
+2482	clean	1	0	libkernel	
+2484	no-prx-change	0	0		
+2485	clean	0	0	libc	
+2486	conflict	0	0	libc	core/libs/prx/libc/src/RuntimeSupport.cpp,core/libs/tests/GuestMath.cpp
+2487	clean	0	0	libc	
+2489	clean	0	0	libc	
+2490	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2491	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2492	no-prx-change	0	0		
+2493	clean	23	0	libSceUsbd	
+2494	conflict-docs-only	9	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+2495	conflict	0	0	libSceAjm.native,libSceAudioOut	core/libs/tests/GuestAjm.cpp
+2496	conflict	0	0	libSceHttp,libSceHttp2,libSceNet,libSceNpWebApi2	core/libs/prx/libSceNet/Export.cpp,docs/dev/TechnicalDebt.md
+2497	in-stack	0	0		
+2498	clean	9	0	libScePsml_debug	
+2499	conflict	0	0	libSceGameUpdate,libSceUlt,libSceVideoOut	core/libs/prx/libSceVideoOut/CMakeLists.txt,docs/dev/TechnicalDebt.md
+2500	conflict-docs-only	0	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+2501	conflict	0	0	libSceAgcDriver,libScePad,libSceVideoOut	core/libs/prx/libSceAgcDriver/CMakeLists.txt
+2502	no-prx-change	0	0		
+2503	conflict	0	0	libSceNpPartner001,libSceNpTrophy2,libSceShare,libSceShare.native,libSceSigninDialog,libSceUlt,libSceWebBrowserDialog,libc,libkernel	core/libs/prx/libSceSigninDialog/CMakeLists.txt,core/libs/prx/libSceSigninDialog/Export.cpp,core/libs/prx/libc/src/Formatting.cpp,core/libs/prx/libc/src/Math.cpp,core/libs/prx/libkernel/Aio/src/Aio.cpp,core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp
+2504	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Graphics/src/State.cpp,core/libs/prx/libSceAgcDriver/tests/Graphics.cpp
+2505	conflict-docs-only	0	0	libSceAgcDriver	docs/dev/TechnicalDebt.md
+2506	no-prx-change	0	0		
+2508	conflict	0	0	libc	core/libs/prx/libc/src/RuntimeSupport.cpp,core/libs/tests/GuestMath.cpp
+2510	no-prx-change	0	0		
+2511	clean	0	0	libScePad,libSceVideoOut	
+2512	clean	0	0	libSceVideoOut	
+2513	no-prx-change	0	0		
+2516	clean	0	1	libkernel	
+2517	conflict	0	0	libSceVideoOut	core/libs/prx/libSceVideoOut/CMakeLists.txt
+2518	in-stack	0	0		
+2519	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/DepthSurface.hpp,core/libs/prx/libSceAgcDriver/Graphics/include/State.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/DepthSurface.cpp,docs/dev/TechnicalDebt.md
+2522	no-prx-change	0	0		
+2524	no-prx-change	0	0		
+2528	conflict	0	0	libkernel	core/libs/prx/libkernel/SyncOnAddress/src/SyncOnAddress.cpp
+2530	no-prx-change	0	0		
+2531	clean	0	0	libSceRtc	
+2532	clean	0	0	libkernel	
+2533	clean	1	0	libSceFont	
+2536	clean	0	0	libSceAudioOut	
+2538	clean	0	0	libkernel	
+2541	clean	0	0	libSceSysmodule	
+2543	in-stack	0	0		
+2544	no-prx-change	0	0		
+2545	conflict	0	0	libSceAgc,libSceAgcDriver,libSceAjm.native,libSceNet,libSceVideoOut,libc,libkernel	core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/Graphics/include/VertexInput.hpp,core/libs/prx/libSceAgcDriver/Graphics/src/Draw.cpp,core/libs/prx/libSceAgcDriver/tests/ShaderMemory.cpp
+2546	no-prx-change	0	0		
+2547	conflict	0	0	libSceAgcDriver,libkernel	core/libs/prx/libSceAgcDriver/Execution/src/Driver/Packets/PacketMemory.cpp,core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp
+2550	clean	0	0	libSceVideodec2	
+2551	no-prx-change	0	0		
+2554	clean	0	0	libc	
+2555	clean	0	0	libSceAgcDriver,libSceAjm.native,libSceNgs2.native	
+2557	in-stack	0	0		
+2558	conflict	0	0	libSceAudioIn,libSceHttp2,libSceLibcInternal,libScePad,libSceSaveData.native,libc,libkernel	core/libs/prx/libSceSaveData.native/Export.cpp,core/libs/prx/libkernel/File/src/Open.cpp,core/libs/prx/libkernel/Pthread/src/Thread.cpp
+2561	clean	0	0	libSceNgs2.native,libkernel	
+2562	conflict	0	0	libSceAudioIn	core/libs/prx/libSceAudioIn/Export.cpp,core/libs/tests/GuestAudioIn.cpp,docs/dev/TechnicalDebt.md
+2565	clean	9	12	libSceFiber,libSceUlt,libkernel	
+2566	clean	0	0	libSceVideoOut	
+2567	clean	0	0	libSceVideoOut	
+2585	clean	0	0	libSceAgcDriver	
+2586	clean	0	0	libc,libkernel	
+2587	conflict	0	0	libSceAgc,libSceAgcDriver	core/libs/prx/libSceAgc/DcbFlow/src/Control.cpp,core/libs/prx/libSceAgc/tests/Commands.cpp,core/libs/prx/libSceAgcDriver/Execution/src/Pm4.cpp,core/libs/prx/libSceAgcDriver/tests/Pm4.cpp
+2588	conflict	0	0	libc	core/libs/prx/libc/src/FileAndHeap.cpp
+2589	conflict	0	0	libSceAgcDriver	core/libs/prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp,core/libs/prx/libSceAgcDriver/Execution/src/Driver/Shaders/ShaderRegistry.cpp,core/libs/prx/libSceAgcDriver/tests/execution/PreparedShaders.cpp
+2590	clean	0	0	libSceAgcDriver	
+2592	no-prx-change	0	0		
+2593	clean	1	0	libSceAgcDriver	
+2594	no-prx-change	0	0		
+2596	no-prx-change	0	0		
+2600	conflict	0	0	libkernel	core/libs/prx/libkernel/Equeue/src/EventAccessors.cpp,core/libs/tests/GuestEqueueEvents.cpp
+2602	clean	0	0	libSceVideoOut	
+2604	clean	2	0	libc	
+2607	clean	0	0	libSceHttp,libkernel_sys	
+2608	clean	0	0	libSceFont	
+2609	clean	0	0	libSceSysmodule	
+2610	no-prx-change	0	0		
+2611	no-prx-change	0	0		
+2619	no-prx-change	0	0		
+2624	no-prx-change	0	0		
+2629	clean	0	0	libkernel	
+2630	conflict	0	0	libSceAgc,libSceAgcDriver,libSceAjm.native,libSceAmpr,libSceAppContent,libSceAudio3d,libSceAudioIn,libSceAudioOut,libSceAudioPropagation,libSceAudiodec,libSceAvPlayer,libSceBluetoothHid,libSceCdlgPlayerReview,libSceCesCs,libSceContentExport,libSceErrorDialog,libSceFiber,libSceFont,libSceGameUpdate,libSceHmd,libSceHmd2,libSceHttp,libSceHttp2,libSceIme,libSceJson2,libSceKeyboard,libSceLibcInternal,libSceLoginDialog,libSceMbus,libSceMouse,libSceMsgDialog.native,libSceNet,libSceNgs2,libSceNgs2.native,libSceNpManager,libSceNpSessionSignaling,libSceNpTrophy2,libSceOpusDec,libScePad,libScePlayGo,libScePlayGoDialog,libScePlayerInvitationDialog,libScePngEnc,libScePosixForWebKit,libScePsml_debug,libSceRandom,libSceRazorCpu,libSceRtc,libSceSaveData.native,libSceSaveDataDialog.native,libSceShare,libSceSsl,libSceSysmodule,libSceSystemService,libSceTextToSpeech2,libSceUlt,libSceUsbd,libSceUserService,libSceVdecsw,libSceVideoOut,libSceVideodec2,libSceVoiceQoS,libSceWebBrowserDialog,libSceZlib,libc,libkernel,ulobjmgr	CMakeLists.txt,core/libs/CMakeLists.txt,core/libs/prx/libSceAgc/tests/ShaderHelpers.cpp,core/libs/prx/libSceAgc/tests/integration/Commands.cpp,core/libs/prx/libSceAgcDriver/CMakeLists.txt,core/libs/prx/libSceAgcDriver/tests/BdaResources.cpp
+2632	clean	0	0	libkernel	
