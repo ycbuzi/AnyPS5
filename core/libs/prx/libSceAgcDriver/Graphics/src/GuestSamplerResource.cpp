@@ -111,7 +111,7 @@ GuestSamplerResource DecodeSamplerResource(std::span<const std::uint32_t> words,
     Require(!disableDegamma, "guest sampler descriptor disables degamma which is not implemented");
     Require(lodBiasSec == 0, "guest sampler descriptor uses a secondary LOD bias which is not implemented");
     Require(!pointPreclamp, "guest sampler descriptor uses point preclamping which is not implemented");
-    Require(!anisoOverride, "guest sampler descriptor uses an anisotropy override which is not implemented");
+    static_cast<void>(anisoOverride);
     Require(!blendZeroPrt, "guest sampler descriptor uses PRT blend-zero which is not implemented");
     if (mipFilter > 2u) Require(false, "guest sampler descriptor uses an unknown mip filter " + std::to_string(mipFilter));
     Require(mipFilter != 2u || reductionMode == VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT, "guest sampler descriptor combines a min or max reduction with a linear mip filter, which is not implemented");
@@ -172,6 +172,13 @@ GuestSamplerResource DecodeSamplerResource(std::span<const std::uint32_t> words,
         result.maxAnisotropy = 1.0f;
     }
     return result;
+}
+
+std::optional<std::array<std::uint32_t, 4>> SingleLevelSamplerWords(std::span<const std::uint32_t, 4> words, bool singleLevelImage, bool mipmappedImage) {
+    const auto filters = words[2];
+    if (((filters >> 29u) & 1u) == 0 || !singleLevelImage || (!isAnisoFilter((filters >> 20u) & 3u) && !isAnisoFilter((filters >> 22u) & 3u))) return std::nullopt;
+    Require(!mipmappedImage, "guest sampler with ANISO_OVERRIDE is paired with both single-level and mipmapped images in one draw, which is not implemented");
+    return std::array<std::uint32_t, 4>{words[0], words[1], filters & ~((2u << 20u) | (2u << 22u)), words[3]};
 }
 
 }
