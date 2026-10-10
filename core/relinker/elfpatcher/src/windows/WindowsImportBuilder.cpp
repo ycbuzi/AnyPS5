@@ -46,9 +46,8 @@ std::vector<std::string> WindowsImportBuilder::ReadLibraries(const Domain::SysVD
         auto name = ReadString(dynamicSection.DynStrData, static_cast<std::size_t>(nameOffset));
         if (name.empty() || name.find_first_of("/\\:") != std::string::npos)
             throw Domain::RelinkerException("Invalid DT_NEEDED library: " + name);
-        if (!unique.insert(name).second)
-            continue;
-        result.push_back(std::move(name));
+        if (unique.insert(name).second)
+            result.push_back(std::move(name));
     }
     // AnyPS5 implements the C runtime in libc.prx. Windows GetProcAddress
     // does not search a module's dependencies as ELF symbol lookup does.
