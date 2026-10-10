@@ -932,6 +932,10 @@ if(BUILD_TESTING)
             set_tests_properties(${preparedTest} PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
         endif()
     endforeach()
+    set_tests_properties(agc_driver_prepared_shaders
+        agc_driver_prepared_shaders_indirect agc_driver_prepared_shaders_uncached
+        agc_driver_prepared_shaders_debug agc_driver_prepared_shaders_debug_failure
+        PROPERTIES RESOURCE_LOCK shader_failure_capture)
 endif()
 
 option(AGC_BUILD_VISUAL_TEST "Enable the standalone AGC SPIR-V visual test" OFF)

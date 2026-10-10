@@ -1,5 +1,6 @@
 #include "VulkanTestDevice.hpp"
 #include "Optimization/ResourceProgram.hpp"
+#include "ControlFlow/RequestSerializer.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver.hpp"
 #include "prx/libSceAgcDriver/Submit/include/Acb.hpp"
@@ -13,6 +14,10 @@
 #include <vector>
 #include <future>
 #include <barrier>
+#include <cstdlib>
+#include <cstdio>
+#include <fstream>
+#include <sstream>
 
 namespace {
 
@@ -136,6 +141,52 @@ void Run(AgcDriver::VulkanDevice& device) {
     request.layout.pushConstantSizeBytes = 128;
     code[0] = 0xffffffffu;
     ExpectFailure([&] { static_cast<void>(AgcDriver::DriverDetail::SourceHandleFor(snapshot, 0, request)); }, "artifact is missing");
+}
+
+void FailureCapture(AgcDriver::VulkanDevice& device) {
+    using namespace ShaderRecompiler;
+    const std::array<std::uint32_t, 1> code{0xffffffffu};
+    const std::vector<std::byte> header(2048, std::byte{0x5a});
+    RecompileRequest request{{ShaderStage::Compute, 0x12345cafeull, code, 0x20000, header},
+        {32, 0, {}, ShaderComputeStageInfo{{1, 1, 1}, 0, {}, false, 1, {}}, {}, {}, {}}, device.ComputeTarget(32), {0, 0, 0, 128}};
+    const auto failure = [&](auto action) {
+        try { action(); }
+        catch (const std::exception& error) { return std::string(error.what()); }
+        throw std::runtime_error("invalid shader preparation succeeded");
+    };
+    const auto expected = failure([&] { static_cast<void>(PrepareShader(request)); });
+    const char* previous = std::getenv("APS5_DUMP_SHADERS");
+    const std::string saved = previous != nullptr ? previous : "";
+    const std::string path = "shader_12345cafe.req";
+    std::remove(path.c_str());
+#ifdef _WIN32
+    Require(_putenv_s("APS5_DUMP_SHADERS", "") == 0, "cannot disable shader capture");
+#else
+    Require(unsetenv("APS5_DUMP_SHADERS") == 0, "cannot disable shader capture");
+#endif
+    Require(failure([&] { static_cast<void>(AgcDriver::DriverDetail::PrepareShaderWithDiagnostics(request)); }) == expected, "disabled shader capture changed the preparation failure");
+    Require(!std::ifstream(path, std::ios::binary).is_open(), "disabled shader capture created a request");
+#ifdef _WIN32
+    Require(_putenv_s("APS5_DUMP_SHADERS", "1") == 0, "cannot enable shader capture");
+#else
+    Require(setenv("APS5_DUMP_SHADERS", "1", 1) == 0, "cannot enable shader capture");
+#endif
+    const auto actual = failure([&] { static_cast<void>(AgcDriver::DriverDetail::PrepareShaderWithDiagnostics(request)); });
+#ifdef _WIN32
+    Require(_putenv_s("APS5_DUMP_SHADERS", saved.c_str()) == 0, "cannot restore shader capture");
+#else
+    Require((previous != nullptr ? setenv("APS5_DUMP_SHADERS", saved.c_str(), 1) : unsetenv("APS5_DUMP_SHADERS")) == 0, "cannot restore shader capture");
+#endif
+    Require(actual == expected, "shader capture changed the preparation failure");
+    std::ifstream file(path, std::ios::binary);
+    std::ostringstream text;
+    text << file.rdbuf();
+    file.close();
+    std::remove(path.c_str());
+    const RequestSerializer serializer;
+    Require(text.str().size() > 1024 && text.str() == serializer.Serialize(request), "shader failure capture was incomplete");
+    const auto replay = serializer.Deserialize(text.str());
+    Require(serializer.Serialize(replay.request) == text.str(), "shader failure capture changed on replay");
 }
 
 void PrepareMultisampledStorage(AgcDriver::VulkanDevice& device) {
@@ -325,6 +376,7 @@ int main(int argc, char** argv) {
         auto device = OpenVulkanTestDevice();
         if (!device) return VulkanTestSkipped;
         Run(*device);
+        FailureCapture(*device);
         Require(argc != 2 || std::string_view(argv[1]) != "--fail-before-registration", "injected failure before registration");
         PrepareMultisampledStorage(*device);
         device.reset();

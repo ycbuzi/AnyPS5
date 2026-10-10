@@ -14,6 +14,10 @@
 #include <string>
 #include <vector>
 
+namespace ShaderRecompiler {
+class ShaderPreparationContext;
+}
+
 namespace AgcDriver::DriverDetail {
 
 struct ShaderSnapshot;
@@ -70,6 +74,8 @@ struct ShaderSnapshot {
 
 
 std::shared_ptr<const ShaderSnapshot> ReadRawComputeShader(std::uint64_t address);
+
+std::shared_ptr<const ShaderRecompiler::SourceHandle> PrepareShaderWithDiagnostics(const ShaderRecompiler::RecompileRequest& request, ShaderRecompiler::ShaderPreparationContext* preparation = nullptr);
 
 std::uint64_t NullPixelProgramAddress();
 std::optional<ShaderRecompiler::ShaderFloatMode> RegisteredFloatMode(const ShaderSnapshot& snapshot);

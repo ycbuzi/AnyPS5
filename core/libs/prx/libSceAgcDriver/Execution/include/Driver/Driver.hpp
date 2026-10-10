@@ -62,6 +62,7 @@ public:
     void ResolveGraphicsAbi(const Shader* vertex, const Shader* pixel, std::uint32_t primitiveType);
     static void FoldDrawOffsets(const ShaderRecompiler::RecompileResult& result, const DrawProgram& program, Pm4::DrawParameters& parameters);
     static std::optional<Graphics::IndirectDrawPath> ClassifyIndirectDraw(const ShaderRecompiler::RecompileResult& result, const Graphics::State& graphics, const DrawProgram& frontProgram, const std::shared_ptr<VulkanDevice>& localDevice, Pm4::DrawParameters& drawParameters, bool traceIndirect);
+    static std::string dumpRequest(std::uint64_t address, const ShaderRecompiler::RecompileRequest& request);
 
 private:
     friend class SampledReadScope;
@@ -136,7 +137,6 @@ private:
     static void dumpPackets(std::span<const std::uint32_t> commands, const std::uint32_t* guest = nullptr);
     static void validate(const Submission& submission, const std::uint32_t* guest = nullptr);
     static void reportSkip(const char* kind, const std::string& what);
-    static std::string dumpRequest(std::uint64_t address, const ShaderRecompiler::RecompileRequest& request);
     static bool matchesFillKernel(std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute);
     static bool fillClearEnabled();
     static bool fillClearExactOnly();
