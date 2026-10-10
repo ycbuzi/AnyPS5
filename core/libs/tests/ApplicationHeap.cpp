@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <cerrno>
 #include <cstdio>
 #include <limits>
 #include <new>
@@ -11,6 +12,7 @@
 
 extern "C" {
 int APS5_VABI posix_memalign_nid_postfix(void**, std::size_t, std::size_t);
+void* APS5_VABI reallocf_nid_postfix(void*, std::size_t);
 void* APS5_VABI _Znwm_nid_postfix(std::size_t);
 void* APS5_VABI _ZnwmRKSt9nothrow_t_nid_postfix(std::size_t, const void*) noexcept;
 void* APS5_VABI _ZnamRKSt9nothrow_t_nid_postfix(std::size_t, const void*) noexcept;
@@ -276,5 +278,15 @@ int main(int argc, char** argv) {
     require(strndup_nid_postfix(text, 5) == nullptr && *__error_nid_postfix() == 12);
     *__error_nid_postfix() = 0;
     require(getcwd_nid_postfix(nullptr, 0) == nullptr && *__error_nid_postfix() == 12);
+    fail = false;
+    void* reallocation = ApplicationHeapAllocate_nid_no_patch(32);
+    const auto freeCount = frees;
+    fail = true;
+    *__error_nid_postfix() = 0;
+    require(reallocf_nid_postfix(reallocation, 64) == nullptr && *__error_nid_postfix() == ENOMEM);
+    require(frees == freeCount + 1);
+    fail = false;
+    reallocation = ApplicationHeapAllocate_nid_no_patch(32);
+    require(reallocf_nid_postfix(reallocation, 0) == nullptr && frees == freeCount + 2);
     fail = false;
 }

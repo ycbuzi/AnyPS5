@@ -274,6 +274,16 @@ void* APS5_VABI realloc_nid_postfix(void* ptr, size_t newSize) {
     return ApplicationHeapReallocate_nid_no_patch(ptr, newSize);
 }
 
+void* APS5_VABI reallocf_nid_postfix(void* ptr, size_t newSize) {
+    try {
+        return ApplicationHeapReallocate_nid_no_patch(ptr, newSize);
+    } catch (const std::bad_alloc&) {
+        ApplicationHeapFree_nid_no_patch(ptr);
+        errno = ENOMEM;
+        return nullptr;
+    }
+}
+
 void* APS5_VABI memalign_nid_postfix(size_t alignment, size_t size) {
     return ApplicationHeapAlign_nid_no_patch(alignment, size);
 }
