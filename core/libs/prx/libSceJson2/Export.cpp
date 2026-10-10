@@ -852,4 +852,13 @@ void APS5_VABI _ZN3sce4Json12MemAllocator11notifyErrorEimPv(void* self, int erro
     std::printf("sce::Json::MemAllocator::notifyError: error %d, requested %zu bytes\n", errorCode, size);
 }
 
+int APS5_VABI _ZN3sce4Json14InitParameter2C2Ev(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 }
