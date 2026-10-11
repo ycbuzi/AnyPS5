@@ -6,11 +6,16 @@
 
 extern "C" int APS5_VABI gethostname_nid_postfix(char* name, std::size_t length) {
     constexpr char hostname[] = "AnyPS5";
-    if (name == nullptr) return 0;
-    const int savedError = errno;
-    const auto count = std::min(length, sizeof(hostname));
-    if (count != 0) std::memcpy(name, hostname, count);
-    if (length < sizeof(hostname)) { errno = 63; return -1; }
-    errno = savedError;
+    if (name == nullptr) {
+        errno = EINVAL;
+        return -1;
+    }
+    // Report a short buffer without touching it: a partial copy left the caller
+    // with an unterminated name that it had no way to detect as truncated.
+    if (length < sizeof(hostname)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    std::memcpy(name, hostname, sizeof(hostname));
     return 0;
 }

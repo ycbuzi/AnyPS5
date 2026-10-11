@@ -116,7 +116,12 @@ int APS5_VABI _Iswctype_nid_postfix(std::uint32_t c, std::uint64_t type) {
         GuestRune::Graph, GuestRune::Lower, GuestRune::Print, GuestRune::Punct,
         GuestRune::Space, GuestRune::Upper, GuestRune::Hex, GuestRune::Blank,
     };
-    if (type == 0 || type > std::size(masks)) throw std::invalid_argument("_Iswctype: unknown class " + std::to_string(type));
+    // A zero class matches nothing rather than being an error, matching POSIX
+    // iswctype() and the plain iswctype_nid_postfix() above, which already returns
+    // 0 for a zero mask. Throwing here escaped through the C ABI and aborted the
+    // guest instead of returning.
+    if (type == 0) return 0;
+    if (type > std::size(masks)) throw std::invalid_argument("_Iswctype: unknown class " + std::to_string(type));
     return GuestRune::Is(c, masks[type - 1]);
 }
 
