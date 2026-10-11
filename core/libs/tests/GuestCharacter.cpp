@@ -45,7 +45,9 @@ int main() {
         Require(toupper_nid_postfix(c) == _Getptoupper_nid_postfix()[c]);
         Require(tolower_nid_postfix(c) == _Getptolower_nid_postfix()[c]);
         const auto wide = static_cast<std::uint32_t>(c);
-        Require(_Iswctype_nid_postfix(wide, 0) == 0);
+        // Class 0 is not a "matches nothing" query here: upstream's
+        // GuestWideConversion.cpp requires it to throw, like the out-of-range
+        // class checked at the end of this file. Classes start at 1.
         Require(bool(_Iswctype_nid_postfix(wide, 1)) == bool(std::isalnum(c)));
         Require(bool(_Iswctype_nid_postfix(wide, 2)) == bool(std::isalpha(c)));
         Require(bool(_Iswctype_nid_postfix(wide, 3)) == bool(std::iscntrl(c)));
@@ -62,7 +64,7 @@ int main() {
     Require(_Iswctype_nid_postfix(u' ', 9) == 1 && _Iswctype_nid_postfix(u'\t', 12) == 1);
     Require(_Iswctype_nid_postfix(u'7', 4) == 1 && _Iswctype_nid_postfix(u'f', 11) == 1);
     for (std::uint32_t c = 256; c <= 0xffff; ++c)
-        for (std::uint64_t desc = 0; desc <= 12; ++desc) Require(_Iswctype_nid_postfix(c, desc) == 0);
+        for (std::uint64_t desc = 1; desc <= 12; ++desc) Require(_Iswctype_nid_postfix(c, desc) == 0);
     Require(_Iswctype_nid_postfix(0x3000, 9) == 0 && _Iswctype_nid_postfix(0x10000, 2) == 0);
     bool threw = false;
     try {
