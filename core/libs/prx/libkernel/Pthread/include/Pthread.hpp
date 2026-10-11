@@ -28,6 +28,8 @@ enum class MutexType : std::uint32_t {
 
 struct PthreadMutexattrPrivate {
     MutexType type;
+    int protocol = 0;
+    int ceiling = 0;
 };
 
 struct PthreadMutexPrivate {
@@ -53,6 +55,7 @@ struct PthreadRwlockPrivate {
     }
     std::shared_timed_mutex _lock;
     std::atomic<std::thread::id> _writer;
+    std::atomic<int> _readers{0};
 };
 
 struct PthreadCondattrPrivate {

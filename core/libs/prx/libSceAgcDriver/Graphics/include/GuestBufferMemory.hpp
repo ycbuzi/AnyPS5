@@ -55,6 +55,7 @@ void SetImportWatch(const Context& context, ImportWatch watch);
 // (alignment and budget permitting), or null. Bytes at `address` are at `address - import->base` in
 // the import's buffer.
 const HostImport* HostImportFor(const Context& context, std::uint64_t address, std::size_t bytes);
+bool ImportMappedRanges(const Context& context, const GuestAllocations::Mapped& ranges, std::uint64_t generation, bool adoptDevice);
 // Whether an existing import covers [address, address + bytes), without reconciling the imports
 // with the registry or making one (HostImportFor may take a registry lease): a hint for choices
 // made outside the device lock (a sampled texture's path, a dispatch's pre-sync); the path taken
@@ -63,6 +64,7 @@ bool HostImportCovers(const Context& context, std::uint64_t address, std::size_t
 // Whether a readable registered allocation contains [address, address + bytes) right now (one
 // registry lease): a storage image whose memory was freed or re-registered has nothing to store to.
 bool RegisteredReadableCovers(std::uint64_t address, std::size_t bytes);
+std::uint64_t RegisteredReadableEnd(std::uint64_t address);
 
 // A persistent device copy of one registered range of the main guest image (which cannot be host
 // imported); see GuestBufferMemory.cpp.
@@ -243,6 +245,11 @@ public:
     // Whether registered allocations are pinned until write-back (address-based shaders): by this
     // build's own lease, or by the cached address space it holds.
     bool HoldsLease() const { return !lease.empty() || space != nullptr; }
+    std::size_t CopiedBytes() const {
+        std::size_t bytes = 0;
+        for (const auto& region : regions) if (region.buffer != nullptr) bytes += static_cast<std::size_t>(region.end - region.begin);
+        return bytes;
+    }
     // Every uploaded region as [begin, end) when all of them are served by host imports, in place or
     // through a device-local staging copy of the import (nothing was copied through the CPU, so the
     // upload can serve a later identical build), else nothing.
