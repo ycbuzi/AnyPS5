@@ -1,0 +1,156 @@
+distinct commits to check: 117
+  1/1  no-match  #      fix(stack): reconcile harvested work with upstream after the 290-commit sync
+  2/2  open      #3826  feat(libSceProprietaryVoiceChatHelperPrx): implement the voice chat helper lifecycle
+  3/3  merged    #2918  feat(libSceVideoOut): accept VRR peg and unpeg on a fixed-rate output
+  4/4  no-match  #      feat(recompiler): translate f16 results rounded toward zero (FLOAT_MODE 0xcc)
+  5/5  no-match  #      fix(libkernel): register a Linux guest thread before it is published
+  6/6  rejected  #2393  feat(libkernel): implement sceKernelRaiseException and coredump user data
+  7/7  no-match  #      fix(libSceJson2): drop placeholder stubs duplicated by the upstream merge
+  8/8  no-match  #      fix(build): remove duplicated targets left by two cycle 3 merges
+  9/9  no-match  #      fix(libc): restore closing lines dropped from CMakeLists.txt
+ 10/10  no-match  #      fix(libc): drop duplicate definitions between harvested PRs
+ 11/11  rejected  #2604  feat(libc): implement abs and __powidf2 exports
+ 12/12  merged    #2123  feat(libkernel): report no child processes from waitpid
+ 13/13  no-match  #      feat(libc): keep getifaddrs flags consistent with their addresses on Linux
+ 14/14  no-match  #      feat(libc): report getifaddrs errors through errno and handle Windows edge cases
+ 15/15  merged    #1772  feat(libc): implement getifaddrs and freeifaddrs
+ 16/16  no-match  #      fix(relinker): dedupe repeated DT_NEEDED libraries instead of failing
+ 17/17  merged    #2129  feat(libkernel): implement sceKernelFdatasync
+ 18/18  rejected  #926   feat(libSceNpManager): implement sceNpRegisterGamePresenceCallback and sceNpSetContentRestriction
+ 19/19  no-match  #      fix(systemgesture): record the silent stub and drop the outdated comment
+ 20/20  rejected  #572   feat(systemgesture): implement the recognizer and no-touch event exports
+ 21/21  no-match  #      fix(voice): only accept PCM and voice input ports, record the silent stub
+ 22/22  rejected  #571   feat(voice): implement sceVoiceWriteToIPort
+ 23/23  no-match  #      fix(signindialog): write only the leading result int32 and record the silent stub
+ 24/24  rejected  #560   feat(signindialog): implement close, get-result and get-status
+ 25/25  merged    #2478  feat(libkernel): implement dup and dup2
+ 26/26  merged    #1777  feat(libkernel): open /dev/random and /dev/urandom for reading
+ 27/27  merged    #1776  feat(shader): implement compute LDS beyond the device's shared memory limit
+ 28/28  no-match  #      fix(libSceRazorCpu): take the label argument of sceRazorCpuNamedSync
+ 29/29  open      #1693  fix(libSceRazorCpu): add sceRazorCpuNamedSync export
+ 30/30  merged    #1529  fix(relinker): keep Linux imports declared from host modules off guest exports
+ 31/31  no-match  #      feat(libSceSystemService): restart the running title in sceSystemServiceLoadExec
+ 32/32  no-match  #      feat(libkernel): implement _umtx_op wait and wake operations
+ 33/33  no-match  #      feat(libSceAgc): implement sceAgcAcquireMemSetEngine
+ 34/34  no-match  #      feat(libSceNpAuth): implement the remaining signed-out request calls
+ 35/35  no-match  #      fix(audioin): restrict the high-quality port to the agreed format
+ 36/36  no-match  #      feat(audioin): implement sceAudioInHqOpen
+ 37/37  no-match  #      feat(libSceNet): implement sceNetResolverAbort and sceNetResolverStartNtoaMultipleRecords
+ 38/38  no-match  #      feat(libkernel): implement kill
+ 39/39  no-match  #      feat(libkernel): implement sceKernelGetEventError
+ 40/40  no-match  #      feat(libSceFont): implement attributes and text code stepping
+ 41/41  no-match  #      feat(libkernel): implement POSIX pthread_attr_setsolosched_np
+ 42/42  no-match  #      feat(libScePlayerSelectionDialog): implement dialog state machine
+ 43/43  no-match  #      fix(libSceJson2): reject unknown float formats and test parameter setters
+ 44/44  no-match  #      feat(libSceJson2): add InitParameter2 and InitParameterRtti2 exports
+ 45/45  no-match  #      feat(libSceJson2): implement InitParameterRtti
+ 46/46  no-match  #      feat(libSceNpPartner001): implement the EA access initialize and terminate
+ 47/47  no-match  #      feat(libScePad): implement the angular velocity deadband
+ 48/48  no-match  #      feat(json): implement allocator error notification
+ 49/49  no-match  #      fix(libc): preserve extended extrema signs and neighbor exceptions
+ 50/50  no-match  #      feat(libc): implement C99 numeric helpers
+ 51/51  no-match  #      feat(libc): add BSD string and memory helpers
+ 52/52  no-match  #      feat(libc): implement extended-precision math exports
+ 53/53  no-match  #      feat(libc): implement rint and lrint families
+ 54/54  no-match  #      feat(usbd): submit and cancel asynchronous USB transfers
+ 55/55  no-match  #      feat(contentsearch): search exported images and read metadata
+ 56/56  no-match  #      feat(contentexport): export images into a persistent content catalog
+ 57/57  no-match  #      feat(usbd): add native synchronous USB backend
+ 58/58  no-match  #      feat(libc): implement memccpy
+ 59/59  no-match  #      feat(libc): implement rand_r
+ 60/60  no-match  #      feat(libc): implement sinl, cosl, logl, powl and truncl
+ 61/61  no-match  #      feat(libc): implement strsep
+ 62/62  no-match  #      feat(libc): implement log1p, log1pf and expm1
+ 63/63  no-match  #      feat(libc): implement fabs, sqrt, trunc and fma
+ 64/64  no-match  #      feat(libc): implement the hyperbolic functions
+ 65/65  no-match  #      fix(libc): stop __powisf2 before the final square and test the new math exports
+ 66/66  no-match  #      feat(libScePosixForWebKit): implement arc4random_buf
+ 67/67  no-match  #      feat(libc): implement binary-safe memmem
+ 68/68  no-match  #      feat(libReactNative.Modules.Vsh): implement RemotePlayGetConnectionStatus
+ 69/69  rejected  #1998  feat(libSceAgc): implement sceAgcDcbSetIndexIndirectArgs
+ 70/70  rejected  #2038  feat(libc): implement lrand48 and srand48
+ 71/71  rejected  #2037  feat(libc): implement logb, sinhf, nearbyintf and __powisf2
+ 72/72  rejected  #2012  feat(libSceVoice): implement sceVoiceSetMuteFlag and sceVoiceResetPort
+ 73/73  rejected  #1993  feat(libc): implement _Iswctype
+ 74/74  rejected  #1985  feat(libSceNpTrophy2): implement sceNpTrophy2ShowTrophyList and sceNpTrophy2GetRewardIcon
+ 75/75  rejected  #2252  feat(libSceAppContent): implement sceAppContentAddcontEnqueueDownload
+ 76/76  open      #3607  feat(libSceNpCommerce): implement sceNpCommerceDialogOpen2
+ 77/77  rejected  #1598  feat(libc): implement std::_Atomic_assert
+ 78/78  open      #3990  feat(libc): implement collate<wchar_t>::_Getcat
+ 79/79  merged    #3046  feat(libc): implement vsnprintf_s and vsscanf_s
+ 80/80  rejected  #1952  feat(libc): implement the Dinkumware mtx and cnd functions
+ 81/81  merged    #1922  feat(libkernel): implement pthread_getaffinity_np
+ 82/82  rejected  #1886  fix(agc): validate full-width occlusion query modes
+ 83/83  rejected  #1884  feat(libSceSsl): parse certificates and account context memory
+ 84/84  rejected  #1879  feat(font): render retained glyphs with writing direction
+ 85/85  rejected  #1875  feat(ngs2): implement geometry parameter resets
+ 86/86  rejected  #1852  feat(libSceLibcInternal): implement atoll
+ 87/87  merged    #3421  feat(libkernel): implement getcontext, setcontext and makecontext
+ 88/88  rejected  #1814  feat(libc): export guest hardware concurrency hint
+ 89/89  rejected  #1806  feat(libc): implement nextafter and tgammaf exports
+ 90/90  rejected  #1773  feat(libc): implement fabsf
+ 91/91  rejected  #1770  feat(libc): implement floating minmax
+ 92/92  rejected  #1768  feat(libc): implement directed rounding
+ 93/93  merged    #3522  feat(libc): implement reallocf
+ 94/94  merged    #3375  feat(libc): implement unlocked character I/O
+ 95/95  merged    #2933  feat(libc): implement llroundf
+ 96/96  rejected  #1724  feat(libc): implement trunc
+ 97/97  rejected  #1721  feat(libc): implement log1p
+ 98/98  rejected  #1689  feat(libSceVideoRecordingP): implement sceVideoRecordingOpen, QueryMemSize and GetStatus
+ 99/99  no-match  #      feat(libc): implement atol
+100/100  no-match  #      feat(libc): implement double infinity classification
+101/101  no-match  #      feat(libc): implement rewind for guest streams
+102/102  no-match  #      feat(libSceVrSetupDialog): implement sceVrSetupDialogInitialize, Open, UpdateStatus, GetResult, Close, Terminate
+103/103  no-match  #      feat(libSceWebBrowserDialog): implement sceWebBrowserDialogSetCookie, ResetCookie, OpenForPredeterminedContent
+104/104  no-match  #      feat(libSceAgc): report occlusion query and index indirect argument packet sizes
+105/105  no-match  #      feat(libc): implement gethostname
+106/106  no-match  #      feat(libSceNpSessionSignaling): implement sceNpSessionSignalingGetConnectionStatus, GetConnectionStatistics, GetMemoryInfo
+107/107  no-match  #      feat(libc): implement wcscat, wcsncat, wcscspn and wcstok
+108/108  no-match  #      feat(libSceUserService): implement user preferences and accessibility queries
+109/109  no-match  #      feat(libSceAjm.native): implement sceAjmBatchJobSetResampleParametersEx
+110/110  no-match  #      feat(libSceNpWebApi2): implement sceNpWebApi2SetRequestTimeout
+111/111  no-match  #      feat(libSceAgcDriver): implement sceAgcDriverUserDataGetPacketSize
+112/112  no-match  #      feat(libSceAgc): implement sceAgcSetAmmSemaphoreMemory and sceAgcGetSemaphoreLabel
+113/113  no-match  #      feat(libSceAgc): implement sceAgcAcbSetFlip and sceAgcAcbWaitUntilSafeForRendering
+114/114  no-match  #      feat(ajm): implement sceAjmBatchJobDecodeSplit
+115/115  no-match  #      feat(libSceIme): implement sceImeOpen and panel lifecycle
+116/116  no-match  #      feat(libSceShare): implement sceShareCaptureVideoClipExtended
+117/117  no-match  #      feat(libSceShare.native): implement sceShareGetCurrentStatus
+
+=== SUMMARY ===
+  no-match       71
+  rejected       28
+  merged         14
+  open           4
+
+=== REJECTED (these fight us every sync) ===
+  #2393  feat(libkernel): implement sceKernelRaiseException and coredump user data
+  #2604  feat(libc): implement abs and __powidf2 exports
+  #926   feat(libSceNpManager): implement sceNpRegisterGamePresenceCallback and sceNpSetContentRestriction
+  #572   feat(systemgesture): implement the recognizer and no-touch event exports
+  #571   feat(voice): implement sceVoiceWriteToIPort
+  #560   feat(signindialog): implement close, get-result and get-status
+  #1998  feat(libSceAgc): implement sceAgcDcbSetIndexIndirectArgs
+  #2038  feat(libc): implement lrand48 and srand48
+  #2037  feat(libc): implement logb, sinhf, nearbyintf and __powisf2
+  #2012  feat(libSceVoice): implement sceVoiceSetMuteFlag and sceVoiceResetPort
+  #1993  feat(libc): implement _Iswctype
+  #1985  feat(libSceNpTrophy2): implement sceNpTrophy2ShowTrophyList and sceNpTrophy2GetRewardIcon
+  #2252  feat(libSceAppContent): implement sceAppContentAddcontEnqueueDownload
+  #1598  feat(libc): implement std::_Atomic_assert
+  #1952  feat(libc): implement the Dinkumware mtx and cnd functions
+  #1886  fix(agc): validate full-width occlusion query modes
+  #1884  feat(libSceSsl): parse certificates and account context memory
+  #1879  feat(font): render retained glyphs with writing direction
+  #1875  feat(ngs2): implement geometry parameter resets
+  #1852  feat(libSceLibcInternal): implement atoll
+  #1814  feat(libc): export guest hardware concurrency hint
+  #1806  feat(libc): implement nextafter and tgammaf exports
+  #1773  feat(libc): implement fabsf
+  #1770  feat(libc): implement floating minmax
+  #1768  feat(libc): implement directed rounding
+  #1724  feat(libc): implement trunc
+  #1721  feat(libc): implement log1p
+  #1689  feat(libSceVideoRecordingP): implement sceVideoRecordingOpen, QueryMemSize and GetStatus
+
+wrote D:\AnyPS5\scratchpad\provenance.json
