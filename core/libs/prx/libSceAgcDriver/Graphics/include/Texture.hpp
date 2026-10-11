@@ -13,6 +13,8 @@
 #include <cstddef>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <span>
 #include <tuple>
 #include <utility>
@@ -36,6 +38,7 @@ bool StorageFormatAvailable(const Context& context, std::uint32_t guestFormat);
 bool StorageClearAvailable(const Context& context, std::uint32_t guestFormat, DccKeys keys);
 std::uint64_t SampledTextureMemory();
 bool ClearKeepsDenormals(const Context& context, VkFormat format);
+bool ClearColorForTexel(VkFormat format, std::uint32_t elementBytes, std::span<const std::uint32_t, 4> pattern, VkClearColorValue& clear);
 
 // A sampled texture's own VkImage with its memory, shared with the recorder while a recorded upload
 // still writes it (see the snapshot constructor), so the texture may go before the batch completes.
@@ -61,6 +64,17 @@ public:
     // CanCopyFrom says whether the two descriptors address the same surface compatibly.
     Texture(const Context& context, const std::shared_ptr<StorageTexture>& source, const GuestTextureResource& descriptor, VkComponentMapping components);
     Texture(const Context& context, VkImage depthImage, VkFormat depthFormat, VkImageAspectFlags aspect, VkComponentMapping components);
+    struct DepthCopyTag {};
+    Texture(const Context& context, const std::shared_ptr<StorageTexture>& source, const GuestTextureResource& descriptor, VkComponentMapping components, DepthCopyTag);
+    static VkFormat DepthCopyFormat(VkFormat colorFormat);
+    static bool CanDepthCopyFrom(const StorageTexture& source, const GuestTextureResource& descriptor);
+    bool IsDepthCopy() const { return depthCopy; }
+    bool RefreshDepthCopy();
+    struct DepthCopyCounts {
+        std::uint64_t textures;
+        std::uint64_t refreshes;
+    };
+    static DepthCopyCounts TakeDepthCopyCounts();
     static bool CanCopyFrom(const StorageTexture& source, const GuestTextureResource& descriptor);
     ~Texture();
     Texture(const Texture&) = delete;
@@ -68,6 +82,7 @@ public:
 
     VkImageView View() const;
     VkImageView FirstLayerView() const { return firstLayerView; }
+    VkImageView BaseLevelView() const;
     struct ViewRange {
         VkImageViewType type;
         std::uint32_t levels;
@@ -90,6 +105,7 @@ public:
 private:
     void release() noexcept;
     void createFirstLayerView(const GuestTextureResource& descriptor, VkImageViewCreateInfo viewInfo);
+    void prepareBaseLevelView(const GuestTextureResource& descriptor, VkImageViewCreateInfo viewInfo);
 
     // Held by value: cached textures outlive the Context of the draw that created them.
     Context context;
@@ -101,6 +117,9 @@ private:
     VkImageView firstLayerView = VK_NULL_HANDLE;
     ViewRange viewRange{};
     ViewRange firstLayerRange{};
+    std::optional<VkImageViewCreateInfo> baseLevelInfo;
+    mutable std::mutex baseLevelMutex;
+    mutable VkImageView baseLevelView = VK_NULL_HANDLE;
     VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     VkDeviceSize allocationBytes = 0;
     VkDeviceSize countedBytes = 0;
@@ -108,6 +127,11 @@ private:
     std::shared_ptr<ResidentColor> source;
     std::shared_ptr<StorageTexture> storageSource;
     std::unique_ptr<CommandBatch> upload;
+    bool depthCopy = false;
+    bool copiedOnce = false;
+    std::uint64_t copiedVersion = 0;
+    VkFormat depthFormat = VK_FORMAT_UNDEFINED;
+    std::uint32_t copyWidth = 0, copyHeight = 0, copyLevels = 0, copyLayers = 0, copyElementBytes = 0;
 };
 
 VkFormat AttachmentProxyFormat(const Context& context, VkFormat format);
@@ -136,7 +160,7 @@ public:
     // Render targets live in the same images: draws attach mip 0 through a view of the color
     // buffer's format and mark the image dirty like a storage write.
     bool Attachable() const { return attachable; }
-    VkImageView AttachmentView(VkFormat format, std::uint32_t mip = 0, std::uint32_t depthSlice = 0);
+    VkImageView AttachmentView(VkFormat format, std::uint32_t mip = 0, std::uint32_t depthSlice = 0, std::uint32_t layer = 0);
     VkImageView AttachmentProxyView();
     void RecordAttachmentProxyLoad(VkCommandBuffer commands, VkImageLayout attachmentLayout) const;
     void RecordAttachmentProxyStore(VkCommandBuffer commands, VkImageLayout attachmentLayout) const;
@@ -506,7 +530,7 @@ private:
     std::map<std::uint32_t, VkImageView> elementLayerViews;
     std::int8_t singlePassState = -1;
     bool attachable = false;
-    std::map<std::tuple<VkFormat, std::uint32_t, std::uint32_t>, VkImageView> attachmentViews;
+    std::map<std::tuple<VkFormat, std::uint32_t, std::uint32_t, std::uint32_t>, VkImageView> attachmentViews;
     VkImage proxyImage = VK_NULL_HANDLE;
     VkDeviceMemory proxyMemory = VK_NULL_HANDLE;
     VkImageView proxyView = VK_NULL_HANDLE;

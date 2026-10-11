@@ -81,11 +81,18 @@ DrawVerdict Driver::draw(QueueState& queue, std::span<const std::uint32_t> packe
             ++drawEntryCounters.absent;
         }
     }
+    if (decode != nullptr && !DecodeProgramsCurrent(*decode, *submission.shaders)) {
+        std::lock_guard cacheLock(drawCacheMutex);
+        eraseDrawEntry(drawKey, entry);
+        ++drawEntryCounters.absent;
+        entry = nullptr;
+        decode = nullptr;
+    }
     phaseTiming.Phase(DrawRowKeyLookupValidate);
 
     resolveDrawDecode(queue, submission, decode, registerKey, drawKey, profile);
     const auto& graphics = decode->state;
-    const auto& pixel = decode->pixel;
+    auto pixel = decode->pixel;
     std::vector<DrawProgram> programs = decode->programs;
     const auto setMeshIndexBuffer = [&](const Pm4::DrawParameters& parameters) {
         if (!graphics.stages.mesh) return;
@@ -123,7 +130,9 @@ DrawVerdict Driver::draw(QueueState& queue, std::span<const std::uint32_t> packe
     std::vector<ShaderRecompiler::LinkedProgram> linked;
     for (std::size_t i = 0; i < programs.size(); ++i) {
         const auto& program = programs[i];
-        memory.insert(memory.end(), program.memory.begin(), program.memory.end());
+        for (const auto& region : program.memory) {
+            if (!region.bytes.empty()) memory.push_back(region);
+        }
         linked.push_back({roles[i], program.binary, program.userDataBase, program.firstUserSgpr, program.userData});
     }
     timing.Mark("prepare");
@@ -135,7 +144,7 @@ DrawVerdict Driver::draw(QueueState& queue, std::span<const std::uint32_t> packe
         const auto& program = programs[i];
         if (program.binary.stage == Stage::Fragment || roles[i] == Role::GeometryBack) return;
         decodeReads[i].clear();
-        vertexInfos[i] = Graphics::DecodeVertexStageInfo(program.binary.header, program.binary.headerAddress, program.userData, &decodeReads[i]);
+        vertexInfos[i] = Graphics::DecodeVertexStageInfo(program.binary.header, program.binary.headerAddress, program.userData, &decodeReads[i], false, 8u - program.firstUserSgpr);
     };
     if (!registerKey) {
         for (std::size_t i = 0; i < programs.size(); ++i) decodeVertexInfo(i);
@@ -195,6 +204,13 @@ DrawVerdict Driver::draw(QueueState& queue, std::span<const std::uint32_t> packe
             memory.insert(memory.end(), matchedRegions[i].begin(), matchedRegions[i].end());
         } else {
             resultIndex[i] = results.size();
+            if (program.binary.stage == ShaderRecompiler::ShaderStage::Fragment) {
+                for (auto previous = i; previous-- > 0;) {
+                    if (programResults[previous] == nullptr) continue;
+                    pixel = Graphics::DefaultUnexportedInputs(decode->pixel, programResults[previous]->parameterExports);
+                    break;
+                }
+            }
             results.push_back(materializeDrawStage(i, pushCursorBytes, queue, submission, programs, graphics, pixel, vertexInfos, memory, linked, drawParameters, localDevice, shaderMemory, stageCaptures, recompiled, drawHit, matched, matchedRegions, profile, dumpTarget, dumpSlot1, captures, phaseTiming, phaseMs, rejected));
             if (!rejected.empty()) return DrawVerdict::Rejected;
             programResults[i] = &results.back();

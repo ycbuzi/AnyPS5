@@ -659,6 +659,9 @@ std::int64_t APS5_VABI recv_nid_postfix(int descriptor, void* buffer, std::uint6
     if (!buffer && length) return Fail(14);
     const auto result = ::recv(socket->value, static_cast<char*>(buffer), static_cast<int>(length),
         flags & 2 ? MSG_PEEK : 0);
+#ifdef _WIN32
+    if (result < 0 && socket->type == 2 && WSAGetLastError() == WSAEMSGSIZE) return static_cast<std::int64_t>(length);
+#endif
     return result < 0 ? Fail(NativeError()) : result;
 }
 int APS5_VABI bind_nid_postfix(int descriptor, const void* address, std::uint32_t length) {
@@ -717,6 +720,9 @@ int APS5_VABI ioctl_nid_postfix(int descriptor, std::uint64_t request, void* arg
     if (request == 0x4004667f) *static_cast<int*>(argument) = static_cast<int>(value);
     return 0;
 }
+int APS5_VABI _ioctl_nid_postfix(int descriptor, std::uint64_t request, void* argument) {
+    return ioctl_nid_postfix(descriptor, request, argument);
+}
 std::int64_t APS5_VABI sendto_nid_postfix(int descriptor, const void* buffer, std::uint64_t length,
     int flags, const void* address, std::uint32_t addressLength) {
     const auto socket = Lookup(descriptor);
@@ -747,8 +753,11 @@ std::int64_t APS5_VABI recvfrom_nid_postfix(int descriptor, void* buffer, std::u
     if ((!buffer && length) || (address && !addressLength)) return Fail(14);
     sockaddr_storage native{};
     socklen_t size = sizeof(native);
-    const auto result = ::recvfrom(socket->value, static_cast<char*>(buffer), static_cast<int>(length),
+    auto result = ::recvfrom(socket->value, static_cast<char*>(buffer), static_cast<int>(length),
         flags & 2 ? MSG_PEEK : 0, reinterpret_cast<sockaddr*>(&native), &size);
+#ifdef _WIN32
+    if (result < 0 && socket->type == 2 && WSAGetLastError() == WSAEMSGSIZE) result = static_cast<int>(length);
+#endif
     if (result < 0) return Fail(NativeError());
     if (address && socket->family == GuestUnix) {
         if (socket->type == 1) *addressLength = 0; else UnnamedAddress(address, addressLength);
@@ -849,6 +858,86 @@ std::int64_t APS5_VABI recvmsg_nid_postfix(int descriptor, GuestMsghdr* message,
     message->controlLength = 0;
     return received;
 }
+struct GuestSendfileHeaders {
+    GuestIovec* headers;
+    int headerCount;
+    GuestIovec* trailers;
+    int trailerCount;
+};
+static_assert(sizeof(GuestSendfileHeaders) == 32 && offsetof(GuestSendfileHeaders, trailers) == 16);
+std::int64_t APS5_VABI sceKernelPread(int descriptor, void* buffer, std::size_t length, std::int64_t offset);
+static bool SendfileIovecs(const GuestIovec* iov, int count) {
+    if (!iov) return true;
+    if (count < 0 || count > 1024) return false;
+    std::uint64_t total = 0;
+    for (int i = 0; i < count; ++i) {
+        if (iov[i].length > INT_MAX - total) return false;
+        total += iov[i].length;
+    }
+    return true;
+}
+static int SendAll(const Socket& socket, const void* data, std::uint64_t length, std::int64_t& sent) {
+    if (!data && length) return 14;
+    const char* bytes = static_cast<const char*>(data);
+    while (length) {
+        const auto result = ::send(socket.value, bytes, static_cast<int>(std::min<std::uint64_t>(length, INT_MAX)), NativeSendFlags(GuestNoSignal));
+        if (result < 0) return NativeError();
+        bytes += result;
+        length -= static_cast<std::uint64_t>(result);
+        sent += result;
+    }
+    return 0;
+}
+static int SendIovecs(const Socket& socket, const GuestIovec* iov, int count, std::int64_t& sent) {
+    for (int i = 0; iov && i < count; ++i)
+        if (const int error = SendAll(socket, iov[i].base, iov[i].length, sent)) return error;
+    return 0;
+}
+int APS5_VABI sendfile_nid_postfix(int file, int descriptor, std::int64_t offset, std::uint64_t length,
+    const GuestSendfileHeaders* headers, std::int64_t* sbytes, int flags) {
+    (void)flags;
+    if (offset < 0) return Fail(22);
+    if (headers && (!SendfileIovecs(headers->headers, headers->headerCount) || !SendfileIovecs(headers->trailers, headers->trailerCount)))
+        return Fail(22);
+    std::vector<char> chunk;
+    try {
+        chunk.resize(0x10000);
+    } catch (const std::bad_alloc&) {
+        return Fail(12);
+    }
+    const auto read = [&](std::int64_t position, std::uint64_t remaining) {
+        const auto result = sceKernelPread(file, chunk.data(), static_cast<std::size_t>(std::min<std::uint64_t>(remaining, chunk.size())), position);
+        return result < 0 ? -(result & 0xffff) : result;
+    };
+    std::uint64_t remaining = length ? length : UINT64_MAX;
+    auto received = read(offset, remaining);
+    if (received == -9) return Fail(9);
+    std::int64_t sent = 0;
+    const auto finish = [&](int error) {
+        if (sbytes) *sbytes = sent;
+        return error ? Fail(error) : 0;
+    };
+    if (received < 0) return finish(received == -21 || received == -29 ? 22 : static_cast<int>(-received));
+    const auto socket = Lookup(descriptor);
+    if (!socket) return finish(9);
+    if (socket->type != 1) return finish(22);
+    sockaddr_storage peer{};
+    socklen_t size = sizeof(peer);
+    if (::getpeername(socket->value, reinterpret_cast<sockaddr*>(&peer), &size)) return finish(57);
+    if (headers)
+        if (const int error = SendIovecs(*socket, headers->headers, headers->headerCount, sent)) return finish(error);
+    while (received > 0) {
+        if (const int error = SendAll(*socket, chunk.data(), static_cast<std::uint64_t>(received), sent)) return finish(error);
+        offset += received;
+        remaining -= static_cast<std::uint64_t>(received);
+        if (remaining == 0) break;
+        received = read(offset, remaining);
+        if (received < 0) return finish(static_cast<int>(-received));
+    }
+    if (headers)
+        if (const int error = SendIovecs(*socket, headers->trailers, headers->trailerCount, sent)) return finish(error);
+    return finish(0);
+}
 int APS5_VABI poll_nid_postfix(GuestPollDescriptor* descriptors, std::uint32_t count, int timeout) {
     if (timeout < -1) return Fail(22);
     if (count && !descriptors) return Fail(14);
@@ -914,4 +1003,51 @@ std::int64_t GuestSockets::Read(int descriptor, void* buffer, std::size_t length
 
 std::int64_t GuestSockets::Write(int descriptor, const void* buffer, std::size_t length) {
     return send_nid_postfix(descriptor, buffer, length, 0);
+}
+
+std::int64_t GuestSockets::Readv(int descriptor, const Iovec* iov, int iovcnt) {
+    std::size_t total = 0;
+    for (int i = 0; i < iovcnt; ++i) {
+        if (iov[i].base == nullptr && iov[i].length != 0) return Fail(14);
+        if (iov[i].length > static_cast<std::size_t>(INT_MAX) - total) return Fail(22);
+        total += iov[i].length;
+    }
+    if (total == 0) return IsOpen(descriptor) ? 0 : Fail(9);
+    std::vector<char> buffer;
+    try {
+        buffer.resize(total);
+    } catch (const std::bad_alloc&) {
+        return Fail(12);
+    }
+    const auto result = Read(descriptor, buffer.data(), total);
+    if (result < 0) return result;
+    std::size_t copied = 0;
+    for (int i = 0; i < iovcnt && copied < static_cast<std::size_t>(result); ++i) {
+        const auto amount = std::min(iov[i].length, static_cast<std::size_t>(result) - copied);
+        if (amount != 0) std::memcpy(iov[i].base, buffer.data() + copied, amount);
+        copied += amount;
+    }
+    return result;
+}
+
+std::int64_t GuestSockets::Writev(int descriptor, const Iovec* iov, int iovcnt) {
+    std::size_t total = 0;
+    for (int i = 0; i < iovcnt; ++i) {
+        if (iov[i].base == nullptr && iov[i].length != 0) return Fail(14);
+        if (iov[i].length > static_cast<std::size_t>(INT_MAX) - total) return Fail(22);
+        total += iov[i].length;
+    }
+    if (total == 0) return Write(descriptor, nullptr, 0);
+    std::vector<char> buffer;
+    try {
+        buffer.resize(total);
+    } catch (const std::bad_alloc&) {
+        return Fail(12);
+    }
+    std::size_t copied = 0;
+    for (int i = 0; i < iovcnt; ++i) {
+        if (iov[i].length != 0) std::memcpy(buffer.data() + copied, iov[i].base, iov[i].length);
+        copied += iov[i].length;
+    }
+    return Write(descriptor, buffer.data(), total);
 }

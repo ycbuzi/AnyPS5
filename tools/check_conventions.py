@@ -7,6 +7,7 @@ import subprocess
 import sys
 from collections import defaultdict
 from pathlib import PurePosixPath
+from urllib.parse import unquote
 
 RULES = {
     "comment": ("error", "docs/dev/CONVENTIONS.md", "Comments are only for technical debt, so they need a change to docs/dev/TechnicalDebt.md in the same pull request; #endif and namespace ends are always allowed"),
@@ -30,11 +31,12 @@ AGENT_FILES = {"AGENTS.md", "CLAUDE.md", "GEMINI.md", ".cursorrules", "copilot-i
 
 CONVENTIONAL = re.compile(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]+\))?!?: \S")
 STRINGS = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+TOKENS = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//[^\n]*|/\*.*?\*/', re.S)
 ALLOWED_COMMENT = re.compile(r"^\s*(#\s*endif\b|}\s*;?\s*//\s*(end\s+)?namespace\b)")
 EXPORT = re.compile(r"\bAPS5_VABI\s+(\w+)\s*\(")
 STUB_BODY = re.compile(r"^(?:\(void\)\s*\w+\s*;|static_cast<void>\(\s*\w+\s*\)\s*;)*"
                        r"(?:return\s*\(?\s*(?:-?(?:0x[0-9a-fA-F]+|\d+)[uUlL]*|nullptr|true|false|\w*_OK)?\s*\)?\s*;)?$")
-SYSTEM_DEPENDENCY = re.compile(r"\b(find_package\s*\((?!\s*(Python3|Threads|Git)\b)|pkg_check_modules|pkg_search_module|find_library)\b")
+SYSTEM_DEPENDENCY = re.compile(r"\b(find_package\s*\((?!\s*(Python3|Threads|Git)\b)|pkg_check_modules\b|pkg_search_module\b|find_(library|path|program|file)\b)", re.I)
 TITLE = re.compile(r"\b(PPSA|CUSA)\d{5}\b")
 EXTENSION = re.compile(r"__attribute__|__declspec|#\s*pragma\s+(?!once\b)")
 LINK = re.compile(r"\]\(([^)\s]+)")
@@ -42,7 +44,7 @@ SECTION = re.compile(r"^###\s*(.+?)\s*$", re.M)
 
 
 def git(*args, text=True):
-    output = subprocess.run(["git", *args], capture_output=True, check=True).stdout
+    output = subprocess.run(["git", "-c", "core.quotePath=false", *args], capture_output=True, check=True).stdout
     return output.decode("utf-8", errors="replace") if text else output
 
 
@@ -54,21 +56,26 @@ class Check:
         self.added = defaultdict(list)
         self.status = {}
         self.numstat = {}
-        self.tree = set(git("ls-tree", "-r", "--name-only", head).splitlines())
+        entries = [entry.split("\t", 1) for entry in git("ls-tree", "-rz", head).split("\0") if entry]
+        self.modes = {path: metadata.split()[0] for metadata, path in entries}
+        self.tree = set(self.modes)
         self.dirs = {str(parent) for path in self.tree for parent in PurePosixPath(path).parents}
-        for line in git("diff", "--name-status", "--no-renames", self.base, head).splitlines():
-            status, path = line.split("\t", 1)
+        statuses = git("diff", "--name-status", "--no-renames", "-z", self.base, head).split("\0")
+        for status, path in zip(statuses[::2], statuses[1::2]):
             self.status[path] = status
-        for line in git("diff", "--numstat", "--no-renames", self.base, head).splitlines():
+        for line in git("diff", "--numstat", "--no-renames", "-z", self.base, head).split("\0"):
+            if not line:
+                continue
             added, deleted, path = line.split("\t", 2)
             self.numstat[path] = (added, deleted)
-        path = None
-        for line in git("diff", "-U0", "--no-color", "--no-renames", "--no-prefix", self.base, head).splitlines():
-            if line.startswith("+++ "):
-                path = None if line == "+++ /dev/null" else line[4:]
+        paths = iter(self.status)
+        path, number = None, None
+        for line in git("diff", "-U0", "--no-color", "--no-renames", self.base, head).splitlines():
+            if line.startswith("diff --git "):
+                path, number = next(paths), None
             elif line.startswith("@@"):
                 number = int(re.search(r"\+(\d+)", line).group(1))
-            elif line.startswith("+") and path:
+            elif path and number is not None and line.startswith("+"):
                 self.added[path].append((number, line[1:]))
                 number += 1
 
@@ -82,7 +89,7 @@ class Check:
         return git("show", f"{self.head}:{path}")
 
     def code(self):
-        debt = [(text, links("docs/dev/TechnicalDebt.md", text)) for text in self.show("docs/dev/TechnicalDebt.md").splitlines()] if "docs/dev/TechnicalDebt.md" in self.tree else []
+        debt = silent_stub_debt(self.show("docs/dev/TechnicalDebt.md")) if "docs/dev/TechnicalDebt.md" in self.tree else []
         exports = {}
         for path, lines in self.files(lambda p: p.suffix in CPP):
             core = path.startswith("core/") and "tests" not in PurePosixPath(path).parts
@@ -126,6 +133,8 @@ class Check:
 
     def build(self):
         for path, lines in self.files(lambda p: p.name == "CMakeLists.txt" or p.suffix == ".cmake"):
+            if path == "cmake/SystemDeps.cmake":
+                continue
             for number, text in lines:
                 if SYSTEM_DEPENDENCY.search(text.split("#", 1)[0]):
                     self.report("system-dependency", path, number, text.strip())
@@ -137,6 +146,9 @@ class Check:
     def repository(self):
         for path, (added, deleted) in self.numstat.items():
             if path.startswith("3rdparty/"):
+                continue
+            if self.modes.get(path) == "160000":
+                self.report("system-dependency", path, 0, "submodule outside 3rdparty/")
                 continue
             suffix = PurePosixPath(path).suffix.lower()
             if self.status.get(path) != "D" and (added == "-" or suffix in IMAGES or not utf8(git("show", f"{self.head}:{path}", text=False))):
@@ -166,7 +178,7 @@ class Check:
             if not sections.get(name, "").strip():
                 self.report("pr-template", "", 0, f"section '{name}' is missing or empty")
         checklist = sections.get("Checklist", "")
-        for item in re.findall(r"^\s*-\s*\[ \]\s*(.+)$", checklist, re.M):
+        for item in re.findall(r"^\s*[-*+]\s*\[ \]\s*(.+)$", checklist, re.M):
             self.report("pr-template", "", 0, f"unchecked: {item.strip()}")
         if checklist and not re.search(r"AI-assisted:\s*(yes|no)\b", checklist, re.I):
             self.report("pr-template", "", 0, "answer AI-assisted with yes or no")
@@ -185,11 +197,28 @@ def utf8(data):
 def links(path, text):
     result = []
     for target in LINK.findall(text):
-        if re.match(r"[a-z]+:|#", target):
+        if re.match(r"[A-Za-z][A-Za-z0-9+.-]*:|//|#", target):
             continue
         target = target.split("#", 1)[0].split("?", 1)[0]
-        result.append((target, posixpath.normpath(target.lstrip("/") if target.startswith("/") else str(PurePosixPath(path).parent / target))))
+        decoded = unquote(target)
+        result.append((target, posixpath.normpath(decoded.lstrip("/") if decoded.startswith("/") else str(PurePosixPath(path).parent / decoded))))
     return result
+
+
+def silent_stub_debt(text):
+    debt = []
+    section_level = 0
+    for line in text.splitlines():
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*$", line)
+        if heading:
+            level = len(heading[1])
+            if heading[2] == "Silent stubs":
+                section_level = level
+            elif level <= section_level:
+                section_level = 0
+        if section_level:
+            debt.append((line, links("docs/dev/TechnicalDebt.md", line)))
+    return debt
 
 
 def listed(debt, name, path):
@@ -216,7 +245,7 @@ def allowed_notes(path):
 
 def function_body(lines, start):
     text = "\n".join(lines[start:start + 400])
-    text = re.sub(r"//[^\r\n]*|/\*.*?\*/", "", STRINGS.sub('""', text), flags=re.S)
+    text = TOKENS.sub(lambda match: "" if match.group(0).startswith("/") else '""', text)
     brace, semicolon = text.find("{"), text.find(";")
     if brace < 0 or 0 <= semicolon < brace:
         return None
@@ -237,7 +266,8 @@ def output(check, repo):
         errors += level == "error"
         text = f"{message}" + (f": {detail}" if detail else "")
         if actions:
-            location = f" file={path},line={max(line, 1)}," if path else " "
+            escaped_path = path.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A").replace(":", "%3A").replace(",", "%2C")
+            location = f" file={escaped_path},line={max(line, 1)}," if path else " "
             print(f"::{level}{location}title={rule}::" + text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"))
         else:
             print(f"{path or '(pull request)'}{f':{line}' if line else ''}: {level}: [{rule}] {text}")

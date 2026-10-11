@@ -115,6 +115,29 @@ struct WorkingDirectory {
     std::filesystem::path current = root;
 };
 WorkingDirectory& Directories() { static WorkingDirectory state; return state; }
+std::filesystem::path HostPath(WorkingDirectory& state, const std::filesystem::path& guest) {
+    if (auto aliased = ResolveAlias(guest.relative_path().generic_string())) return *aliased;
+    return ResolveHostPath(state.root, guest.relative_path()).make_preferred();
+}
+void RequireHostDirectory(WorkingDirectory& state, const std::filesystem::path& guest) {
+    const auto host = HostPath(state, guest);
+    std::error_code error;
+    const auto status = std::filesystem::status(host, error);
+    if (std::filesystem::is_directory(status)) return;
+    if (!error) error = std::make_error_code(std::filesystem::exists(status) ? std::errc::not_a_directory : std::errc::no_such_file_or_directory);
+#ifdef _WIN32
+    if (error == std::errc::no_such_file_or_directory) {
+        for (auto prefix = host.parent_path(); prefix.has_relative_path(); prefix = prefix.parent_path()) {
+            std::error_code prefixError;
+            const auto prefixStatus = std::filesystem::status(prefix, prefixError);
+            if (!std::filesystem::exists(prefixStatus)) continue;
+            if (!std::filesystem::is_directory(prefixStatus)) error = std::make_error_code(std::errc::not_a_directory);
+            break;
+        }
+    }
+#endif
+    throw std::filesystem::filesystem_error("Guest path component is not a directory", host, error);
+}
 std::filesystem::path Resolve(WorkingDirectory& state, const char* path) {
     std::string text(path);
     for (auto& character : text) if (character == '\\') character = '/';
@@ -123,10 +146,17 @@ std::filesystem::path Resolve(WorkingDirectory& state, const char* path) {
     // Preserve the existing ability to pass explicit native drive paths.
     if (input.has_root_name()) return input;
 #endif
-    auto guest = (std::filesystem::path("/") / state.current.lexically_relative(state.root));
-    guest = (input.is_absolute() ? input : guest / input).lexically_normal();
-    if (auto aliased = ResolveAlias(guest.relative_path().generic_string())) return *aliased;
-    return ResolveHostPath(state.root, guest.relative_path()).make_preferred();
+    const auto current = std::filesystem::path("/") / state.current.lexically_relative(state.root);
+    const auto relative = (input.is_absolute() ? input : current / input).relative_path();
+    std::filesystem::path guest("/");
+    for (auto part = relative.begin(); part != relative.end(); ++part) {
+        if (*part == "..") {
+            const auto parent = guest.lexically_normal();
+            if (parent.has_relative_path()) RequireHostDirectory(state, parent);
+        }
+        guest /= *part;
+    }
+    return HostPath(state, guest.lexically_normal());
 }
 #ifdef _WIN32
 using WriteMark = FILETIME;
@@ -208,6 +238,16 @@ int DirectoryFailure(const std::error_code& error) {
     if (error == std::errc::filename_too_long) return 63;
     if (error == std::errc::too_many_symbolic_link_levels) return 62;
     return 5;
+}
+int SetWorkingDirectory(WorkingDirectory& state, const std::filesystem::path& resolved) {
+    std::error_code error;
+    const auto canonical = std::filesystem::canonical(resolved, error);
+    if (error) return DirectoryFailure(error);
+    if (!std::filesystem::is_directory(canonical, error)) return error ? DirectoryFailure(error) : 20;
+    const auto relative = canonical.lexically_relative(state.root);
+    if (relative.empty() || *relative.begin() == "..") return 45;
+    state.current = canonical;
+    return 0;
 }
 }
 
@@ -305,21 +345,36 @@ extern "C" std::filesystem::path ResolvePath_nid_no_patch(const char* path) {
     return Resolve(state, path);
 }
 
+extern "C" int SetWorkingDirectory_nid_no_patch(const char* resolved) {
+    if (resolved == nullptr) return 14;
+    auto& state = Directories();
+    std::lock_guard lock(state.mutex);
+    try {
+        return SetWorkingDirectory(state, std::filesystem::u8path(resolved));
+    } catch (const std::bad_alloc&) {
+        return 12;
+    } catch (const std::filesystem::filesystem_error& error) {
+        return DirectoryFailure(error.code());
+    }
+}
+
+extern "C" bool FinalPathComponentIsDot_nid_no_patch(const char* path) {
+    std::string_view text(path);
+    while (!text.empty() && (text.back() == '/' || text.back() == '\\')) text.remove_suffix(1);
+    const auto separator = text.find_last_of("/\\");
+    const auto component = text.substr(separator == std::string_view::npos ? 0 : separator + 1);
+    return component == ".";
+}
+
 extern "C" int APS5_VABI chdir_nid_postfix(const char* path) {
     if (!path) { errno = 14; return -1; }
     if (!*path) { errno = 2; return -1; }
     try {
         auto& state = Directories();
         std::lock_guard lock(state.mutex);
-        std::error_code error;
-        const auto resolved = std::filesystem::canonical(Resolve(state, path), error);
-        if (error) { errno = DirectoryFailure(error); return -1; }
-        if (!std::filesystem::is_directory(resolved, error)) {
-            errno = error ? DirectoryFailure(error) : 20; return -1;
-        }
-        const auto relative = resolved.lexically_relative(state.root);
-        if (relative.empty() || *relative.begin() == "..") { errno = 45; return -1; }
-        state.current = resolved;
+        const auto resolved = Resolve(state, path);
+        const int error = SetWorkingDirectory(state, resolved);
+        if (error) { errno = error; return -1; }
         return 0;
     } catch (const std::bad_alloc&) { errno = 12; return -1; }
       catch (const std::filesystem::filesystem_error& error) { errno = DirectoryFailure(error.code()); return -1; }

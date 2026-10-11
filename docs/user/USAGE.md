@@ -35,7 +35,7 @@ relinker --macos source/input.elf eboot
 
 Add `--to-intel` for Intel hosts, or `--to-rosetta` for Rosetta; a title that runs under Rosetta on Apple silicon is relinked with `--macos --to-rosetta`. The output format defaults to Linux ELF regardless of the filename; `.exe` alone does not select Windows.
 
-The executable output must not refer to the input executable or a bundled module being converted, including through a hard link or symbolic link. An existing output file can be replaced if it is separate from those inputs.
+The executable, registry, icon and desktop entry output files must not refer to the input executable or a bundled module being converted, including through a hard link or symbolic link. These collisions fail before any output is written. An existing output file can be replaced if it is separate from those inputs.
 
 ## Options
 
@@ -56,6 +56,7 @@ All switches are disabled by default. `unused-filter` defaults to `0`; `--rpath`
 | `--rpath <path>`              | Set the system library search path. Quote `$ORIGIN` to prevent shell expansion, for example `--rpath '$ORIGIN/libs'` in Bash or PowerShell. Linux guest modules require an absolute path or a path beginning with `$ORIGIN`. Windows requires a nonempty ASCII path and supports `$ORIGIN` as the executable directory.                                                                                                                                                     |
 | `--autorun`                   | Run the output after conversion, print its exit code, and wait for Enter. Adds executable permissions for Linux output. Requires the target OS and prepared runtime layout.                                                                                                                                                                                                                                                                                                 |
 | `--sce-module-path <path>`    | Parent of the module directories, not the module directory itself. Default: input ELF parent; relative input paths resolve from the process working directory. Explicit absolute path: used directly. Explicit relative path (including `.` and `..`): relative to the process working directory. Output path has no effect. Requires one nonempty value; repeats, nonexistent or nondirectory paths, access failures, and combination with `--skip-sce-module` are errors. |
+| `--module-dir <dir>`          | Relink the ELF modules of a directory under the module parent directory, besides `sce_module`/`sce_modules`/`prx`; outputs keep the relative path. A module the executable or another module needs is initialized at startup, any other when the title loads it with `sceKernelLoadStartModule`, with its start arguments (for example Unity plugins in `Media/Plugins`). Repeat for multiple directories. Conflicts with `--skip-sce-module`.                              |
 | `--skip-sce-module`           | Deprecated. Disable bundled module processing and module directory checks. Conflicts with explicit `--sce-module-path`.                                                                                                                                                                                                                                                                                                                                                     |
 | `--exclude-sce-module <file>` | Deprecated. Exclude a bundled module by exact filename, not path. Repeat for multiple files; a missing filename is an error. Conflicts with `--skip-sce-module`.                                                                                                                                                                                                                                                                                                            |
 | `--skip-syscall-check`        | Deprecated. Disable syscall scanning in the executable and bundled modules.                                                                                                                                                                                                                                                                                                                                                                                                 |
@@ -102,6 +103,19 @@ Windows PowerShell:
 .\app.exe
 ```
 
+### Controller input for test runs
+
+Set `APS5_PAD_INPUT_FILE` to an absolute path before launching the application to enable controller pulses from a local command file. Once the application is reading controller input, send a button with the helper from the repository root:
+
+```sh
+APS5_PAD_INPUT_FILE=/tmp/anyps5-pad ./app.elf
+python3 tools/pad_input.py /tmp/anyps5-pad cross
+python3 tools/pad_input.py /tmp/anyps5-pad down --hold-ms 500
+python3 tools/pad_input.py /tmp/anyps5-pad release
+```
+
+Run the helper in a second terminal. Commands are polled at most every 100 ms during controller reads and add to physical controller input. A press lasts 300 ms by default, starting when the application reads it, and releases automatically; `--hold-ms` accepts 1–5000 ms. Wait for the application to observe a release before sending another press. The file holds only the latest command; rapid commands can replace one another. Commands left over when the application first reads the controller are ignored. Without the environment variable, file input is disabled.
+
 ### System fonts
 
 Games that open the console's system font sets (`sceFontOpenFontSet`) need font files in an `anyps5-fonts/` directory beside the output executable; set `ANYPS5_SYSTEM_FONTS` to use another directory. Files dumped from the console are used under their own names (`SST-Roman.otf`, `SST-Bold.otf`, `SSTJpPro-Regular.otf`, ...). Without them, these openly licensed substitutes are used when present: `NotoSans-{Light,Regular,Medium,Bold}.ttf` and `NotoSans-{LightItalic,Italic,MediumItalic,BoldItalic}.ttf` (Latin and Vietnamese), `NotoSansMono-{Light,Regular,Medium,Bold}.ttf` (typewriter), `NotoSansThai-{Light,Regular,Medium,Bold}.ttf` (Thai) and `NotoSansCJK-{Light,Regular,Medium,Bold}.ttc` (Japanese and Chinese). Without either, opening a system font set fails and the game shows no text in those fonts.
@@ -113,6 +127,15 @@ Games ask for the console's language with `sceSystemServiceParamGetInt` and show
 ### GPU selection
 
 The game runs on the first Vulkan 1.1 device with graphics and compute queues and swapchain presentation, preferring a discrete GPU over an integrated one. Set `ANYPS5_GPU` to a part of a device name, compared without regard to case, to run on another device; the names are printed at start-up in the `Physical device candidate` lines. When no usable device contains the text, the start fails and the error lists the device names.
+
+On Windows, the OpenCL, OpenGL, and Vulkan Compatibility Pack can install Mesa Dozen, which exposes D3D12 devices through Vulkan. Some D3D12 drivers can crash while the Vulkan loader enumerates adapters, even when AnyPS5 would select a native Vulkan device. If this happens and the system has another Vulkan driver, disable Dozen for the current PowerShell session before launching AnyPS5:
+
+```powershell
+$env:VK_LOADER_DRIVERS_DISABLE = '*dzn*'
+.\app.exe
+```
+
+Do not disable Dozen if it is the only Vulkan driver available; the application would have no device to use. `VK_LOADER_DRIVERS_DISABLE` matches Vulkan driver manifest filenames and requires a Vulkan loader built with headers 1.3.234 or later ([loader documentation](https://github.com/KhronosGroup/Vulkan-Loader/blob/main/docs/LoaderInterfaceArchitecture.md#filter-environment-variables)).
 
 ### Storing GPU results at each flip
 

@@ -71,9 +71,9 @@ static std::uint64_t ClockOrigin() {
 }
 
 static std::uint64_t GetMonotonicNanos() {
-    const auto raw = RawMonotonicNanos();
-    if (TimeScale() == 1.0) return raw;
+    if (TimeScale() == 1.0) return RawMonotonicNanos();
     const auto origin = ClockOrigin();
+    const auto raw = RawMonotonicNanos();
     return origin + static_cast<std::uint64_t>(static_cast<double>(raw - origin) * TimeScale());
 }
 
@@ -81,6 +81,8 @@ static std::uint64_t GetStartNanos() {
     static const std::uint64_t start = GetMonotonicNanos();
     return start;
 }
+
+static const std::uint64_t g_processStart = GetStartNanos();
 
 #ifdef _WIN32
 // Every relative wait in the process (winpthreads nanosleep, std::condition_variable::wait_for, the
@@ -471,8 +473,7 @@ int APS5_VABI gettimeofday_nid_postfix(KernelTimeval* tv, KernelTimezone* tz) {
 }
 
 int APS5_VABI clock_getres_nid_postfix(int clockId, KernelTimespec* res) {
-    KernelTimespec ignoredResolution{};
-    if (res == nullptr) res = &ignoredResolution;
+    if (res == nullptr) return 0;
     if (IsCpuClock(clockId))
         return clock_getres_nid_postfix(GUEST_CLOCK_THREAD_CPUTIME_ID, res);
     if (clockId == 1 || clockId == 2) {

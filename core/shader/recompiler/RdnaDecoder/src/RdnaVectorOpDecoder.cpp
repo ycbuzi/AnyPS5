@@ -529,6 +529,9 @@ constexpr VectorOpcodeInfo vop3Opcodes[] = {
     {0x311u, RdnaOpcode::VPackB32F16},
     {0x314u, RdnaOpcode::VLshlrevB16},
     {0x319u, RdnaOpcode::VSubrevI32},
+    {0x200u, RdnaOpcode::VInterpP1F32},
+    {0x201u, RdnaOpcode::VInterpP2F32},
+    {0x202u, RdnaOpcode::VInterpMovF32},
     {0x342u, RdnaOpcode::VInterpP1llF16},
     {0x343u, RdnaOpcode::VInterpP1lvF16},
     {0x344u, RdnaOpcode::VPermB32},
@@ -2016,7 +2019,7 @@ void checkNativeVop3Modifiers(RdnaOpcode opcode, bool permlane, bool carryInOut,
     if (carryInOut || scalarDst) {
         const bool floatCompare = scalarDst && isVopcFloatCompareOpcode(opcode);
         const bool divScale = opcode == RdnaOpcode::VDivScaleF32 || opcode == RdnaOpcode::VDivScaleF64;
-        if ((clamp != 0u && !isVop3BMadU64Opcode(opcode)) || (omod != 0u && !divScale) || (neg != 0u && !floatCompare && !divScale)) {
+        if ((clamp != 0u && !isVop3BMadU64Opcode(opcode) && !floatCompare) || (omod != 0u && !divScale) || (neg != 0u && !floatCompare && !divScale)) {
             throw std::invalid_argument("VOP3 source modifiers are not implemented");
         }
         return;
@@ -2112,6 +2115,47 @@ void decodeVop3F16Interpolation(RdnaInstruction& instruction, std::uint32_t vdst
         instruction.source3.opSel = high && !f16Result;
         instruction.sourceCount = 4;
     }
+}
+
+bool isVop3F32InterpolationOpcode(RdnaOpcode opcode) {
+    return opcode == RdnaOpcode::VInterpP1F32 || opcode == RdnaOpcode::VInterpP2F32 || opcode == RdnaOpcode::VInterpMovF32;
+}
+
+void decodeVop3F32Interpolation(RdnaInstruction& instruction, std::uint32_t vdst, std::uint32_t src0, std::uint32_t src1, std::uint32_t src2, std::uint32_t abs, std::uint32_t opSel, std::uint32_t clamp, std::uint32_t omod, std::uint32_t neg) {
+    const bool moves = instruction.op == RdnaOpcode::VInterpMovF32;
+    const RdnaOperand thirdSource = DecodeRdnaScalarSource(src2, instruction.programCounter);
+    if (thirdSource.kind != RdnaOperandKind::IntegerInlineConstant || thirdSource.value != 0u) {
+        throw std::invalid_argument("VOP3 interpolation third source is not the inline constant 0");
+    }
+    if ((abs & 0x5u) != 0u || (neg & 0x5u) != 0u || opSel != 0u || (src0 >> 8u) != 0u || (moves && (abs | neg) != 0u)) {
+        throw std::invalid_argument("VOP3 interpolation modifiers are not implemented");
+    }
+    if (moves) {
+        if (src1 >= 3u) {
+            throw std::invalid_argument("VOP3 interpolation source is not an interpolation parameter");
+        }
+    } else if (src1 < 256u) {
+        throw std::invalid_argument("VOP3 interpolation source is not a vector register");
+    }
+    instruction.destination = DecodeRdnaVectorGpr(vdst);
+    instruction.destination.clamp = clamp != 0u;
+    instruction.destination.omod = omod;
+    if (moves) {
+        instruction.source0.kind = RdnaOperandKind::IntegerInlineConstant;
+        instruction.source0.value = src1;
+        instruction.source0.signedVal = static_cast<std::int32_t>(src1);
+    } else {
+        instruction.source0 = DecodeRdnaVectorGpr(src1 - 256u);
+        instruction.source0.absolute = (abs & 0x2u) != 0u;
+        instruction.source0.negate = (neg & 0x2u) != 0u;
+    }
+    instruction.source1.kind = RdnaOperandKind::IntegerInlineConstant;
+    instruction.source1.value = src0 & 0x3fu;
+    instruction.source1.signedVal = static_cast<std::int32_t>(instruction.source1.value);
+    instruction.source2.kind = RdnaOperandKind::IntegerInlineConstant;
+    instruction.source2.value = (src0 >> 6u) & 0x3u;
+    instruction.source2.signedVal = static_cast<std::int32_t>(instruction.source2.value);
+    instruction.sourceCount = 3;
 }
 
 void applyNativeVop3SourceModifiers(RdnaInstruction& instruction, std::uint32_t abs, std::uint32_t neg) {
@@ -2276,6 +2320,10 @@ RdnaInstruction DecodeRdnaVop3(std::uint32_t programCounter, std::span<const std
 
     if (isVop3F16InterpolationOpcode(instruction.op)) {
         decodeVop3F16Interpolation(instruction, vdst, src0, src1, src2, abs, opSel, clamp, omod, neg);
+        return instruction;
+    }
+    if (isVop3F32InterpolationOpcode(instruction.op)) {
+        decodeVop3F32Interpolation(instruction, vdst, src0, src1, src2, abs, opSel, clamp, omod, neg);
         return instruction;
     }
 

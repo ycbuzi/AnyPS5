@@ -35,6 +35,10 @@ void APS5_VABI _ZN3sce4Json6StringD1Ev(String*);
 const char* APS5_VABI _ZNK3sce4Json6String5c_strEv(const String*);
 std::size_t APS5_VABI _ZNK3sce4Json6String6lengthEv(const String*);
 void APS5_VABI _ZN3sce4Json5ArrayC1Ev(Array*);
+void APS5_VABI _ZN3sce4Json5ArrayC1ERKS1_(Array*, const Array*);
+void APS5_VABI _ZN3sce4Json5Array5clearEv(Array*);
+const Value* APS5_VABI _ZNK3sce4Json5Array5frontEv(const Array*);
+Value* APS5_VABI _ZNK3sce4Json5Array8iteratorptEv(const Iterator*);
 void APS5_VABI _ZN3sce4Json5ArrayD1Ev(Array*);
 void APS5_VABI _ZN3sce4Json5Array9push_backERKNS0_5ValueE(Array*, const Value*);
 Iterator* APS5_VABI _ZNK3sce4Json5Array5beginEv(Iterator*, const Array*);
@@ -75,6 +79,7 @@ Value* APS5_VABI _ZN3sce4Json5Value10referValueERKNS0_6StringE(Value*, const Str
 const Value* APS5_VABI _ZNK3sce4Json5ValueixEm(const Value*, std::size_t);
 int APS5_VABI _ZN3sce4Json5Value9serializeERNS0_6StringE(Value*, String*);
 int APS5_VABI _ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(Value*, const char*, std::size_t);
+int APS5_VABI _ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(Value*, int (APS5_VABI*)(char&, void*), void*);
 bool APS5_VABI _ZNK3sce4Json6Object5emptyEv(const Object*);
 std::size_t APS5_VABI _ZNK3sce4Json6Object4sizeEv(const Object*);
 const Object* APS5_VABI _ZNK3sce4Json5Value9getObjectEv(const Value*);
@@ -268,6 +273,24 @@ static void ObjectsAndArrays() {
     _ZNK3sce4Json5Array3endEv(&end, &array);
     for (; _ZNK3sce4Json5Array8iteratorneERKS2_(&it, &end); _ZN3sce4Json5Array8iteratorppEv(&it)) ++visited;
     Require(visited == 2);
+    Require(*_ZNK3sce4Json5Value10getBooleanEv(_ZNK3sce4Json5Array5frontEv(&array)));
+    _ZNK3sce4Json5Array5beginEv(&it, &array);
+    Require(_ZNK3sce4Json5Array8iteratorptEv(&it) == _ZNK3sce4Json5Array8iteratordeEv(&it));
+    Array copy{};
+    _ZN3sce4Json5ArrayC1ERKS1_(&copy, &array);
+    _ZN3sce4Json5Array5clearEv(&array);
+    Require(_ZNK3sce4Json5Array4sizeEv(&array) == 0);
+    bool threw = false;
+    try {
+        _ZNK3sce4Json5Array5frontEv(&array);
+    } catch (const std::out_of_range&) {
+        threw = true;
+    }
+    Require(threw);
+    Require(_ZNK3sce4Json5Array4sizeEv(&copy) == 2);
+    Require(*_ZNK3sce4Json5Value10getBooleanEv(_ZNK3sce4Json5Array5frontEv(&copy)));
+    Require(*_ZNK3sce4Json5Value7getRealEv(_ZNK3sce4Json5Array4backEv(&copy)) == 2.5);
+    _ZN3sce4Json5ArrayD1Ev(&copy);
     _ZN3sce4Json5ArrayD1Ev(&array);
 }
 
@@ -398,6 +421,37 @@ static void ValueClear() {
     _ZN3sce4Json5ValueD1Ev(&value);
 }
 
+struct ReadState {
+    const char* text;
+    std::size_t position;
+    int calls;
+};
+
+static int APS5_VABI ReadNext(char& ch, void* context) {
+    auto* state = static_cast<ReadState*>(context);
+    ++state->calls;
+    if (state->text[state->position] == '\0') {
+        ch = '\0';
+        return -1;
+    }
+    ch = state->text[state->position++];
+    return 0;
+}
+
+static void StreamParse() {
+    Value root{};
+    _ZN3sce4Json5ValueC1Ev(&root);
+    ReadState valid{"{\"list\": [1, 2.5, true]}", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &valid) == 0);
+    Require(valid.calls == static_cast<int>(std::strlen(valid.text)) + 1);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&root) == TypeObject);
+    ReadState invalid{"{\"list\": [1, 2.5", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &invalid) < 0);
+    ReadState trailing{"[1] 2", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &trailing) < 0);
+    _ZN3sce4Json5ValueD1Ev(&root);
+}
+
 int main() {
     ParseAndRoundTrip();
     NestingDepth();
@@ -406,4 +460,5 @@ int main() {
     NullAccess(_ZN3sce4Json11Initializer27setGlobalNullAccessCallbackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_);
     ValueAccess();
     ValueClear();
+    StreamParse();
 }

@@ -9,6 +9,7 @@
 #include <string>
 
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/SonyCrt.hpp"
 
 namespace {
 
@@ -71,6 +72,16 @@ int APS5_VABI memcmp_nid_postfix(const void* s1, const void* s2, size_t n) {
 
 const void* APS5_VABI memchr_nid_postfix(const void* s, int c, size_t n) {
     return std::memchr(s, c, n);
+}
+
+void* APS5_VABI memrchr_nid_postfix(const void* s, int c, size_t n) {
+    const auto* bytes = static_cast<const unsigned char*>(s);
+    const auto value = static_cast<unsigned char>(c);
+    while (n != 0) {
+        --n;
+        if (bytes[n] == value) return const_cast<unsigned char*>(bytes + n);
+    }
+    return nullptr;
 }
 
 int APS5_VABI strcmp_nid_postfix(const char* s1, const char* s2) {
@@ -165,7 +176,7 @@ long double APS5_VABI strtold_nid_postfix(const char* str, char** endptr) {
 }
 
 int APS5_VABI atoi_nid_postfix(const char* str) {
-    return std::atoi(str);
+    return static_cast<int>(strtol_nid_postfix(str, nullptr, 10));
 }
 
 std::int64_t APS5_VABI atol_nid_postfix(const char* str) {
@@ -323,12 +334,12 @@ int APS5_VABI memmove_s_nid_postfix(void* dest, size_t destsz, const void* src, 
 
 int APS5_VABI memset_s_nid_postfix(void* dest, size_t destsz, int value, size_t count) {
     constexpr int GuestEinval = 22;
-    constexpr int GuestErange = 34;
-    if (!dest) return GuestEinval;
+    constexpr size_t RsizeMax = SIZE_MAX >> 1;
+    if (!dest || destsz > RsizeMax || count > RsizeMax) return GuestEinval;
     const auto length = count > destsz ? destsz : count;
     auto* bytes = static_cast<volatile unsigned char*>(dest);
     for (size_t index = 0; index < length; ++index) bytes[index] = static_cast<unsigned char>(value);
-    return count > destsz ? GuestErange : 0;
+    return count > destsz ? GuestEinval : 0;
 }
 
 char* APS5_VABI strnstr_nid_postfix(const char* haystack, const char* needle, size_t length) {
@@ -416,6 +427,25 @@ size_t APS5_VABI wcsspn_nid_postfix(const char16_t* s, const char16_t* accept) {
     return count;
 }
 
+char16_t* APS5_VABI wcstok_nid_postfix(char16_t* text, const char16_t* delimiters, char16_t** last) {
+    if (text == nullptr) text = *last;
+    if (text == nullptr) return nullptr;
+    while (*text != 0 && Contains(delimiters, *text)) ++text;
+    if (*text == 0) {
+        *last = nullptr;
+        return nullptr;
+    }
+    char16_t* end = text;
+    while (*end != 0 && !Contains(delimiters, *end)) ++end;
+    if (*end == 0) {
+        *last = nullptr;
+    } else {
+        *end = 0;
+        *last = end + 1;
+    }
+    return text;
+}
+
 char16_t* APS5_VABI wmemset_nid_postfix(char16_t* s, char16_t c, size_t n) {
     for (size_t index = 0; index < n; ++index) s[index] = c;
     return s;
@@ -468,6 +498,10 @@ size_t APS5_VABI wcsxfrm_nid_postfix(char16_t* destination, const char16_t* sour
 
 size_t APS5_VABI strxfrm_nid_postfix(char* destination, const char* source, size_t count) {
     return std::strxfrm(destination, source, count);
+}
+
+char* APS5_VABI strtok_s_nid_postfix(char* str, const char* delim, char** context) {
+    return SonyStrtokS(str, delim, context);
 }
 
 }
