@@ -9,6 +9,8 @@
 #include <iterator>
 #include <initializer_list>
 #include <chrono>
+#include <atomic>
+#include <thread>
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -47,6 +49,8 @@ FileStream* APS5_VABI fdopen_nid_postfix(int, const char*);
 int APS5_VABI fclose_nid_postfix(FileStream*);
 int APS5_VABI _Getmbcurmax_nid_postfix();
 int APS5_VABI ___mb_cur_max_nid_postfix();
+void APS5_VABI flockfile_nid_postfix(FileStream*);
+void APS5_VABI funlockfile_nid_postfix(FileStream*);
 }
 static void Require(bool value) { if (!value) std::abort(); }
 static int APS5_VABI WriteFormatted(FileStream* stream, const char* format, ...) {
@@ -311,5 +315,23 @@ int main() {
     Require(freopen_nid_postfix(filename.c_str(), "rb", &failed) == nullptr);
     Require(*__error_nid_postfix() == 2);
     Require(failed.GuestState().flags == 0 && failed.GuestState().descriptor == -1);
+    FileStream locked(std::tmpfile());
+    flockfile_nid_postfix(&locked);
+    flockfile_nid_postfix(&locked);
+    std::atomic<bool> lockedWrite = false;
+    std::thread writer([&] {
+        Require(fputc_nid_postfix('B', &locked) == 'B');
+        lockedWrite = true;
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Require(!lockedWrite && fputc_nid_postfix('A', &locked) == 'A');
+    funlockfile_nid_postfix(&locked);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Require(!lockedWrite);
+    funlockfile_nid_postfix(&locked);
+    writer.join();
+    Require(lockedWrite && fseeko_nid_postfix(&locked, 0, SEEK_SET) == 0);
+    Require(fgetc_nid_postfix(&locked) == 'A' && fgetc_nid_postfix(&locked) == 'B');
+    locked.Close();
     return CheckBinaryModes() ? 0 : 1;
 }

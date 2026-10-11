@@ -102,6 +102,14 @@ extern "C" {
 GuestTm* APS5_VABI localtime_s_nid_postfix(const int64_t* timer, GuestTm* result);
 GuestTm* APS5_VABI gmtime_s_nid_postfix(const int64_t* timer, GuestTm* result);
 
+void APS5_VABI tzset_nid_postfix(void) {
+#ifdef _WIN32
+    _tzset();
+#else
+    ::tzset();
+#endif
+}
+
 int64_t APS5_VABI libc_time_nid_postfix(int64_t* timer) {
     std::time_t t = std::time(nullptr);
     if (timer != nullptr) *timer = static_cast<int64_t>(t);

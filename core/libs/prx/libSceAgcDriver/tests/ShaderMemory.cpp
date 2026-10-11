@@ -892,6 +892,15 @@ void verifyDescriptorPhis() {
     };
     require(loopImages.size() == 2u && holdsLoopImage(first) && holdsLoopImage(second), "descriptor Phi: the loop's chained T# Phis were not split into the two SRT T#s");
 
+    const std::vector<std::uint32_t> sequentialCode{0xf4000400u, 0xfa000050u, 0xbf8cc07fu, 0xbf068010u, 0xbf850003u, 0xf40c0200u, 0xfa000000u, 0xbf820002u, 0xf40c0200u, 0xfa000060u, 0xbf068010u, 0xbf850003u, 0xf4080500u, 0xfa000020u, 0xbf820002u, 0xf4080500u, 0xfa000030u, 0xf4080600u, 0xfa000040u, 0xbf8cc07fu, 0xf09c0f08u, 0x00a20000u, 0xbf8c3f70u, 0xe0700000u, 0x80060000u, 0xbf810000u};
+    auto sequential = makeRequest(sequentialCode);
+    const auto sequentialPlan = GetResourcePlan(sequential);
+    require(sequentialPlan->info.images.size() == 2u && sequentialPlan->info.samplers.size() == 2u, "descriptor Phi: a T# and an S# chosen in separate blocks were not split into their SRT descriptors");
+    AgcDriver::ShaderMemory sequentialMemory({});
+    const auto sequentialCapture = sequentialMemory.Capture(sequential);
+    sequential.context.memory = sequentialMemory.Regions();
+    static_cast<void>(Recompile(sequential, *sequentialCapture));
+
     const auto entryWrites = [&](std::initializer_list<std::uint32_t> words) {
         auto code = loopCode;
         code.insert(code.begin() + 8, words);
@@ -2529,7 +2538,12 @@ void verifyGuardedNullPointers() {
     }
     NestedRequest rootless(branchCode, nullptr);
     AgcDriver::ShaderMemory rootlessMemory({});
-    expectFailure([&] { static_cast<void>(rootlessMemory.Capture(rootless.request)); }, "null or misaligned address", "guarded pointer: a null user-data pointer was accepted");
+    const auto rootlessCapture = rootlessMemory.Capture(rootless.request);
+    require(rootlessCapture->snapshot.nullRootReads != 0u && GuardRecords(*rootlessCapture), "guarded pointer: reads through a null user-data pointer were not counted");
+    require(std::all_of(rootlessCapture->snapshot.buffers.begin(), rootlessCapture->snapshot.buffers.end(), [](const DescriptorValue& value) { return std::all_of(value.dwords.begin(), value.dwords.end(), [](std::uint32_t word) { return word == 0u; }); }), "guarded pointer: a V# read through a null user-data pointer is not zero");
+    rootless.request.context.memory = rootlessMemory.Regions();
+    const auto rootlessResult = Recompile(rootless.request, *rootlessCapture);
+    require(rootlessResult->poisonedSrtReads >= rootlessCapture->snapshot.nullRootReads, "guarded pointer: a capture through a null user-data pointer is cacheable");
     point(0u);
 #ifdef _WIN32
     VirtualFree(reserved, 0, MEM_RELEASE);
@@ -2788,8 +2802,11 @@ int main(int argc, char** argv) {
         request.context.memory = {};
         const std::array<std::uint32_t, 2> nullUserData{};
         request.context.userData = nullUserData;
-        AgcDriver::ShaderMemory invalid({});
-        expectFailure([&] { invalid.Capture(request); }, "null or misaligned address", "null user-data pointer was accepted");
+        AgcDriver::ShaderMemory nullRoot({});
+        const auto nullRootCapture = nullRoot.Capture(request);
+        require(nullRootCapture->snapshot.nullRootReads != 0u, "reads through a null user-data pointer were not counted");
+        request.context.memory = nullRoot.Regions();
+        require(Recompile(request, *nullRootCapture)->poisonedSrtReads >= nullRootCapture->snapshot.nullRootReads, "a capture through a null user-data pointer is cacheable");
         std::cout << "Shader memory capture, strict validation and deterministic replay passed\n";
         return 0;
     } catch (const std::exception& error) {
