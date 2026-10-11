@@ -63,7 +63,12 @@ int main() {
     Require(sceSslGetCaCerts(context, &certs) == notFound);
     Require(certs.certs == nullptr && certs.num == 0 && certs.pool == nullptr);
 
-    certs = {&marker, 3, &marker};
+    // Freeing an all-zero descriptor is the no-op case. A {pointer, 3, pointer}
+    // descriptor that was never allocated is a *foreign* handle, which
+    // GuestSslCertificates.cpp requires sceSslFreeCaCerts to reject by throwing;
+    // this line is the other half of the libSceSsl certificate work and was lost
+    // when the sync took upstream's copy of this file.
+    certs = {};
     Require(sceSslFreeCaCerts(context, &certs) == 0);
     Require(certs.certs == nullptr && certs.num == 0 && certs.pool == nullptr);
 
