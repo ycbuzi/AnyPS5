@@ -130,6 +130,12 @@ static void CheckHypotSpecialValue() {
     Require(std::bit_cast<std::uint64_t>(hypot_nid_postfix(std::bit_cast<double>(0x7ff0000000000001ull), -INFINITY)) == 0x7ff0000000000000ull);
 }
 
+static void CheckAsinfErrno() {
+    errno = 0;
+    (void)asinf_nid_postfix(2.0f);
+    Require(errno == 0);
+}
+
 static void CheckLongDouble() {
     Require(ExtendedBits(acosl_nid_postfix(-1.0L), 0xc90fdaa22168c235ull, 0x4000));
     Require(ExtendedBits(acosl_nid_postfix(0.0L), 0xc90fdaa22168c235ull, 0x3fff));
@@ -512,6 +518,7 @@ int main() {
     Require(__isnormal_nid_postfix(std::numeric_limits<double>::denorm_min()) == 0);
     CheckAsin();
     const auto quotient = div_nid_postfix(7, 2);
+    CheckAsinfErrno();
     Require(quotient.quot == 3 && quotient.rem == 1);
     const auto negativeNumerator = div_nid_postfix(-7, 2);
     Require(negativeNumerator.quot == -3 && negativeNumerator.rem == -1);

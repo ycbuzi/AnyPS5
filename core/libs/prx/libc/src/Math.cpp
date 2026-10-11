@@ -1,6 +1,7 @@
 #include <mutex>
 #include <bit>
 #include <cstdint>
+#include <cerrno>
 #include <cfenv>
 #include <cmath>
 #include <cstdlib>
@@ -36,7 +37,12 @@ std::lldiv_t APS5_VABI ldiv_nid_postfix(std::int64_t numerator, std::int64_t den
 }
 
 float APS5_VABI fmodf_nid_postfix(float x, float y) { return std::fmod(x, y); }
-float APS5_VABI asinf_nid_postfix(float x) { return std::asin(x); }
+float APS5_VABI asinf_nid_postfix(float x) {
+    const int saved_errno = errno;
+    const float result = std::asin(x);
+    errno = saved_errno;
+    return result;
+}
 float APS5_VABI acosf_nid_postfix(float x) { return std::acos(x); }
 float APS5_VABI atan2f_nid_postfix(float y, float x) { return std::atan2(y, x); }
 float APS5_VABI hypotf_nid_postfix(float x, float y) { return static_cast<float>(std::hypot(static_cast<double>(x), static_cast<double>(y))); }
