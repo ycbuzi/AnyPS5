@@ -148,11 +148,6 @@ std::int64_t APS5_VABI strtol_nid_postfix(const char* str, char** endptr, int ba
     if (StopAtPrefixLetter_nid_no_patch(str, endptr, base)) return 0;
     return std::strtoll(str, endptr, base);
 }
-
-std::int64_t APS5_VABI atol_nid_postfix(const char* str) {
-    return std::strtoll(str, nullptr, 10);
-}
-
 std::uint64_t APS5_VABI strtoul_nid_postfix(const char* str, char** endptr, int base) {
     if (StopAtPrefixLetter_nid_no_patch(str, endptr, base)) return 0;
     return std::strtoull(str, endptr, base);

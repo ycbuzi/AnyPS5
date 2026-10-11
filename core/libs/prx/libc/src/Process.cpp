@@ -197,32 +197,4 @@ int APS5_VABI at_quick_exit_nid_postfix(GuestExitCallback func) {
     _Exit_nid_postfix(status);
 }
 
-int APS5_VABI gethostname_nid_postfix(char* name, std::size_t length) {
-    if (name == nullptr) {
-        errno = EINVAL;
-        return -1;
-    }
-    std::array<char, 256> hostName{};
-#ifdef _WIN32
-    DWORD hostNameLength = static_cast<DWORD>(hostName.size());
-    if (!GetComputerNameExA(ComputerNameDnsHostname, hostName.data(), &hostNameLength)) {
-        errno = GetLastError() == ERROR_MORE_DATA ? ENAMETOOLONG : EIO;
-        return -1;
-    }
-#else
-    if (::gethostname(hostName.data(), hostName.size()) != 0) return -1;
-    if (std::memchr(hostName.data(), '\0', hostName.size()) == nullptr) {
-        errno = ENAMETOOLONG;
-        return -1;
-    }
-#endif
-    const auto hostNameSize = std::strlen(hostName.data());
-    if (length <= hostNameSize) {
-        errno = ENAMETOOLONG;
-        return -1;
-    }
-    std::memcpy(name, hostName.data(), hostNameSize + 1);
-    return 0;
-}
-
 }

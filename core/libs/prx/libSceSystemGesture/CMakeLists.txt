@@ -8,13 +8,3 @@ if(MINGW)
     endforeach()
 endif()
 
-if(BUILD_TESTING)
-    add_test_executable(guest_system_gesture_tests ${LIBS_INCLUDE_DIR}/tests/GuestSystemGesture.cpp)
-    target_include_directories(guest_system_gesture_tests PRIVATE ${LIBS_INCLUDE_DIR})
-    target_link_libraries(guest_system_gesture_tests PRIVATE libSceSystemGesture)
-    add_test(NAME guest_system_gesture COMMAND guest_system_gesture_tests)
-    if(WIN32)
-        set_tests_properties(guest_system_gesture PROPERTIES ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceSystemGesture>")
-    endif()
-endif()

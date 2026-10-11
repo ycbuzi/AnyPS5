@@ -141,4 +141,34 @@ void APS5_VABI srand_nid_postfix(unsigned int seed) {
     g_randState = seed;
 }
 
+
+float APS5_VABI tgammaf_nid_postfix(float x) { return std::tgamma(x); }
+float APS5_VABI ceilf_nid_postfix(float x) { return std::ceil(x); }
+float APS5_VABI fabsf_nid_postfix(float x) { return std::fabs(x); }
+double APS5_VABI logb_nid_postfix(double x) { return std::logb(x); }
+float APS5_VABI sinhf_nid_postfix(float x) { return std::sinh(x); }
+float APS5_VABI nearbyintf_nid_postfix(float x) { return std::nearbyint(x); }
+float APS5_VABI __powisf2_nid_postfix(float base, int exponent) {
+    const bool reciprocal = exponent < 0;
+    float result = 1.0f;
+    while (true) {
+        if (exponent & 1) result *= base;
+        exponent /= 2;
+        if (exponent == 0) break;
+        base *= base;
+    }
+    return reciprocal ? 1.0f / result : result;
 }
+static constexpr std::uint64_t Rand48Mask = (std::uint64_t{1} << 48) - 1;
+static std::uint64_t g_rand48State = 0x1234ABCD330Eull;
+std::int64_t APS5_VABI lrand48_nid_postfix() {
+    std::lock_guard lock(g_randLock);
+    g_rand48State = (g_rand48State * 0x5DEECE66Dull + 0xB) & Rand48Mask;
+    return static_cast<std::int64_t>(g_rand48State >> 17);
+}
+void APS5_VABI srand48_nid_postfix(std::int64_t seed) {
+    std::lock_guard lock(g_randLock);
+    g_rand48State = ((static_cast<std::uint64_t>(seed) << 16) | 0x330E) & Rand48Mask;
+}
+}
+

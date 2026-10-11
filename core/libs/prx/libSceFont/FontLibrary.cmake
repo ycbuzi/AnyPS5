@@ -11,7 +11,6 @@ function(add_sce_font_library target)
             ${fontDir}/src/Text.cpp
             ${fontDir}/src/Unimplemented.cpp
             ${fontDir}/src/WritingLine.cpp
-            ${fontDir}/src/Font.cpp
     )
     target_include_directories(${target} PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(${target} PRIVATE freetype libc)

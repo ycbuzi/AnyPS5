@@ -477,33 +477,6 @@ int APS5_VABI vsnprintf_nid_postfix(char* str, size_t size, const char* format, 
 #endif
 }
 
-int APS5_VABI vsnprintf_s_nid_postfix(char* buffer, size_t size, const char* format, VaList* args) {
-    constexpr size_t RsizeMax = SIZE_MAX >> 1;
-    const bool writable = buffer != nullptr && size != 0 && size <= RsizeMax;
-    bool valid = writable && format != nullptr && args != nullptr && !HasCountConversion(format);
-    if (valid) {
-        GuestArguments arguments(args);
-        valid = StringArgumentsPresent(format, arguments);
-    }
-    const int result = valid ? vsnprintf_nid_postfix(buffer, size, format, args) : -1;
-    if (result < 0 && writable) buffer[0] = '\0';
-    return result;
-}
-
-int APS5_VABI vsscanf_s_nid_postfix(const char* input, const char* format, VaList* args) {
-    if (input == nullptr || format == nullptr || args == nullptr) return EOF;
-    GuestArguments arguments(args);
-    try {
-        return ScanGuest(input, format, true, [&] {
-            void* target = arguments.Next<void*>();
-            if (target == nullptr) throw NullScanTarget{};
-            return target;
-        }, [&] { return arguments.Next<unsigned int>(); });
-    } catch (const NullScanTarget&) {
-        return EOF;
-    }
-}
-
 #ifdef _WIN32
 
 int APS5_VABI vsscanf_s_nid_postfix(const char* buffer, const char* format, VaList* args) {
