@@ -20,6 +20,7 @@ GuestTm* APS5_VABI gmtime_s_nid_postfix(const std::int64_t*, GuestTm*);
 GuestTm* APS5_VABI localtime_s_nid_postfix(const std::int64_t*, GuestTm*);
 std::int64_t APS5_VABI mktime_nid_postfix(GuestTm*);
 std::size_t APS5_VABI strftime_nid_postfix(char*, std::size_t, const char*, const GuestTm*);
+void APS5_VABI tzset_nid_postfix(void);
 }
 
 using Converter = GuestTm* (APS5_VABI *)(const std::int64_t*);
@@ -137,4 +138,13 @@ int main() {
     CheckConcurrent(gmtime_nid_postfix, gmtime_s_nid_postfix, "Concurrent gmtime returned another thread's date");
     CheckConcurrent(libc_localtime_nid_postfix, localtime_s_nid_postfix, "Concurrent libc_localtime returned another thread's date");
     CheckConcurrent(localtime_nid_postfix, localtime_s_nid_postfix, "Concurrent localtime returned another thread's date");
+#ifdef _WIN32
+    _putenv_s("TZ", "UTC-5");
+#else
+    setenv("TZ", "UTC-5", 1);
+#endif
+    tzset_nid_postfix();
+    GuestTm shifted{};
+    Require(localtime_s_nid_postfix(&epoch, &shifted) == &shifted && shifted.tm_hour == 5 && shifted.tm_gmtoff == 18000,
+        "tzset did not pick up the new TZ");
 }

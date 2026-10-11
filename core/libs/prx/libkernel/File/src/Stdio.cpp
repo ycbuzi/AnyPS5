@@ -363,9 +363,16 @@ template <typename TCall> static int WithoutParameterHandler(TCall call) {
     _set_thread_local_invalid_parameter_handler(previous);
     return result;
 }
+bool DescriptorIsOpen_nid_no_patch(int descriptor) {
+    return descriptor >= 0 && WithoutParameterHandler([descriptor] { return ::_get_osfhandle(descriptor) == -1 ? -1 : 0; }) == 0;
+}
 static void RejectDirectoryDuplicate(int descriptor, const char* function) {
     if (File::DirectoryDescriptorPath(descriptor))
         throw std::runtime_error(std::string(function) + ": duplicating a directory descriptor is not supported on Windows");
+}
+#else
+bool DescriptorIsOpen_nid_no_patch(int descriptor) {
+    return descriptor >= 0 && ::fcntl(descriptor, F_GETFD) >= 0;
 }
 #endif
 
@@ -730,10 +737,18 @@ int APS5_VABI getdents_nid_postfix(int fd, char* buf, int nbytes) {
 int APS5_VABI sceKernelMkdir(const char* path, uint16_t mode) {
     (void)mode;
     if (path == nullptr) throw std::invalid_argument("sceKernelMkdir: path is null");
-    const auto native = ResolvePath_nid_no_patch(path);
+    if (!*path) return SceErrorFromErrno(GUEST_ENOENT);
+    auto native = ResolvePath_nid_no_patch(path);
+    while (!native.has_filename() && native.has_relative_path()) native = native.parent_path();
     std::error_code error;
-    if (std::filesystem::exists(native, error)) return SceErrorFromErrno(GUEST_EEXIST);
-    if (!std::filesystem::exists(native.parent_path(), error)) return SceErrorFromErrno(GUEST_ENOENT);
+    const auto status = std::filesystem::status(native, error);
+    if (error && error != std::errc::no_such_file_or_directory) return SceErrorFromErrno(error.value());
+    if (std::filesystem::exists(status)) return SceErrorFromErrno(GUEST_EEXIST);
+    error.clear();
+    const auto parent = std::filesystem::status(native.parent_path(), error);
+    if (error) return SceErrorFromErrno(error.value());
+    if (!std::filesystem::exists(parent)) return SceErrorFromErrno(GUEST_ENOENT);
+    if (!std::filesystem::is_directory(parent)) return SceErrorFromErrno(GUEST_ENOTDIR);
     if (!std::filesystem::create_directory(native, error)) return SceErrorFromErrno(error.value() ? error.value() : GUEST_EIO);
     RecordWrittenPath_nid_no_patch(native);
     return 0;
@@ -884,6 +899,16 @@ int64_t APS5_VABI sceKernelPwritev(int d, const KernelIovec* iov, int iovcnt, in
 }
 
 #endif
+
+int64_t APS5_VABI preadv_nid_postfix(int d, const KernelIovec* iov, int iovcnt, int64_t offset) {
+    const auto result = sceKernelPreadv(d, iov, iovcnt, offset);
+    return result < 0 ? PosixFailure(static_cast<int>(result) & 0xffff) : result;
+}
+
+int64_t APS5_VABI pwritev_nid_postfix(int d, const KernelIovec* iov, int iovcnt, int64_t offset) {
+    const auto result = sceKernelPwritev(d, iov, iovcnt, offset);
+    return result < 0 ? PosixFailure(static_cast<int>(result) & 0xffff) : result;
+}
 
 int APS5_VABI sceKernelRename(const char* from, const char* to) {
     if (from == nullptr || to == nullptr) throw std::invalid_argument("sceKernelRename: path is null");

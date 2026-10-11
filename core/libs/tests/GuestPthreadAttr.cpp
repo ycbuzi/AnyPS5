@@ -19,9 +19,9 @@ int APS5_VABI scePthreadAttrGetschedparam(const PthreadAttr* attr, KernelSchedPa
 int APS5_VABI scePthreadAttrGetaffinity(const PthreadAttr* attr, KernelCpumask* mask);
 int APS5_VABI scePthreadAttrGetstacksize(const PthreadAttr* attr, std::size_t* stackSize);
 int APS5_VABI scePthreadAttrGetdetachstate(const PthreadAttr* attr, int* state);
+int APS5_VABI scePthreadAttrGetsolosched(const PthreadAttr* attr, int* solosched);
 int APS5_VABI pthread_attr_setstacksize_nid_postfix(PthreadAttr* attr, std::size_t stackSize);
 int APS5_VABI pthread_attr_setsolosched_np_nid_postfix(PthreadAttr* attr, int solosched);
-int APS5_VABI scePthreadAttrGetsolosched(const PthreadAttr* attr, int* solosched);
 }
 
 static constexpr int SCE_OK = 0;
@@ -78,6 +78,21 @@ static void CheckStackSizeLimit() {
     Require(scePthreadAttrDestroy(&attr) == SCE_OK);
 }
 
+static void CheckSoloSched() {
+    PthreadAttr attr = nullptr;
+    Require(pthread_attr_setsolosched_np_nid_postfix(nullptr, 1) == GUEST_EINVAL);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 1) == GUEST_EINVAL);
+    Require(scePthreadAttrInit(&attr) == SCE_OK);
+    int soloSched = -1;
+    Require(scePthreadAttrGetsolosched(&attr, &soloSched) == SCE_OK && soloSched == 0);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 1) == 0);
+    Require(scePthreadAttrGetsolosched(&attr, &soloSched) == SCE_OK && soloSched == 1);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 0) == 0);
+    Require(scePthreadAttrGetsolosched(&attr, &soloSched) == SCE_OK && soloSched == 0);
+    Require(scePthreadAttrDestroy(&attr) == SCE_OK);
+    Require(pthread_attr_setsolosched_np_nid_postfix(&attr, 1) == GUEST_EINVAL);
+}
+
 static void* APS5_VABI Worker(void* arg) {
     static_cast<std::future<void>*>(arg)->get();
     return nullptr;
@@ -85,6 +100,7 @@ static void* APS5_VABI Worker(void* arg) {
 
 int main() {
     CheckStackSizeLimit();
+    CheckSoloSched();
     PthreadAttr attr = nullptr;
     Require(scePthreadAttrInit(&attr) == SCE_OK);
     Require(scePthreadAttrSetinheritsched(&attr, EXPLICIT_SCHED) == SCE_OK);
@@ -137,16 +153,4 @@ int main() {
     Require(reportedAddress == &stackMarker && reportedSize == STACK_SIZE);
     Require(scePthreadAttrDestroy(&stackAttr) == SCE_OK);
     Require(pthread_attr_setstack_nid_postfix(&stackAttr, &stackMarker, STACK_SIZE) == 22);
-
-    {
-        PthreadAttr soloAttr = nullptr;
-        Require(pthread_attr_setsolosched_np_nid_postfix(nullptr, 1) == GUEST_EINVAL);
-        Require(pthread_attr_setsolosched_np_nid_postfix(&soloAttr, 1) == GUEST_EINVAL);
-        Require(scePthreadAttrInit(&soloAttr) == SCE_OK);
-        Require(pthread_attr_setsolosched_np_nid_postfix(&soloAttr, 1) == SCE_OK);
-        int solosched = 0;
-        Require(scePthreadAttrGetsolosched(&soloAttr, &solosched) == SCE_OK);
-        Require(solosched == 1);
-        Require(scePthreadAttrDestroy(&soloAttr) == SCE_OK);
-    }
 }

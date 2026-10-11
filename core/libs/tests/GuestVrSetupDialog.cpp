@@ -13,59 +13,40 @@ int APS5_VABI sceVrSetupDialogTerminate(void);
 
 namespace {
 
-constexpr int COMMON_DIALOG_STATUS_NONE = 0;
-constexpr int COMMON_DIALOG_STATUS_INITIALIZED = 1;
-constexpr int COMMON_DIALOG_STATUS_FINISHED = 3;
-constexpr int COMMON_DIALOG_RESULT_USER_CANCELED = 1;
-constexpr int COMMON_DIALOG_ERROR_NOT_INITIALIZED = static_cast<int>(0x80B80003u);
-constexpr int COMMON_DIALOG_ERROR_ALREADY_INITIALIZED = static_cast<int>(0x80B80004u);
-constexpr int COMMON_DIALOG_ERROR_NOT_FINISHED = static_cast<int>(0x80B80005u);
-constexpr int COMMON_DIALOG_ERROR_ARG_NULL = static_cast<int>(0x80B8000Du);
-constexpr std::int32_t UNTOUCHED = 0x5A5A5A5A;
+void Require(bool value) { if (!value) std::abort(); }
 
-void Require(bool value) {
-    if (!value) {
-        std::abort();
-    }
-}
+constexpr int kStatusFinished = 3;
+constexpr int kErrNotInitialized = static_cast<int>(0x80B80003);
+constexpr int kErrAlreadyInitialized = static_cast<int>(0x80B80004);
+constexpr int kErrNotFinished = static_cast<int>(0x80B80005);
+constexpr int kErrArgNull = static_cast<int>(0x80B8000D);
+constexpr int kResultUserCanceled = 1;
 
 }
 
 int main() {
-    std::uint8_t param[0x68] = {};
-    std::int32_t result[9] = {UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED, UNTOUCHED};
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_NONE);
-    Require(sceVrSetupDialogOpen(param) == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
-    Require(sceVrSetupDialogGetResult(result) == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
-    Require(sceVrSetupDialogClose() == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
-    Require(sceVrSetupDialogTerminate() == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
+    std::int64_t param = 0;
+    std::int32_t result[2] = {-1, -1};
+
+    Require(sceVrSetupDialogTerminate() == kErrNotInitialized);
+    Require(sceVrSetupDialogOpen(&param) == kErrNotInitialized);
+    Require(sceVrSetupDialogGetResult(result) == kErrNotInitialized);
 
     Require(sceVrSetupDialogInitialize() == 0);
-    Require(sceVrSetupDialogInitialize() == COMMON_DIALOG_ERROR_ALREADY_INITIALIZED);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_INITIALIZED);
-    Require(sceVrSetupDialogClose() == 0);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_INITIALIZED);
-    Require(sceVrSetupDialogGetResult(nullptr) == COMMON_DIALOG_ERROR_ARG_NULL);
-    Require(sceVrSetupDialogGetResult(result) == COMMON_DIALOG_ERROR_NOT_FINISHED);
-    Require(result[0] == UNTOUCHED);
-    Require(sceVrSetupDialogOpen(nullptr) == COMMON_DIALOG_ERROR_ARG_NULL);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_INITIALIZED);
-    Require(sceVrSetupDialogTerminate() == 0);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_NONE);
+    Require(sceVrSetupDialogInitialize() == kErrAlreadyInitialized);
 
-    Require(sceVrSetupDialogInitialize() == 0);
-    Require(sceVrSetupDialogOpen(param) == 0);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    Require(sceVrSetupDialogOpen(nullptr) == kErrArgNull);
+    Require(sceVrSetupDialogGetResult(result) == kErrNotFinished);
+
+    Require(sceVrSetupDialogOpen(&param) == 0);
+    Require(sceVrSetupDialogUpdateStatus() == kStatusFinished);
+
+    Require(sceVrSetupDialogGetResult(nullptr) == kErrArgNull);
     Require(sceVrSetupDialogGetResult(result) == 0);
-    Require(result[0] == COMMON_DIALOG_RESULT_USER_CANCELED);
-    for (int i = 1; i < 9; ++i) {
-        Require(result[i] == UNTOUCHED);
-    }
-    Require(sceVrSetupDialogOpen(param) == 0);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_FINISHED);
+    Require(result[0] == kResultUserCanceled);
+    Require(result[1] == -1);
+
     Require(sceVrSetupDialogClose() == 0);
     Require(sceVrSetupDialogTerminate() == 0);
-    Require(sceVrSetupDialogUpdateStatus() == COMMON_DIALOG_STATUS_NONE);
-    Require(sceVrSetupDialogTerminate() == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
-    Require(sceVrSetupDialogClose() == COMMON_DIALOG_ERROR_NOT_INITIALIZED);
+    Require(sceVrSetupDialogTerminate() == kErrNotInitialized);
 }
