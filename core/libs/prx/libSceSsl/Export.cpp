@@ -439,8 +439,14 @@ int APS5_VABI sceSslFreeCaCerts(int sslCtxId, SceSsl::CaCerts* certificates) {
     auto& context = GetContext(sslCtxId);
     if (!certificates->certs && !certificates->num && !certificates->pool) return 0;
     const auto found = context.caCerts.find(certificates->pool);
-    if (found == context.caCerts.end() || certificates->certs != certificates->pool || certificates->num != found->second.count)
-        throw std::invalid_argument("Invalid SSL CA certificate allocation");
+    if (found == context.caCerts.end() || certificates->certs != certificates->pool || certificates->num != found->second.count) {
+        // Nothing tracked matches this handle, so there is nothing to release.
+        // Clear the caller's struct and succeed: a guest that frees a stale or
+        // never-allocated list expects a no-op, and throwing here escaped
+        // through the C ABI and aborted it instead.
+        *certificates = {};
+        return 0;
+    }
     context.caCerts.erase(found);
     *certificates = {};
     return 0;

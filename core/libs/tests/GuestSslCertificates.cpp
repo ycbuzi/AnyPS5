@@ -159,7 +159,12 @@ void TestBuffersAndIsolation() {
     Throws<std::invalid_argument>([&] { sceSslFreeSslCertName(other, name); }, "foreign name freed");
     Throws<std::invalid_argument>([&] { sceSslFreeCaList(other, &list); }, "foreign list freed");
     SceSsl::CaCerts foreign{reinterpret_cast<SceSsl::Data*>(&length), 3, &length};
-    Throws<std::invalid_argument>([&] { sceSslFreeCaCerts(context, &foreign); }, "foreign CA bytes allocation freed");
+    // Upstream's GuestSsl.cpp requires the same call -- an untracked {pointer, 3,
+    // same pointer} against an empty registry -- to return 0 and clear the struct,
+    // so this cannot also demand a throw. Upstream's expectation wins: an exception
+    // here would escape through the C ABI and abort the guest.
+    Check(sceSslFreeCaCerts(context, &foreign) == 0 && !foreign.certs && !foreign.num && !foreign.pool,
+        "foreign CA bytes allocation not tolerated");
     Check(Stats(other).currentInuseSize == 0, "other context pool polluted");
     sceSslTerm_nid_postfix(context);
     sceSslTerm_nid_postfix(other);
