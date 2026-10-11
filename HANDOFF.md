@@ -1,35 +1,73 @@
 # Handoff: AnyPS5 work between the PC session and the cloud session
 
-Last updated: 2026-10-10 ~19:20 UTC, by the PC session.
+Last updated: 2026-10-11 ~04:30 UTC, by the PC session.
 
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-10 19:20 UTC (PC session)
+## START HERE — state at 2026-10-11 04:30 UTC (PC session)
 
-`claude/stoic-turing-wc7bje` is **248 commits ahead of upstream and 0 behind** `4a747c48`.
-Working tree clean.
+`stack/open-prs` @ `8b1dca805` is **257 ahead / 505 behind** `origin/main`. Working tree clean.
 
 | | implemented | total | % |
 |---|---|---|---|
-| upstream `4a747c48` | 2710 | 3208 | 84.48% |
-| this stack | 3004 | 3354 | **89.56%** |
+| upstream `origin/main` | 2885 | 3365 | 85.74% |
+| this stack | 3017 | 3362 | **89.74%** |
 
-**The 89.56% HAS NEVER BEEN COMPILED.** Fix that first. The build was stopped mid-run to do the
-upstream sync. Specific risk: the stack contains **PR #2533**, which cycle 1 previously dropped
-because it "adds `libSceFont/src/Font.cpp` including a `Font.h` that doesn't exist". The sweep
-agent recommended it anyway. One of them is wrong; the build will say which.
+**The 89.74% is now COMPILED AND TESTED**, unlike the 89.56% the previous handoff warned about.
+Full Windows build: 0 errors. Full suite: **795/796**. The single failure, `guest_filesystem`, is
+an environment limit on this PC, not a defect — it calls `CreateSymbolicLinkW`, which needs
+Developer Mode or elevation, and this machine has Developer Mode **off**. PR #2533's `Font.cpp`
+risk did not materialise; the tree builds.
 
 ### Do these first, in order
 
-1. **Windows build + full suite.** Submodules needed:
-   `git submodule update --init 3rdparty/libusb 3rdparty/mbedtls`, then
-   `git -C 3rdparty/mbedtls submodule update --init framework`. Watch for #2533's `Font.cpp`.
-2. **Re-check `guest_memory` and `guest_file_vector`** — both failed `0xc0000409` earlier today on
-   the pre-sync tree. `kernel-raise` changed `GuestMemory.cpp` by +103 lines and the sync touched
-   that area, so their status is unknown. Upstream's own Windows CI passes both (its only failure
-   is `guest_avplayer`), so if they still fail, it is ours.
-3. **GPU matrix** on the three adapters — **after clearing the AMD cache** (trap below).
+1. **The 505-commit sync.** Scouted previously: ~20 conflicting files, mostly `Export.cpp`.
+   Read "The one bug shape behind every sync breakage" below *before* resolving anything.
+2. **Work the ranked issue list.** `scratchpad/triage.py` over a scrape of all 155 open issues
+   ranks them against this machine's capabilities. 16 actionable candidates have **zero comments
+   and a fix branch already written** by the reporter: #3351, #3327, #3317, #3316, #3304, #3313,
+   #3288, #3120, #3119, #3118, #3117, #3116 among them. Harvest, don't re-derive.
+3. **Spend the one PR slot.** Intake is a concurrency cap now (1 open PR with 0 merged).
+   #2971's `progress.py` regex fix is the longest-shelf-life candidate.
+
+### The one bug shape behind every sync breakage (read before syncing)
+
+Taking upstream's version of a file silently reverts every harvested PR that touched it. It never
+fails at resolve time — it fails build-cycles later, in an unrelated target. Thirteen-plus
+instances. Two sub-shapes, both now detectable:
+
+* **Dropped source file.** Upstream's `CMakeLists.txt` omits a harvested `.cpp`; the library still
+  builds, and the missing symbol only surfaces when some *other* target links it. Because ninja
+  halts dependents, one missing line cost 4 suite failures. Confirmed twice today:
+  `Submit/src/UserData.cpp` (libSceAgcDriver) and `UserContext.cpp` (libSceLibcInternal).
+  **Detector:** `scratchpad/orphans.py` — finds `.cpp` files no CMake target claims, in 2 seconds.
+  It must follow `include(...)` (libSceFont lists sources in `FontLibrary.cmake`) and match on
+  relative path, not basename (libkernel has its own `System/src/UserContext.cpp`).
+* **Half-harvest.** The sync keeps a harvested PR's *test* but overwrites its *implementation*.
+  Mechanical tell: helper functions still defined but each referenced **exactly once** — dead
+  helpers whose callers were reverted. Confirmed with `vsnprintf_s`. Diagnostic rule: *a test that
+  exists only in our tree and fails means its harvested implementation got reverted.*
+
+### Check test ownership BEFORE changing any implementation
+
+Three times today a harvested test and an upstream test demanded **opposite** behaviour from the
+same function. Twice I "fixed" the implementation and broke upstream's test instead:
+
+* `_Iswctype(c, 0)` — upstream's `GuestWideConversion.cpp` requires it to **throw**; harvested
+  lines in `GuestCharacter.cpp` required `0`. Upstream treats class 0 as a programming error.
+* `gethostname` — upstream's `GuestHostname.cpp` requires a null name to return **0**, a short
+  buffer to report guest errno **63** *and still copy the bytes that fit*, and errno preserved on
+  success. Harvested lines in `GuestEnvironment.cpp` required the exact opposite on all three.
+
+Before touching an implementation: does another test already specify this function, and is the
+test making the demand upstream's or ours? **"Upstream has the file" is not "our copy matches
+it"** — check with `git diff --stat origin/main -- <file>`. When they conflict, upstream's
+unmodified test wins and our harvested assertions get corrected. Prefer restoring an
+upstream-owned test verbatim over carrying a local diff in it, which guarantees a future conflict.
+
+**A targeted `ctest -R` pass is not evidence the suite is green.** Fixing five tests individually
+silently broke two others; only the full run showed it. Never report a number from targeted runs.
 
 ### Rollback tags on the PC
 
@@ -88,6 +126,35 @@ cache (485 files, 17 MB) and pointing `ANYPS5_SHADER_CACHE_DIR` at a fresh direc
 upstream and this stack produced byte-identical 77-failure lists, which looked like proof the code
 was at fault. It was proof both read the same poisoned cache.
 
+**The AMD cache struck a third time on 2026-10-11.** A full run showed 39 failures, 33 of them
+`agc_driver_`. Re-running with a fresh `ANYPS5_SHADER_CACHE_DIR` per run: all 33 passed, leaving 6
+real ones. Every full run must now use a fresh cache directory — `scratchpad/fullrun.ps1` does.
+
+**ASR blocks freshly built executables.** Rule `01443614-CD74-433A-B99E-2ECDC07BFC25` ("block
+executables that don't meet a prevalence, age, or trusted-list criterion") stopped
+`D:\AnyPS5-games\doom-run\doom.exe` and also a one-file test exe compiled into the scratchpad.
+The existing exclusion covered `D:\AnyPS5`, a **sibling** of `D:\AnyPS5-games`, so it never
+applied. The user added `D:\AnyPS5-games` on 2026-10-11. Claude must never change Defender
+settings; ask the user to run it elevated.
+
+**A hand-assembled game directory is not a release archive.** After ASR was cleared, DOOM failed
+with `0xC0000135` because `libc.prx` needs `libgcc_s_seh-1.dll`, `libstdc++-6.dll` and
+`libwinpthread-1.dll`, which lived only in `mingw64/bin`. This looked like a reportable packaging
+bug and **is not one**: `tools/package_release.py:21` already ships all three, root
+`CMakeLists.txt:17` copies them to test output, and `docs/user/USAGE.md:86` documents the exact
+failure. Only the hand-made `doom-run` rig lacked them. Verify against the repo before filing.
+
+**Developer Mode is OFF on this PC and the shell is not elevated**, so `CreateSymbolicLinkW`
+fails and `guest_filesystem` cannot pass here. Not a defect. The test reports a misleading
+`guest errno 14` (EFAULT) rather than skipping the way the `video_out` tests do.
+
+**Scans that over-report are worse than no scan.** Three discarded this session: 14 fake duplicate
+`_nid_postfix` pairs (couldn't see `#ifdef` guards) where the linker objected to 2; 283 fake
+"missing" symbols; and an orphan scan reporting 40 files because it didn't follow `include(...)`.
+A fourth nearly shipped — 12 `api-ms-win-crt-*.dll` reported "missing" when they resolve
+virtually through the Windows API-set schema and are never files on disk. **The linker and the
+full suite are ground truth.** Validate a scanner with a positive control before believing it.
+
 **Read the WHOLE issue body before investigating.** `head -30` on #2891 hid its "Where it points"
 section; an hour went into re-deriving an ownership chain the reporter had already published.
 These reporters put the root cause at the END.
@@ -137,6 +204,11 @@ reached the GPU and every number is meaningless.
 
 ## PC-only jobs still not done
 
+- **#3358** — Radeon 780M / AMDVLK, 4 failing GPU tests, **0 comments**. Run those four on this
+  machine's RDNA2 iGPU with cold caches; a second data point on different silicon is the thing
+  the reporter can't produce alone.
+- **Enable Developer Mode** if `guest_filesystem` coverage is wanted here (user action, Settings
+  → System → For developers). Optional: it unlocks exactly that one test.
 - **#2944** (new) — AMD RX 6700 XT: 9 `agc_driver` segfaults in amdvlk64, plus
   `sdwa_float_selectors` and `sdwa_ldexp_f16` wrong. **Those two are 2 of our 3 remaining Radeon
   failures** — direct match for this machine. Clear the AMD cache first.
