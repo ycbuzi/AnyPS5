@@ -1,0 +1,52 @@
+====================================================================================================
+### PPSA02225
+--- D#4461 [body/Game bring-up] Ghost of Tsushima Director's Cut (PPSA02225) — bring-up progress
+    POSHITS=['gameplay'] BAD=['Black screen', 'abort', 'black screen', 'error', 'fail', 'fatal', 'missing']
+    >> ver (SHA-256 `502855F6227BF03F91FA8892DE449D99A7EB8F1B3A468BC91725208221167265`). - **Relinked executable:** 65,096,704 bytes, SHA-256 `A13603833F7450795BDC0D718B704E188574A8D658313CCF5061C6C3C76BBCDE` - **Last verified gameplay run:** October 11, 2026 ## Status **Launches, but renders a completely black screen. Not playable yet.** A preserved run (October 11, approximately 15:49) initialized Vulkan, created a window and swapchain (`1152x648`), loaded the pipeline and shader caches (672 disk-cache hits / 0 misses / 0 failures), and ran at approximately 59 FPS. The window title reported `Ghost of Tsushima | FPS: 59.20 (2532)`. All five ca
+    >> 256 `856D90ED96C14AFBCB9DC3283DC9057918ECF7CEFE83C01953BE937E55E87DB7`), not the current rebuilt driver (SHA-256 `502855F6227BF03F91FA8892DE449D99A7EB8F1B3A468BC91725208221167265`). - **Relinked executable:** 65,096,704 bytes, SHA-256 `A13603833F7450795BDC0D718B704E188574A8D658313CCF5061C6C3C76BBCDE` - **Last verified gameplay run:** October 11, 2026 ## Status **Launches, but renders a completely black screen. Not playable yet.** A preserved run (October 11, approximately 15:49) initialized Vulkan, created a window and swapchain (`1152x648`), loaded the pipeline and shader caches (672 disk-cache hits / 0 misses / 0 failures), and ran at 
+    >> - **October 12 attempt:** Did not launch. The host commit-space gate failed with 4,713 MiB available against the 8,192 MiB safety threshold. The game's direct-memory allocation request was approximately 4,696 MiB, leaving only about 17 MiB of nominal headroom, so the gate correctly refused a near-certain abort. No new gameplay evidence was produced. ## Known blockers | Blocker | Evidence | Status | | --- | --- | --- | | Black screen | All five captured frames fully black | Confirmed | | Scene geometry not observed | Draw traces show fullscreen-triangle passes only | Confirmed observation; cause unknown | | Shader-preparation failures | Re
+    >> (~661 MB) is retained locally. These paths are local to the test host and are not public links. If no evidence has been uploaded to a public, appropriate repository location, the detailed artifacts remain local. This is an ongoing compatibility investigation. Successful launch and high reported FPS do not imply that gameplay is working. 
+
+====================================================================================================
+### PPSA05684
+--- D#4001 [body/Game bring-up] Uncharted: Legacy of Thieves Collection (PPSA05684) on Linux / NVIDIA
+    POSHITS=['level renders'] BAD=['crash', 'fail', 'missing']
+
+====================================================================================================
+### PPSA10698
+--- I#2994 [body/issue] AGC: an RGBA8 texture over a depth surface's stencil plane stops FPV Simulator ("sampling 
+    POSHITS=['In-game'] BAD=['error', 'fail', 'not implemented']
+    >> rface's stencil plane still samples the plane; RGBA8 and R32F views of the same extent are read as reused memory. Without the source change the RGBA8 case throws the same `sampling the stencil plane ... is not implemented` error. - Non-GPU tests 446/446, `agc_driver` on NVIDIA 253/253, `check_conventions.py` passes. - In-game: not re-run on this branch. The stop above is from a local build of `main` with other patches. AI-assisted: yes (Claude Code). 
+
+====================================================================================================
+### PPSA15246
+--- I#4139 [body/issue] AGC: a draw whose image slot holds a sampler/buffer descriptor, or a cube T# read with dim
+    POSHITS=['first level'] BAD=['fail', 'stop on', 'stops on']
+    >> AGC: a draw whose image slot holds a sampler/buffer descriptor, or a cube T# read with dim 2D, is refused (High on Life PPSA15388) High on Life (PPSA15388 v01.120.000, Unreal Engine 4) loads its first level and then stops on draws whose static image slots hold descriptors the shader's interface does not accept. The console runs these draws, so they look like slots the hardware tolerates and AnyPS5 refuses up front. I see two shapes: 1. **A non-image descriptor in an image slot.** Pixel shader `0x211da90000` gets `runtim
+
+====================================================================================================
+### PPSA19943
+--- D#3873 [body/Game bring-up] Big Helmet Heroes (PPSA19943) — tutorial boots on Linux; black artifacts and low FPS
+    POSHITS=['into the tutorial', 'reaches the tutorial'] BAD=['fail']
+    >> Big Helmet Heroes (PPSA19943) — tutorial boots on Linux; black artifacts and low FPS Big Helmet Heroes — PPSA19943, v01.000.400 (Linux) **Status: reaches the tutorial; severe black rendering artifacts and low performance. Not playable in this test.** Environment: Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic, GCC 15.2 Release, Core i7-12700, 30 GiB RAM, Radeon RX 6700 (owner-confirmed), PCI 1002:73df / RADV NAVI22, 10 GiB VRAM, Mesa 26.0.8. The GPU's shared PCI family name includes other models; it is not an RX 6700 XT. The executable and 10 bundle
+    >> ack. The owner confirmed entry into the tutorial, and a subsequent screenshot shows the tutorial HUD and character. Window FPS is approximately 4–5 in the menu and 0.7–1.2 in the tutorial; these are observations, not a controlled benchmark. Loading screens can report approximately 60 FPS and should not be mistaken for gameplay performance. ### Startup fix #3854 resolves EOSSDK-PS5-Shipping.debug_prx through the exact SCE module identity declared by the bundled eossdk-ps5-shipping.prx. The manual filename alias was removed for testing. Standalone on main a11c8f7f: 114/114 relinker tests pass, with a failing-before/passing-after dependency 
+
+====================================================================================================
+### PPSA34063
+--- D#4275 [body/Game bring-up] NHL 27 (PPSA34063) on Windows / AMD RX 6700 XT: reaches match loading, ~1.3 FPS
+    POSHITS=['in-game', 'gameplay'] BAD=['Abort', 'FAIL', 'Unimplemented', 'abort', 'blocked', 'crash', 'error', 'fail']
+    >> es to compile** offline (30+ in the game). Measured on variants of the module: stubbing the eight BDA read helpers brings it to 21 s, so the time goes into those helpers being inlined at 455 call sites (`DontInline` is ignored). `45f4d270` (byte reads in a loop) and `8d541cfd` (no allocation per timed equeue wait; the in-game compile was also starved by heap-lock contention) did not make a visible difference in the game. - **25: GPU timeout (Windows event 4101) and device loss right after START** in two of two runs without `APS5_LOOP_GUARD`, none in two runs with it. The game's breadcrumbs point at `hairResolve` / `ShaderProgram_StrandHair
+    >> drenalin 25.10.45.05, amdvlk64 B026363). **State:** title screen → START → legal/set-up → main menu → Play Now → team select → sides, teams and jerseys → match loading screen (X-Factor screen, music playing). It aborts while loading the match. Menus render correctly apart from one background; speed is ~1.3–2 FPS. Not playable. **Base:** all of this was measured on my fork's integration branch [`poonasor/AnyPS5@dev`](https://github.com/poonasor/AnyPS5/tree/dev) (`8d541cfdd`), which is upstream `379d8b4e` plus the commits below. It is well behind current `main` and has not been rebased yet, so the list below is what was needed on that base,
+    >> e 3, dimension 1, levels 0-0, slice 0 ... is not implemented ``` - The team-select background renders as speckle noise; the UI over it is correct. - `sceSysmoduleLoadModule` logs `unknown id: 267` in every run without visible effect. ## Not tested NVIDIA, Intel, Linux; anything on current `main` past the relinker; gameplay; audio beyond menu music; controller input beyond menu navigation. 
+
+====================================================================================================
+### PPSA99600
+--- I#3734 [body/issue] libScePosixForWebKit: getservbyname is absent (Cloud Play); fix branch ready
+    POSHITS=['first match'] BAD=['FAIL', 'exception', 'fail']
+
+====================================================================================================
+### PPSA99007
+--- I#1413 [comment/issue] v_interp_mov P10/P20 of a FLAT_SHADE input without pass-through: deltas or raw vertices?
+    POSHITS=['in game', 'in game'] BAD=['error', 'fail']
+    >>  130 KiB of Vulkan pipelines), the same map loaded and ran. Any title with a short GPU completion timeout could hit this on a cold cache. This doesn't answer the hardware question here; CouchRiv's gfx1036 table still says P20 reads 0. It only shows that Quake II needs P20 to return the provoking vertex's value to get in game, as the UI titles need for P10. AI-assisted: yes (Claude Code)
+    >>  130 KiB of Vulkan pipelines), the same map loaded and ran. Any title with a short GPU completion timeout could hit this on a cold cache. This doesn't answer the hardware question here; CouchRiv's gfx1036 table still says P20 reads 0. It only shows that Quake II needs P20 to return the provoking vertex's value to get in game, as the UI titles need for P10. AI-assisted: yes (Claude Code)
