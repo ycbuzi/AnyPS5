@@ -5,14 +5,26 @@ Last updated: 2026-10-11 ~04:30 UTC, by the PC session.
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-11 04:30 UTC (PC session)
+## START HERE — state at 2026-10-12 04:30 UTC (PC session)
 
-`stack/open-prs` @ `8b1dca805` is **257 ahead / 505 behind** `origin/main`. Working tree clean.
+`stack/open-prs` @ `0b30ea1e7` is **260 ahead / 1204 behind** `origin/main` (`d146ec1b6`).
+Working tree clean. Suite 795/796 (re-verified 2026-10-12).
 
 | | implemented | total | % |
 |---|---|---|---|
-| upstream `origin/main` | 2885 | 3365 | 85.74% |
-| this stack | 3017 | 3362 | **89.74%** |
+| upstream `d146ec1b6` (2026-10-12) | **3016** | 3485 | 86.54% |
+| this stack `0b30ea1e7` | **3017** | 3362 | **89.74%** |
+| upstream `4a747c48` (2026-10-11) | 2885 | 3365 | 85.74% |
+
+**READ THE ABSOLUTE NUMBERS, NOT THE PERCENTAGE.** Upstream implemented **+131 functions in
+24 hours** (2885 → 3016) while this stack implemented **zero**. We are ahead by exactly **one
+function**. The 3.2-point percentage gap is a denominator artifact: upstream's total grew
+3365 → 3485 because they keep discovering functions real titles need, and ours is stuck at
+3362 because we are 1204 commits behind and have not absorbed those discoveries. We look
+ahead only because we are scoring on a smaller board.
+
+The gap is compounding at roughly **700 commits and 130 functions per day**. Syncing is no
+longer one job among several; it is the only one that stops the divergence getting worse.
 
 **The 89.74% is now COMPILED AND TESTED**, unlike the 89.56% the previous handoff warned about.
 Full Windows build: 0 errors. Full suite: **795/796**. The single failure, `guest_filesystem`, is
@@ -20,9 +32,34 @@ an environment limit on this PC, not a defect — it calls `CreateSymbolicLinkW`
 Developer Mode or elevation, and this machine has Developer Mode **off**. PR #2533's `Font.cpp`
 risk did not materialise; the tree builds.
 
+### Upstream only merges what a title actually stops on
+
+Verified 2026-10-12 from their own closing comments. PR #1993 (`_Iswctype`): "only the import
+lists in #266 and #267 show `_Iswctype`, with no stop line from main. Reopen with the `not
+implemented` line when a title stops here." PR #1868 (`atol`): "Puzzles (PPSA99006) stops at
+`mkstemp` on main, before `atol`. Reopen when `atol` is a title's next stop." **A title's stop
+line is the currency**; a bug writeup or an import list is not.
+
+`scratchpad/provenance.ps1` audited the 117 distinct feature commits we carry that upstream
+lacks: **28 rejected, 14 merged, 4 open, 71 unmatched** (title matching is a weak heuristic, so
+most of the tree is still uncharacterised). Among identifiable ones roughly three in five come
+from declined PRs — and all three test conflicts debugged on 2026-10-11 came from rejected PRs,
+`#1993` among them. Rejected-PR code is what costs sync time. Check before harvesting:
+`gh pr view <n> --repo boykopovar/AnyPS5 --json mergedAt`.
+
+### Running GPU tests on a chosen adapter (non-obvious, cost an hour)
+
+The `agc_driver_*` execution tests build a device through `OpenVulkanTestDevice()`, which does
+honour `ANYPS5_GPU` — but it **catches a no-matching-device error and skips while reporting
+success**. A pinned run therefore looks green whether or not the adapter exists. Always set
+**`ANYPS5_REQUIRE_VULKAN=1`** so a skip becomes a failure, and prove the pin with a negative
+control (`ANYPS5_GPU=NoSuchAdapter` must fail and list the adapters). Note `tests/BdaDevice.cpp`
+is a *different* harness that ranks by device type and ignores `ANYPS5_GPU` entirely.
+
 ### Do these first, in order
 
-1. **The 505-commit sync.** Scouted previously: ~20 conflicting files, mostly `Export.cpp`.
+1. **The 1204-commit sync** — now the priority, see the numbers above. Previously scouted at
+   505 behind: ~20 conflicting files, mostly `Export.cpp`.
    Read "The one bug shape behind every sync breakage" below *before* resolving anything.
 2. **Work the ranked issue list.** `scratchpad/triage.py` over a scrape of all 155 open issues
    ranks them against this machine's capabilities. 16 actionable candidates have **zero comments
