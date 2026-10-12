@@ -178,10 +178,7 @@ long double APS5_VABI atanl_nid_postfix(long double x) { return std::atan(x); }
 long double APS5_VABI sinl_nid_postfix(long double x) { return std::sin(x); }
 long double APS5_VABI cosl_nid_postfix(long double x) { return std::cos(x); }
 long double APS5_VABI tanl_nid_postfix(long double x) { return std::tan(x); }
-long double APS5_VABI sinhl_nid_postfix(long double x) { return std::sinh(x); }
-long double APS5_VABI coshl_nid_postfix(long double x) { return std::cosh(x); }
 long double APS5_VABI tanhl_nid_postfix(long double x) { return std::tanh(x); }
-long double APS5_VABI expl_nid_postfix(long double x) { return std::exp(x); }
 long double APS5_VABI exp2l_nid_postfix(long double x) { return std::exp2(x); }
 long double APS5_VABI logl_nid_postfix(long double x) { return std::log(x); }
 long double APS5_VABI log10l_nid_postfix(long double x) { return std::log10(x); }

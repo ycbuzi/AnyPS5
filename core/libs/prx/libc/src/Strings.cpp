@@ -456,18 +456,23 @@ char16_t* APS5_VABI wcsncat_nid_postfix(char16_t* dest, const char16_t* src, siz
     return dest;
 }
 
-char16_t* APS5_VABI wcstok_nid_postfix(char16_t* s, const char16_t* delim, char16_t** ptr) {
-    if (s == nullptr) s = *ptr;
-    if (s == nullptr) return nullptr;
-    s += wcsspn_nid_postfix(s, delim);
-    if (*s == 0) {
-        *ptr = s;
+char16_t* APS5_VABI wcstok_nid_postfix(char16_t* text, const char16_t* delimiters, char16_t** last) {
+    if (text == nullptr) text = *last;
+    if (text == nullptr) return nullptr;
+    while (*text != 0 && Contains(delimiters, *text)) ++text;
+    if (*text == 0) {
+        *last = nullptr;
         return nullptr;
     }
-    char16_t* end = s + wcscspn_nid_postfix(s, delim);
-    if (*end != 0) *end++ = 0;
-    *ptr = end;
-    return s;
+    char16_t* end = text;
+    while (*end != 0 && !Contains(delimiters, *end)) ++end;
+    if (*end == 0) {
+        *last = nullptr;
+    } else {
+        *end = 0;
+        *last = end + 1;
+    }
+    return text;
 }
 
 char16_t* APS5_VABI wmemset_nid_postfix(char16_t* s, char16_t c, size_t n) {

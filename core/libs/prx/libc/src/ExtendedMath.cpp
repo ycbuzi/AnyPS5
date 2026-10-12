@@ -67,6 +67,9 @@ long double APS5_VABI atanhl_nid_postfix(long double value) {
 }
 
 long double APS5_VABI expm1l_nid_postfix(long double value) { return CheckRange_nid_no_patch(value, std::expm1(value)); }
+long double APS5_VABI coshl_nid_postfix(long double value) { return CheckRange_nid_no_patch(value, std::cosh(value)); }
+long double APS5_VABI sinhl_nid_postfix(long double value) { return CheckRange_nid_no_patch(value, std::sinh(value)); }
+long double APS5_VABI expl_nid_postfix(long double value) { return CheckRange_nid_no_patch(value, std::exp(value)); }
 long double APS5_VABI log1pl_nid_postfix(long double value) { return std::log1p(value); }
 long double APS5_VABI log2l_nid_postfix(long double value) { return std::log2(value); }
 long double APS5_VABI logbl_nid_postfix(long double value) { return std::logb(value); }

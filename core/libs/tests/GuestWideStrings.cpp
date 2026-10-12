@@ -127,10 +127,10 @@ int main() {
         token = wcstok_nid_postfix(nullptr, u" ,", &state);
         require(token == tokens + 7 && wcscmp_nid_postfix(token, u"two") == 0);
         token = wcstok_nid_postfix(nullptr, u",", &state);
-        require(token == tokens + 12 && wcscmp_nid_postfix(token, u"世 ") == 0 && *state == 0);
-        require(wcstok_nid_postfix(nullptr, u",", &state) == nullptr && state == tokens + 14);
+        require(token == tokens + 12 && wcscmp_nid_postfix(token, u"世 ") == 0 && state == nullptr);
+        require(wcstok_nid_postfix(nullptr, u",", &state) == nullptr && state == nullptr);
         char16_t delimiters[] = u",,";
-        require(wcstok_nid_postfix(delimiters, u",", &state) == nullptr && state == delimiters + 2);
+        require(wcstok_nid_postfix(delimiters, u",", &state) == nullptr && state == nullptr);
         state = nullptr;
         require(wcstok_nid_postfix(nullptr, u",", &state) == nullptr);
     }

@@ -1,0 +1,35 @@
+[New Thread 4132.0x68a8]
+[New Thread 4132.0x5460]
+[New Thread 4132.0x25dc]
+FATAL: abort() (SIGABRT) on thread 10896
+    #0 0x00007ffc70edaf18 libc.prx+0xaf18
+    #1 0x00007ffc70f75519 libc.prx+0xa5519
+    #2 0x00000000005ffb80
+  stack return address candidates:
+    [rsp+0x8] 0x00007ffd14c42139 ucrtbase.dll+0xc2139
+    [rsp+0x88] 0x00007ffd14c25261 ucrtbase.dll+0xa5261
+    [rsp+0xb8] 0x00007ff6e93d3475 guest_wide_string_tests.exe+0x3475
+    [rsp+0xf8] 0x00007ffd176b0000 ntdll.dll+0xb0000
+    [rsp+0x1b8] 0x00007ffd14b89341 ucrtbase.dll+0x9341
+    [rsp+0x2f8] 0x00007ff6e93d13ba guest_wide_string_tests.exe+0x13ba
+    [rsp+0x398] 0x00007ff6e93d1080 guest_wide_string_tests.exe+0x1080
+    [rsp+0x3d8] 0x00007ffd15d2cd87 KERNEL32.DLL+0x2cd87
+    [rsp+0x408] 0x00007ffd176acaec ntdll.dll+0xacaec
+  all threads:
+  thread 26792 '': rip 0x00007ffd17764a74 ntdll.dll+0x164a74 rsp 0x00000000009efbf8 rbp 0x0000000000000000
+  thread 21600 '': rip 0x00007ffd17764a74 ntdll.dll+0x164a74 rsp 0x0000000000befbf8 rbp 0x0000000000000000
+  thread 9692 '': rip 0x00007ffd17764a74 ntdll.dll+0x164a74 rsp 0x0000000000defbf8 rbp 0x0000000000000000
+gdb: unknown target exception 0xc0000409 at 0x7ffd14c2527e
+
+Thread 1 received signal ?, Unknown signal.
+0x00007ffd14c2527e in ucrtbase!abort () from C:\WINDOWS\System32\ucrtbase.dll
+#0  0x00007ffd14c2527e in ucrtbase!abort () from C:\WINDOWS\System32\ucrtbase.dll
+#1  0x00007ff6e93d3475 in main[cold] ()
+#2  0x0000000000000003 in ?? ()
+#3  0x00007ffd00000003 in ?? ()
+#4  0x00000000006f0000 in ?? ()
+#5  0x00000000005ffd90 in ?? ()
+#6  0x0000000000700df0 in ?? ()
+#7  0x0000000000700df0 in ?? ()
+#8  0x002c002c00700e00 in ?? ()
+#9  0x00007ffd176b0000 in ntdll!RtlDetectHeapLeaks () from C:\WINDOWS\SYSTEM32\ntdll.dll
