@@ -5,26 +5,27 @@ Last updated: 2026-10-11 ~04:30 UTC, by the PC session.
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-12 04:30 UTC (PC session)
+## START HERE — state at 2026-10-12 (PC session) — SYNC DONE
 
-`stack/open-prs` @ `0b30ea1e7` is **260 ahead / 1204 behind** `origin/main` (`d146ec1b6`).
-Working tree clean. Suite 795/796 (re-verified 2026-10-12).
+`stack/open-prs` @ `0f84c534c` has **merged upstream `d146ec1b6` (1204 commits)** and is now
+**263 ahead / 332 behind** `origin/main`. Build clean, suite **956/960**.
 
 | | implemented | total | % |
 |---|---|---|---|
-| upstream `d146ec1b6` (2026-10-12) | **3016** | 3485 | 86.54% |
-| this stack `0b30ea1e7` | **3017** | 3362 | **89.74%** |
-| upstream `4a747c48` (2026-10-11) | 2885 | 3365 | 85.74% |
+| this stack, **after** the merge | **3181** | 3578 | 88.90% |
+| this stack, before the merge | 3017 | 3362 | 89.74% |
+| upstream `d146ec1b6` | 3016 | 3485 | 86.54% |
 
-**READ THE ABSOLUTE NUMBERS, NOT THE PERCENTAGE.** Upstream implemented **+131 functions in
-24 hours** (2885 → 3016) while this stack implemented **zero**. We are ahead by exactly **one
-function**. The 3.2-point percentage gap is a denominator artifact: upstream's total grew
-3365 → 3485 because they keep discovering functions real titles need, and ours is stuck at
-3362 because we are 1204 commits behind and have not absorbed those discoveries. We look
-ahead only because we are scoring on a smaller board.
+**The percentage went down and that is the sync working.** We gained **+164 implemented**
+functions from upstream and **+216 known** ones, because upstream keeps discovering functions
+real titles need and we had not absorbed those discoveries. Before the merge our 89.74% was
+measured on a board 123 entries too small — ahead of upstream by exactly **one** implemented
+function in absolute terms. 88.90% on the real board is a genuinely better position than
+89.74% on a stale one.
 
-The gap is compounding at roughly **700 commits and 130 functions per day**. Syncing is no
-longer one job among several; it is the only one that stops the divergence getting worse.
+Remaining divergence is ~332 commits (what landed while the merge was in progress) instead of
+1204. It compounds at roughly **700 commits and 130 functions per day**, so the next sync
+should be days, not weeks — and it will be far smaller than this one.
 
 **The 89.74% is now COMPILED AND TESTED**, unlike the 89.56% the previous handoff warned about.
 Full Windows build: 0 errors. Full suite: **795/796**. The single failure, `guest_filesystem`, is
@@ -76,8 +77,27 @@ is a *different* harness that ranks by device type and ignores `ANYPS5_GPU` enti
 
 ### Do these first, in order
 
-1. **The 1204-commit sync** — now the priority, see the numbers above. Previously scouted at
-   505 behind: ~20 conflicting files, mostly `Export.cpp`.
+1. **Fix the 4 tests the sync merge left failing.** The merge of `d146ec1b6` is committed and
+   **builds clean**; the suite is **956/960** (the count rose 796 → 960, so upstream's 1204
+   commits brought 164 new tests). All four failures are in files whose conflicts I resolved,
+   so treat them as merge damage, not upstream bugs:
+   - `guest_font` — fails at `GuestFont.cpp:437`. Its conflict was resolved as a **union** of
+     two disjoint declaration blocks; check the test actually matches the merged
+     `libSceFont/src/Text.cpp`, where upstream's `sceFontCharacterGetSyllableStringState`
+     replaced ours.
+   - `guest_extended_math` — `ExtendedMath.cpp` lost 11 definitions to upstream's `Math.cpp`
+     (they were genuine `multiple definition` link errors). The test probably still expects
+     our variants' behaviour.
+   - `guest_wide_strings` — our `wcstok` block was given a nested scope so both sides' tests
+     could coexist; `Strings.cpp` kept **ours** for `wcstok` while upstream's test may assert
+     upstream's semantics.
+   - `guest_memory_pool_stats` — new upstream test; `libSceSsl`/`libSceNpWebApi2` pool
+     accounting was touched during resolution.
+
+   All four abort via `std::abort()` with no message except `guest_font`, so run each binary
+   directly rather than through ctest to see where it stops.
+2. **The next sync is only ~332 commits** (the ones that landed while this merge was in
+   progress). Do it soon — it compounds at ~700 commits/day.
    Read "The one bug shape behind every sync breakage" below *before* resolving anything.
 2. **Work the ranked issue list.** `scratchpad/triage.py` over a scrape of all 155 open issues
    ranks them against this machine's capabilities. 16 actionable candidates have **zero comments
