@@ -1,4 +1,5 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +16,7 @@ std::int64_t APS5_VABI send_nid_postfix(int, const void*, std::uint64_t, int);
 std::int64_t APS5_VABI recv_nid_postfix(int, void*, std::uint64_t, int);
 int APS5_VABI getpeername_nid_postfix(int, void*, std::uint32_t*);
 int APS5_VABI shutdown_nid_postfix(int, int);
+std::int64_t APS5_VABI recvfrom_nid_postfix(int, void*, std::uint64_t, int, void*, std::uint32_t*);
 int APS5_VABI close_nid_postfix(int);
 int* APS5_VABI __error_nid_postfix();
 }
@@ -23,7 +25,31 @@ static void Require(bool condition) {
     if (!condition) std::abort();
 }
 
+static void StreamReceiveReportsNoSender() {
+    const int listener = socket_nid_postfix(2, 1, 0);
+    Require(listener >= 0);
+    std::array<std::uint8_t, 16> address{16, 2, 0, 0, 127, 0, 0, 1};
+    Require(bind_nid_postfix(listener, address.data(), address.size()) == 0 && listen_nid_postfix(listener, 4) == 0);
+    std::uint32_t size = address.size();
+    Require(getsockname_nid_postfix(listener, address.data(), &size) == 0);
+    const int client = socket_nid_postfix(2, 1, 0);
+    Require(connect_nid_postfix(client, address.data(), address.size()) == 0);
+    const int accepted = accept_nid_postfix(listener, nullptr, nullptr);
+    Require(accepted >= 0);
+    const char text[] = "stream";
+    Require(send_nid_postfix(client, text, sizeof(text), 0) == sizeof(text));
+    std::array<std::uint8_t, 28> sender;
+    sender.fill(0xaa);
+    char received[sizeof(text)]{};
+    std::uint32_t senderSize = sender.size();
+    Require(recvfrom_nid_postfix(accepted, received, sizeof(received), 0, sender.data(), &senderSize) == sizeof(text));
+    Require(std::strcmp(text, received) == 0);
+    Require(senderSize == 0 && sender[0] == 0xaa && sender[1] == 0xaa);
+    for (const int descriptor : {client, accepted, listener}) Require(close_nid_postfix(descriptor) == 0);
+}
+
 int main() {
+    StreamReceiveReportsNoSender();
     const int listener = socket_nid_postfix(2, 1, 6);
     Require(listener >= 0);
     std::array<std::uint8_t, 16> address{16, 2, 0, 0, 127, 0, 0, 1};
@@ -47,6 +73,29 @@ int main() {
     address_size = connected_peer.size();
     Require(getpeername_nid_postfix(accepted, connected_peer.data(), &address_size) == 0);
     Require(address_size == 16 && connected_peer[1] == 2);
+
+    for (auto query : {getsockname_nid_postfix, getpeername_nid_postfix}) {
+        std::array<std::uint8_t, 16> expected{};
+        address_size = expected.size();
+        Require(query(accepted, expected.data(), &address_size) == 0 && address_size == expected.size());
+        for (std::uint32_t capacity : {0u, 1u, 2u, 15u, 16u, 28u, UINT32_MAX}) {
+            std::array<std::uint8_t, 28> actual;
+            actual.fill(0xa5);
+            address_size = capacity;
+            const auto copied = std::min(capacity, std::uint32_t{16});
+            Require(query(accepted, actual.data(), &address_size) == 0 && address_size == copied);
+            Require(std::memcmp(actual.data(), expected.data(), copied) == 0);
+            Require(std::all_of(actual.begin() + copied, actual.end(), [](auto byte) { return byte == 0xa5; }));
+        }
+    }
+    const int shortClient = socket_nid_postfix(2, 1, 0);
+    Require(shortClient >= 0 && connect_nid_postfix(shortClient, address.data(), address.size()) == 0);
+    peer.fill(0xa5);
+    address_size = 1;
+    const int shortAccepted = accept_nid_postfix(listener, peer.data(), &address_size);
+    Require(shortAccepted >= 0 && address_size == 1 && peer[0] == 16);
+    Require(std::all_of(peer.begin() + 1, peer.end(), [](auto byte) { return byte == 0xa5; }));
+    Require(close_nid_postfix(shortAccepted) == 0 && close_nid_postfix(shortClient) == 0);
 
     const char request[] = "guest TCP loopback";
     char received[sizeof(request)]{};

@@ -18,6 +18,7 @@ RULES = {
     "extension": ("error", "CONTRIBUTING.md#code", "Avoid non-standard extensions where standard C++ is enough"),
     "notes-file": ("error", "CONTRIBUTING.md#branches-and-pull-requests", "Notes, investigation and agent files go in the pull request, not in the repository"),
     "binary": ("error", "docs/dev/CONVENTIONS.md", "Only UTF-8 text files in the repository; images go in the gist comments"),
+    "ci-gate": ("error", "CONTRIBUTING.md#build-and-test", "A job that runs for pull requests needs a file filter: paths on the pull_request trigger, or needs eligibility and an if on its outputs"),
     "doc-link": ("error", "CONTRIBUTING.md#documentation", "Relative link to a file that does not exist"),
     "commit-subject": ("error", "docs/dev/CONVENTIONS.md", "Commit subject is not Conventional Commits"),
     "pr-title": ("error", "docs/dev/CONVENTIONS.md", "Pull request title is not Conventional Commits"),
@@ -41,6 +42,7 @@ TITLE = re.compile(r"\b(PPSA|CUSA)\d{5}\b")
 EXTENSION = re.compile(r"__attribute__|__declspec|#\s*pragma\s+(?!once\b)")
 LINK = re.compile(r"\]\(([^)\s]+)")
 SECTION = re.compile(r"^###\s*(.+?)\s*$", re.M)
+KEY = re.compile(r"^( *)([A-Za-z0-9_-]+|'[^']*'|\"[^\"]*\"):(?:\s+(.*?))?\s*$")
 
 
 def git(*args, text=True):
@@ -122,14 +124,14 @@ class Check:
     def duplicates(self, exports):
         if not exports:
             return
-        pattern = r"\bAPS5_VABI\s+(" + "|".join(exports) + r")\s*\("
+        pattern = r"(^|[^[:alnum:]_])APS5_VABI[[:space:]]+(" + "|".join(exports) + r")[[:space:]]*\("
         result = subprocess.run(["git", "grep", "-nE", pattern, self.head, "--", "core/libs/prx"], capture_output=True, encoding="utf-8", errors="replace")
         for line in result.stdout.splitlines():
-            _, path, _, text = line.split(":", 3)
+            _, path, number, text = line.split(":", 3)
             name = EXPORT.search(text).group(1)
-            own, number = exports[name]
-            if library(path) != library(own) and not text.rstrip().endswith(";"):
-                self.report("duplicate-export", own, number, f"{name} is also in {library(path)}")
+            own, own_number = exports[name]
+            if library(path) != library(own) and function_body(self.show(path).splitlines(), int(number) - 1) is not None:
+                self.report("duplicate-export", own, own_number, f"{name} is also in {library(path)}")
 
     def build(self):
         for path, lines in self.files(lambda p: p.name == "CMakeLists.txt" or p.suffix == ".cmake"):
@@ -143,7 +145,18 @@ class Check:
             if match and not match.group(1).startswith("3rdparty/"):
                 self.report("system-dependency", ".gitmodules", number, match.group(1))
 
+    def submodules(self):
+        result = subprocess.run(["git", "config", "--no-includes", "-z", "--blob", f"{self.head}:.gitmodules", "--list"],
+                                capture_output=True, encoding="utf-8", errors="replace")
+        values = {key: value for key, _, value in (entry.partition("\n") for entry in result.stdout.split("\0") if entry)}
+        return {path for key, path in values.items() if key.endswith(".path") and values.get(f"{key[:-5]}.url")}
+
     def repository(self):
+        gitlinks = {path for path, mode in self.modes.items() if mode == "160000" and path.startswith("3rdparty/")}
+        checked = gitlinks if ".gitmodules" in self.status else gitlinks & self.status.keys()
+        if checked:
+            for path in sorted(checked - self.submodules()):
+                self.report("system-dependency", path, 0, "submodule without a url in .gitmodules")
         for path, (added, deleted) in self.numstat.items():
             if path.startswith("3rdparty/"):
                 continue
@@ -162,6 +175,20 @@ class Check:
                 for target, resolved in links(path, text):
                     if resolved not in self.tree and resolved not in self.dirs:
                         self.report("doc-link", path, number, target)
+
+    def workflows(self):
+        for path in sorted(self.status):
+            if self.status[path] == "D" or not re.fullmatch(r"\.github/workflows/[^/]+\.ya?ml", path):
+                continue
+            source = self.show(path).splitlines()
+            lines = [(number, KEY.match(re.sub(r"(^|\s)#.*", "", text))) for number, text in enumerate(source, 1)]
+            lines = [(number, len(match[1]), match[2].strip("'\""), match[3] or "") for number, match in lines if match]
+            triggers = [entry for entry in lines if entry[1] == 0 and entry[2] == "on"]
+            if not triggers or pull_request_filtered(lines, triggers[0]):
+                continue
+            for number, name, needs, condition in jobs(lines, source):
+                if name != "eligibility" and ("eligibility" not in needs or "needs.eligibility.outputs." not in condition):
+                    self.report("ci-gate", path, number, name)
 
     def commits(self):
         for line in git("log", "--no-merges", "--format=%h %s", f"{self.base}..{self.head}").splitlines():
@@ -219,6 +246,48 @@ def silent_stub_debt(text):
         if section_level:
             debt.append((line, links("docs/dev/TechnicalDebt.md", line)))
     return debt
+
+
+def block(lines, start):
+    _, indent, _, _ = lines[start]
+    end = start + 1
+    while end < len(lines) and lines[end][1] > indent:
+        end += 1
+    return lines[start + 1:end]
+
+
+def pull_request_filtered(lines, trigger):
+    _, _, _, value = trigger
+    if value:
+        return "pull_request" not in re.findall(r"[A-Za-z_]+", value)
+    triggers = block(lines, lines.index(trigger))
+    for index, (_, indent, name, value) in enumerate(triggers):
+        if name == "pull_request" and indent == triggers[0][1]:
+            return any(entry[2] in ("paths", "paths-ignore") for entry in block(triggers, index))
+    return True
+
+
+def field(source, entry):
+    number, indent, _, value = entry
+    for line in (line for line in source[number:] if line.strip()):
+        if len(line) - len(line.lstrip(" ")) <= indent:
+            break
+        value += " " + line.strip()
+    return value
+
+
+def jobs(lines, source):
+    top = [index for index, entry in enumerate(lines) if entry[1] == 0 and entry[2] == "jobs"]
+    if not top:
+        return []
+    entries = block(lines, top[0])
+    result = []
+    for index, (number, indent, name, _) in enumerate(entries):
+        if indent != entries[0][1]:
+            continue
+        fields = {entry[2]: field(source, entry) for entry in block(entries, index) if entry[1] == indent + 2}
+        result.append((number, name, re.findall(r"[A-Za-z0-9_-]+", fields.get("needs", "")), fields.get("if", "")))
+    return result
 
 
 def listed(debt, name, path):
@@ -303,6 +372,7 @@ if __name__ == "__main__":
     check.build()
     check.repository()
     check.docs()
+    check.workflows()
     check.commits()
     pr = json.load(open(args.event, encoding="utf-8")).get("pull_request") if args.event else None
     if pr:

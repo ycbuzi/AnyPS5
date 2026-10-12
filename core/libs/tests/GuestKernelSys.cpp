@@ -8,9 +8,13 @@
 #include <filesystem>
 #include <fstream>
 #include <source_location>
+#include <stdexcept>
 #include <string>
 #ifdef _WIN32
 #include <windows.h>
+#ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+#define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
+#endif
 #endif
 #ifdef __linux__
 #include <cerrno>
@@ -31,6 +35,8 @@ int APS5_VABI sceKernelClose(int);
 int APS5_VABI setsid_nid_postfix(void);
 int APS5_VABI link_nid_postfix(const char*, const char*);
 int APS5_VABI symlink_nid_postfix(const char*, const char*);
+int APS5_VABI openat_nid_postfix(int, const char*, int, ...);
+std::int64_t APS5_VABI sceKernelRead(int, void*, std::size_t);
 std::uint16_t APS5_VABI umask_nid_postfix(std::uint16_t);
 int* APS5_VABI __error_nid_postfix();
 }
@@ -159,6 +165,33 @@ int main() {
         Require(symlink_nid_postfix("missing.bin", dangling.c_str()) == 0);
         Require((GetFileAttributesW(std::filesystem::path(dangling).wstring().c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
         Require(symlink_nid_postfix("missing.bin", dangling.c_str()) == -1 && Error() == 17);
+        Require(readlink_nid_postfix(symbolic.c_str(), buffer, sizeof(buffer)) == 12 && std::memcmp(buffer, "original.bin", 12) == 0);
+        Require(readlink_nid_postfix(dangling.c_str(), buffer, sizeof(buffer)) == 11 && std::memcmp(buffer, "missing.bin", 11) == 0);
+        const auto nested = (root / "nested").string();
+        Require(symlink_nid_postfix("sub/target.txt", nested.c_str()) == 0);
+        std::memset(buffer, '#', sizeof(buffer));
+        Require(readlink_nid_postfix(nested.c_str(), buffer, sizeof(buffer)) == 14);
+        Require(std::memcmp(buffer, "sub/target.txt", 14) == 0 && buffer[14] == '#');
+        Require(readlink_nid_postfix(nested.c_str(), buffer, 3) == 3 && std::memcmp(buffer, "sub", 3) == 0);
+        Require(readlink_nid_postfix(nested.c_str(), nullptr, 0) == 0);
+        Require(readlink_nid_postfix(nested.c_str(), nullptr, sizeof(buffer)) == -1 && Error() == 14);
+        const auto accented = (root / "accented").string();
+        Require(symlink_nid_postfix("a\xc3\xa7\xc3\xa3o.bin", accented.c_str()) == 0);
+        Require(readlink_nid_postfix(accented.c_str(), buffer, sizeof(buffer)) == 10 && std::memcmp(buffer, "a\xc3\xa7\xc3\xa3o.bin", 10) == 0);
+        Require(std::filesystem::create_directory(root / "sub"));
+        const auto directoryLink = (root / "directory-link").string();
+        Require(symlink_nid_postfix("sub", directoryLink.c_str()) == 0);
+        Require(readlink_nid_postfix(directoryLink.c_str(), buffer, sizeof(buffer)) == 3 && std::memcmp(buffer, "sub", 3) == 0);
+        const auto absolute = std::filesystem::absolute(root / "absolute");
+        Require(CreateSymbolicLinkW(absolute.wstring().c_str(), std::filesystem::absolute(original).wstring().c_str(),
+            SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE) != 0);
+        bool refused = false;
+        try {
+            readlink_nid_postfix((root / "absolute").string().c_str(), buffer, sizeof(buffer));
+        } catch (const std::runtime_error& failure) {
+            refused = std::string(failure.what()) == "readlink of a Windows reparse point other than a relative symbolic link not implemented";
+        }
+        Require(refused);
 #else
         Require(std::filesystem::is_symlink(std::filesystem::symlink_status(symbolic)));
         Require(readlink_nid_postfix(symbolic.c_str(), buffer, sizeof(buffer)) == 12 && std::memcmp(buffer, "original.bin", 12) == 0);
@@ -175,6 +208,30 @@ int main() {
     Require(symlink_nid_postfix("original.bin", (root / "missing" / "symbolic").string().c_str()) == -1 && Error() == 2);
     Require(symlink_nid_postfix(nullptr, symbolic.c_str()) == -1 && Error() == 14);
     Require(symlink_nid_postfix("original.bin", "") == -1 && Error() == 2);
+    const int base = sceKernelOpen(root.string().c_str(), SCE_KERNEL_O_RDONLY | SCE_KERNEL_O_DIRECTORY, 0);
+    Require(base >= 0);
+    const int relative = openat_nid_postfix(base, "file.txt", SCE_KERNEL_O_RDONLY);
+    char byte = 0;
+    Require(relative >= 0 && sceKernelRead(relative, &byte, 1) == 1 && byte == 'x');
+    Require(sceKernelClose(relative) == 0);
+    const int made = openat_nid_postfix(base, "made.bin", SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_EXCL, 0644);
+    Require(made >= 0 && std::filesystem::is_regular_file(root / "made.bin"));
+    Require(sceKernelClose(made) == 0);
+    Require(openat_nid_postfix(base, "made.bin", SCE_KERNEL_O_WRONLY | SCE_KERNEL_O_CREAT | SCE_KERNEL_O_EXCL, 0644) == -1 && Error() == 17);
+    Require(openat_nid_postfix(base, "missing.bin", SCE_KERNEL_O_RDONLY) == -1 && Error() == 2);
+    const auto guestFile = "/" + root.filename().string() + "/file.txt";
+    const int absolute = openat_nid_postfix(-1, guestFile.c_str(), SCE_KERNEL_O_RDONLY);
+    Require(absolute >= 0 && sceKernelClose(absolute) == 0);
+    const int current = openat_nid_postfix(-100, file.c_str(), SCE_KERNEL_O_RDONLY);
+    Require(current >= 0 && sceKernelClose(current) == 0);
+    const int plain = sceKernelOpen(file.c_str(), SCE_KERNEL_O_RDONLY, 0);
+    Require(plain >= 0);
+    Require(openat_nid_postfix(plain, "file.txt", SCE_KERNEL_O_RDONLY) == -1 && Error() == 20);
+    Require(sceKernelClose(plain) == 0);
+    Require(openat_nid_postfix(-1, "file.txt", SCE_KERNEL_O_RDONLY) == -1 && Error() == 9);
+    Require(openat_nid_postfix(base, nullptr, SCE_KERNEL_O_RDONLY) == -1 && Error() == 14);
+    Require(openat_nid_postfix(base, "", SCE_KERNEL_O_RDONLY) == -1 && Error() == 2);
+    Require(sceKernelClose(base) == 0);
     std::filesystem::remove_all(root);
     return 0;
 }

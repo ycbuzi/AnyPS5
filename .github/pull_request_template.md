@@ -13,4 +13,5 @@
 - [ ] New third-party code is a submodule built from source
 - [ ] Generic behaviour, not specific to one title
 - [ ] Depends on: <!-- #PR, or none -->
+- [ ] Unblocks: <!-- title ID and Game bring-up discussion, e.g. PPSA01325 #3232, or none -->
 - [ ] AI-assisted: <!-- yes / no -->

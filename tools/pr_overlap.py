@@ -3,7 +3,7 @@ import json
 import os
 import re
 import subprocess
-from itertools import chain, combinations
+from itertools import combinations
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -37,9 +37,9 @@ def depends_on(body):
 
 def open_prs(base):
     query = urlencode({"state": "open", "base": base, "per_page": 100})
-    out = gh("api", "--paginate", "--slurp", f"repos/{REPO}/pulls?{query}")
+    out = gh("api", "--paginate", f"repos/{REPO}/pulls?{query}")
     prs = {}
-    for pr in chain.from_iterable(json.loads(out)):
+    for pr in json.loads(out):
         prs[pr["number"]] = {
             "ref": f"refs/pr/{pr['number']}",
             "sha": pr["head"]["sha"],
@@ -70,9 +70,18 @@ def commit(tree):
 
 def exports(diff):
     found = set()
-    for line in diff.splitlines():
+    lines = diff.splitlines()
+    for i, line in enumerate(lines):
         m = EXPORT.match(line)
-        if m and not m.group(1).endswith("_nid_no_patch") and not line.rstrip().endswith(";"):
+        if not m or m.group(1).endswith("_nid_no_patch"):
+            continue
+        text = line[1:]
+        for nxt in lines[i + 1:]:
+            if ";" in text or "{" in text or not nxt.startswith("+") or nxt.startswith("+++"):
+                break
+            text += nxt[1:]
+        semi, brace = text.find(";"), text.find("{")
+        if semi < 0 or 0 <= brace < semi:
             found.add(m.group(1))
     return found
 

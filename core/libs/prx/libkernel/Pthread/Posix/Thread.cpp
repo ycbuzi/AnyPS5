@@ -40,20 +40,26 @@ KernelCpumask APS5_VABI sceKernelGetAvailableCpumask(void);
 int APS5_VABI getpid_nid_postfix(void);
 
 int APS5_VABI cpuset_getaffinity_nid_postfix(int level, int which, std::int64_t id, std::size_t size, void* mask) {
-    constexpr int LevelWhich = 3, WhichThread = 1;
+    constexpr int LevelWhich = 3, WhichThread = 1, WhichProcess = 2;
     constexpr int GuestEfault = 14, GuestErange = 34;
     constexpr std::size_t MaximumSize = 256 / 8;
     if (size < sizeof(KernelCpumask) || size > MaximumSize) {
         *__error_nid_postfix() = GuestErange;
         return -1;
     }
-    if (level != LevelWhich || which != WhichThread || id != -1) NotImplemented_nid_no_patch("cpuset_getaffinity other than the calling thread");
+    const bool thread = level == LevelWhich && which == WhichThread && id == -1;
+    const bool process = level == LevelWhich && which == WhichProcess && (id == -1 || id == getpid_nid_postfix());
+    if (!thread && !process) NotImplemented_nid_no_patch("cpuset_getaffinity other than the calling thread or process");
     if (!mask) {
         *__error_nid_postfix() = GuestEfault;
         return -1;
     }
     KernelCpumask affinity = 0;
-    scePthreadGetaffinity(scePthreadSelf(), &affinity);
+    if (thread) scePthreadGetaffinity(scePthreadSelf(), &affinity);
+    else {
+        scePthreadSelf();
+        affinity = LiveGuestThreadsAffinity();
+    }
     std::memset(mask, 0, size);
     std::memcpy(mask, &affinity, sizeof(affinity));
     return 0;

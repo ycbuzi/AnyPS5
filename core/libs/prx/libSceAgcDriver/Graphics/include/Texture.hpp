@@ -143,7 +143,7 @@ VkFormat AttachmentProxyFormat(const Context& context, VkFormat format);
 // or it leaves the cache. Dispatches reusing the image meanwhile skip the round trip entirely.
 class StorageTexture : public std::enable_shared_from_this<StorageTexture> {
 public:
-    StorageTexture(const Context& context, TextureDetiler& detiler, const GuestTextureResource& descriptor, std::uint32_t mipLevel);
+    static std::shared_ptr<StorageTexture> Create(const Context& context, TextureDetiler& detiler, const GuestTextureResource& descriptor, std::uint32_t mipLevel);
     ~StorageTexture();
     StorageTexture(const StorageTexture&) = delete;
     StorageTexture& operator=(const StorageTexture&) = delete;
@@ -177,6 +177,8 @@ public:
     // overlapping pending image, as before).
     static bool FlushPending(std::uint64_t address, std::size_t bytes, const StorageTexture* except = nullptr, const char* reason = "memory access", PublishScope scope = PublishScope::Whole, bool* published = nullptr);
     static void FlushAllPending(const char* reason);
+    static bool AnyPending();
+    static void FlushDumpSelected(const char* reason);
     static bool StoreAtFlipRequested(const char* value);
     // See PendingSerial: a change of a surface's source outside the registry (a unit shadow
     // retile) moves it too.
@@ -327,6 +329,7 @@ public:
     VkDeviceSize AllocationBytes() const { return memoryBytes; }
 
 private:
+    StorageTexture(const Context& context, TextureDetiler& detiler, const GuestTextureResource& descriptor, std::uint32_t mipLevel);
     // The regions of every array layer, or of the tracked layers `layers` selects.
     std::vector<VkBufferImageCopy> CopyRegions(const std::vector<bool>* layers = nullptr) const;
     // Uploads the surface, or only the tracked layers `layers` selects (the direct path; the others

@@ -236,6 +236,7 @@ function(add_shader_recompiler target runtimeTarget)
             MatchesPreparedShader
             GetPreparedArtifact
             MaterializeShader
+            RegistrationResult
             ResolveSource
             ResourceMaterializer::SpecializationNanoseconds
             RuntimeAbi::RequireVersion

@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <array>
+#include <cstdarg>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -17,6 +19,7 @@
 #include "prx/libc/include/FilesystemError.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
 #include "prx/libc/include/CreationMask.hpp"
+#include "prx/libkernel/File/include/FileFlags.hpp"
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -43,6 +46,7 @@ constexpr int GuestEloop = 62;
 constexpr int GuestEnametoolong = 63;
 constexpr int GuestEnotempty = 66;
 constexpr int GuestEoverflow = 84;
+constexpr int GuestAtFdcwd = -100;
 
 std::int64_t Fail(int error) {
     *__error_nid_postfix() = error;
@@ -60,6 +64,50 @@ int GuestError(const std::error_code& error) {
     const int value = condition.value();
     return value > 0 && value <= 34 ? value : GuestEio;
 }
+
+std::int64_t CopyLinkTarget(const std::string& target, char* buffer, std::size_t size) {
+    const auto count = std::min(size, target.size());
+    if (count != 0 && buffer == nullptr) return Fail(GuestEfault);
+    if (count != 0) std::memcpy(buffer, target.data(), count);
+    return static_cast<std::int64_t>(count);
+}
+
+#ifdef _WIN32
+struct SymbolicLinkReparseData {
+    ULONG tag;
+    USHORT dataLength;
+    USHORT reserved;
+    USHORT substituteNameOffset;
+    USHORT substituteNameLength;
+    USHORT printNameOffset;
+    USHORT printNameLength;
+    ULONG flags;
+};
+constexpr ULONG SymbolicLinkRelative = 1;
+
+bool ReadRelativeSymbolicLink(const std::filesystem::path& native, std::string& target) {
+    const HANDLE handle = CreateFileW(native.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
+        OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "readlink: CreateFileW");
+    std::array<std::byte, MAXIMUM_REPARSE_DATA_BUFFER_SIZE> data{};
+    DWORD size = 0;
+    const BOOL read = DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, nullptr, 0, data.data(), static_cast<DWORD>(data.size()), &size, nullptr);
+    const DWORD code = GetLastError();
+    CloseHandle(handle);
+    if (!read) throw std::system_error(static_cast<int>(code), std::system_category(), "readlink: FSCTL_GET_REPARSE_POINT");
+    SymbolicLinkReparseData header{};
+    if (size < sizeof(header)) return false;
+    std::memcpy(&header, data.data(), sizeof(header));
+    if (header.tag != IO_REPARSE_TAG_SYMLINK || (header.flags & SymbolicLinkRelative) == 0) return false;
+    const std::size_t begin = sizeof(header) + header.substituteNameOffset;
+    if (begin + header.substituteNameLength > size) throw std::runtime_error("readlink: malformed symbolic link reparse data");
+    std::wstring name(header.substituteNameLength / sizeof(wchar_t), L'\0');
+    std::memcpy(name.data(), data.data() + begin, name.size() * sizeof(wchar_t));
+    target = std::filesystem::path(name).generic_string();
+    return true;
+}
+#endif
 }
 
 extern "C" {
@@ -92,8 +140,12 @@ std::int64_t APS5_VABI readlink_nid_postfix(const char* path, char* buffer, std:
 #ifdef _WIN32
     const DWORD attributes = GetFileAttributesW(native.wstring().c_str());
     if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
-        NotImplemented_nid_no_patch("readlink of a Windows symbolic link");
-        return -1;
+        std::string target;
+        if (!ReadRelativeSymbolicLink(native, target)) {
+            NotImplemented_nid_no_patch("readlink of a Windows reparse point other than a relative symbolic link");
+            return -1;
+        }
+        return CopyLinkTarget(target, buffer, size);
     }
 #endif
     std::error_code error;
@@ -103,10 +155,7 @@ std::int64_t APS5_VABI readlink_nid_postfix(const char* path, char* buffer, std:
     if (!std::filesystem::is_symlink(status)) return Fail(GuestEinval);
     const auto target = std::filesystem::read_symlink(native, error).generic_string();
     if (error) return Fail(GuestError(error));
-    const auto count = std::min(size, target.size());
-    if (count != 0 && buffer == nullptr) return Fail(GuestEfault);
-    if (count != 0) std::memcpy(buffer, target.data(), count);
-    return static_cast<std::int64_t>(count);
+    return CopyLinkTarget(target, buffer, size);
 }
 
 int APS5_VABI link_nid_postfix(const char* existing, const char* created) {
@@ -178,6 +227,31 @@ int APS5_VABI symlink_nid_postfix(const char* target, const char* created) {
 #endif
     RecordWrittenPath_nid_no_patch(native);
     return 0;
+}
+
+int APS5_VABI open_nid_postfix(const char* path, int flags, int mode);
+
+int APS5_VABI openat_nid_postfix(int fd, const char* path, int flags, ...) {
+    int mode = 0;
+    if (flags & SCE_KERNEL_O_CREAT) {
+#ifdef _WIN32
+        __builtin_sysv_va_list arguments;
+        __builtin_sysv_va_start(arguments, flags);
+        mode = __builtin_va_arg(arguments, int);
+        __builtin_sysv_va_end(arguments);
+#else
+        std::va_list arguments;
+        va_start(arguments, flags);
+        mode = va_arg(arguments, int);
+        va_end(arguments);
+#endif
+    }
+    if (path == nullptr) return static_cast<int>(Fail(GuestEfault));
+    if (*path == '\0') return static_cast<int>(Fail(GuestEnoent));
+    if (fd == GuestAtFdcwd || *path == '/') return open_nid_postfix(path, flags, mode);
+    const int result = OpenInDirectory_nid_no_patch(fd, path, flags, static_cast<std::uint16_t>(mode));
+    if (result < 0) return static_cast<int>(Fail(result & 0xffff));
+    return result;
 }
 
 }

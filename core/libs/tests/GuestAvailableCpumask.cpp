@@ -198,6 +198,31 @@ int main() {
         Require(changed && restored && created && joined && inherited[0] == 0 && inherited[1] == last);
         Require(explicitSet && explicitCreated && explicitJoined && explicitAffinity[0] == 0 && explicitAffinity[1] == available);
     }
+
+    std::uint64_t processSet[4] = {~0ull, ~0ull, ~0ull, ~0ull};
+    Require(cpuset_getaffinity_nid_postfix(3, 2, -1, sizeof(processSet), processSet) == 0);
+    Require(processSet[0] == available && processSet[1] == 0 && processSet[2] == 0 && processSet[3] == 0);
+    processSet[0] = 0;
+    Require(cpuset_getaffinity_nid_postfix(3, 2, getpid_nid_postfix(), 8, processSet) == 0 && processSet[0] == available);
+    Require(cpuset_getaffinity_nid_postfix(3, 2, -1, 4, processSet) == -1 && *__error_nid_postfix() == GUEST_ERANGE);
+    Require(cpuset_getaffinity_nid_postfix(3, 2, -1, 8, nullptr) == -1 && *__error_nid_postfix() == GUEST_EFAULT);
+    if (first != last) {
+        std::promise<void> park;
+        auto parked = park.get_future();
+        Pthread pinned = nullptr;
+        Require(scePthreadCreate(&pinned, &attr, Worker, &parked, nullptr) == SCE_OK);
+        Require(scePthreadSetaffinity(pinned, first) == SCE_OK);
+        Require(scePthreadSetaffinity(scePthreadSelf(), last) == SCE_OK);
+        std::uint64_t unionSet[1] = {0};
+        const int unionResult = cpuset_getaffinity_nid_postfix(3, 2, -1, 8, unionSet);
+        std::uint64_t ownSet[1] = {0};
+        const int ownResult = cpuset_getaffinity_nid_postfix(3, 1, -1, 8, ownSet);
+        Require(scePthreadSetaffinity(scePthreadSelf(), available) == SCE_OK);
+        park.set_value();
+        Require(scePthreadJoin(pinned, nullptr) == SCE_OK);
+        Require(unionResult == 0 && unionSet[0] == (first | last));
+        Require(ownResult == 0 && ownSet[0] == last);
+    }
     Require(scePthreadAttrDestroy(&attr) == SCE_OK);
 
     Require(ReadCpuset(pthread_self_nid_postfix()) == available);

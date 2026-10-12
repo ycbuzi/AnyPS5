@@ -119,9 +119,11 @@ bool zFormatSupported(std::uint32_t format) {
 
 std::uint32_t shaderControlMask(std::uint32_t zFormat) {
     constexpr std::uint32_t zExportEnable = 0x1u;
+    constexpr std::uint32_t stencilTestValExportEnable = 0x2u;
     constexpr std::uint32_t maskExportEnable = 0x100u;
     auto mask = ShaderControlMask;
     if (zFormat != 0u && zFormatSupported(zFormat)) mask &= ~zExportEnable;
+    if (zFormat == 2u || zFormat == 9u) mask &= ~stencilTestValExportEnable;
     if (zFormat == 9u) mask &= ~maskExportEnable;
     return mask;
 }
@@ -154,7 +156,7 @@ bool depthPlanesAbsent(const Registers& cx) {
     return z != cx.end() && stencil != cx.end() && (z->second & 3u) == 0 && (stencil->second & 1u) == 0;
 }
 
-VkStencilOpState stencilFace(std::uint32_t compare, std::uint32_t ops, std::uint32_t refMask, bool readOnly) {
+VkStencilOpState stencilFace(std::uint32_t compare, std::uint32_t ops, std::uint32_t refMask, bool readOnly, bool testValExport) {
     VkStencilOpState face{};
     face.compareOp = static_cast<VkCompareOp>(compare);
     face.compareMask = (refMask >> 8u) & 0xffu;
@@ -172,6 +174,10 @@ VkStencilOpState stencilFace(std::uint32_t compare, std::uint32_t ops, std::uint
             case 2:
             case 3:
             case 4: {
+                if (testValExport) {
+                    if (op != 3) throw std::runtime_error("AGC graphics: stencil replacement by a value other than the test value is unsupported with a pixel shader that exports the stencil test value");
+                    return VK_STENCIL_OP_REPLACE;
+                }
                 const auto value = op == 2 ? 0xffu : op == 3 ? test : opValue;
                 if (((reference ^ value) & fixed & face.writeMask) != 0) {
                     std::snprintf(detail, sizeof(detail), "AGC graphics: stencil replacement 0x%02x against test value 0x%02x (masks 0x%02x/0x%02x) is unsupported", value, test, face.compareMask, face.writeMask);
@@ -203,7 +209,7 @@ VkStencilOpState stencilFace(std::uint32_t compare, std::uint32_t ops, std::uint
     return face;
 }
 
-void decodeDepth(const Registers& cx, std::uint32_t depthControl, State& result) {
+void decodeDepth(const Registers& cx, std::uint32_t depthControl, bool testValExport, State& result) {
     zero(cx, 0x000, 0x00001f9cu, "depth copy, resummarize or decompress draws (DB_RENDER_CONTROL)");
     const bool depthClear = (read(cx, 0x000) & 1u) != 0;
     const bool stencilClear = (read(cx, 0x000) & 2u) != 0;
@@ -223,6 +229,7 @@ void decodeDepth(const Registers& cx, std::uint32_t depthControl, State& result)
     const bool depthReadOnly = (view & 0x01000000u) != 0;
     const bool stencilReadOnly = (view & 0x02000000u) != 0;
     Require(!stencilClear || (stencil && !stencilReadOnly), "stencil clear requires a writable stencil plane");
+    Require(!stencilClear || !testValExport, "stencil clear with a pixel shader that exports the stencil test value is unsupported");
     Require(!depthClear || (zFormat != 0 && !depthReadOnly), "depth clear requires a writable depth plane");
     DepthTarget depth{};
     depth.samples = 1u << ((read(cx, 0x010) >> 2u) & 3u);
@@ -274,8 +281,8 @@ void decodeDepth(const Registers& cx, std::uint32_t depthControl, State& result)
         result.stencilBack = clear;
     } else if (result.stencilTest) {
         const auto ops = read(cx, 0x10b);
-        result.stencilFront = stencilFace((depthControl >> 8u) & 7u, ops, read(cx, 0x10c), stencilReadOnly);
-        result.stencilBack = (depthControl & 0x80u) != 0 ? stencilFace((depthControl >> 20u) & 7u, ops >> 12u, read(cx, 0x10d), stencilReadOnly) : result.stencilFront;
+        result.stencilFront = stencilFace((depthControl >> 8u) & 7u, ops, read(cx, 0x10c), stencilReadOnly, testValExport);
+        result.stencilBack = (depthControl & 0x80u) != 0 ? stencilFace((depthControl >> 20u) & 7u, ops >> 12u, read(cx, 0x10d), stencilReadOnly, testValExport) : result.stencilFront;
     }
 }
 
@@ -317,6 +324,36 @@ constexpr std::array<std::array<std::int8_t, 2>, 2> StandardLocations2{{{4, 4}, 
 constexpr std::array<std::array<std::int8_t, 2>, 4> StandardLocations4{{{-2, -6}, {6, -2}, {-6, 2}, {2, 6}}};
 constexpr std::array<std::array<std::int8_t, 2>, 8> StandardLocations8{{{1, -3}, {-1, 3}, {5, 1}, {-3, -5}, {-5, 5}, {-7, -1}, {3, 7}, {7, -7}}};
 
+std::string singleSampleMsaaRejection(const QueueState& queue) {
+    const auto& cx = queue.context;
+    const auto word = [](const Registers& registers, std::uint32_t offset, RegisterBank bank = RegisterBank::Context) -> std::optional<std::uint32_t> {
+        const auto it = find(registers, offset, bank);
+        if (it == registers.end()) return std::nullopt;
+        return it->second;
+    };
+    for (std::uint32_t pixel = 0; pixel < 4; ++pixel) {
+        const auto offset = 0x2feu + pixel * 4u;
+        if (const auto locations = word(cx, offset); locations && (*locations & 0xffu) != 0) return zeroMessage(offset, *locations, "MSAA_ENABLE on a single-sample target whose sample is off the pixel center");
+    }
+    if (const auto alphaToMask = word(cx, 0x2dc); alphaToMask && (*alphaToMask & 1u) != 0) return zeroMessage(0x2dc, *alphaToMask, "MSAA_ENABLE on a single-sample target with alpha-to-coverage");
+    if (const auto conservative = word(cx, 0x313); conservative && (*conservative & ~0x001f6000u) != 0) return zeroMessage(0x313, *conservative, "MSAA_ENABLE on a single-sample target with conservative rasterization");
+    constexpr const char* primitives = "MSAA_ENABLE on a single-sample target for primitives other than triangles";
+    const auto stages = word(cx, 0x2d5);
+    if (!stages) return {};
+    if ((*stages & 0x20u) != 0) {
+        if (const auto output = word(cx, 0x29b); output && ((*output & 0x80000000u) != 0 || (*output & 0x3fu) != 2u)) return zeroMessage(0x29b, *output, primitives);
+    } else if ((*stages & 4u) != 0) {
+        if (const auto parameters = word(cx, 0x2db)) {
+            const auto domain = *parameters & 3u;
+            const auto topology = (*parameters >> 5u) & 7u;
+            if ((domain != 1u && domain != 2u) || (topology != 2u && topology != 3u)) return zeroMessage(0x2db, *parameters, primitives);
+        }
+    } else if (const auto primitive = word(queue.userConfig, 0x242, RegisterBank::UserConfig); primitive && *primitive != 4u && *primitive != 5u && *primitive != 6u) {
+        return zeroMessage(0x242, *primitive, primitives);
+    }
+    return {};
+}
+
 std::uint32_t decodeSamples(const Registers& cx) {
     const auto config = read(cx, 0x2f8);
     zero(cx, 0x2f8, ~(0x7u | 0x1e000u | 0x700000u), "coverage conversion or nonstandard multisampling");
@@ -327,7 +364,12 @@ std::uint32_t decodeSamples(const Registers& cx) {
     }
     Require(log2 <= 3u, "more than eight samples are unsupported");
     Require(((config >> 20u) & 7u) == log2, "exposing fewer samples than are rasterized is unsupported");
-    const auto samples = 1u << log2;
+    return 1u << log2;
+}
+
+void decodeSampleLocations(const Registers& cx, State& state) {
+    const auto samples = state.samples;
+    if (samples == 1) return;
     const std::span<const std::array<std::int8_t, 2>> standard = samples == 2 ? std::span<const std::array<std::int8_t, 2>>(StandardLocations2) : samples == 4 ? std::span<const std::array<std::int8_t, 2>>(StandardLocations4) : std::span<const std::array<std::int8_t, 2>>(StandardLocations8);
     for (std::uint32_t pixel = 0; pixel < 4; ++pixel) {
         for (std::uint32_t sample = 0; sample < samples; ++sample) {
@@ -335,10 +377,14 @@ std::uint32_t decodeSamples(const Registers& cx) {
             const auto bits = (word >> (8u * (sample % 4u))) & 0xffu;
             const auto x = static_cast<std::int8_t>(static_cast<std::uint8_t>(bits << 4u)) >> 4;
             const auto y = static_cast<std::int8_t>(static_cast<std::uint8_t>(bits & 0xf0u)) >> 4;
-            Require(x == standard[sample][0] && y == standard[sample][1], "nonstandard sample locations are unsupported");
+            if (pixel == 0) {
+                state.sampleLocations[sample] = static_cast<std::uint8_t>(bits);
+                state.customSampleLocations |= x != standard[sample][0] || y != standard[sample][1];
+            } else {
+                Require(bits == state.sampleLocations[sample], "nonstandard sample locations varying between pixels are unsupported");
+            }
         }
     }
-    return samples;
 }
 
 bool colorControlSupported(std::uint32_t colorControl, bool hasColorTarget) {
@@ -495,6 +541,9 @@ DecodedColorFormat DecodeColorFormat(std::uint32_t format, std::uint32_t number,
             if (number == floating) return {VK_FORMAT_R32G32B32A32_SFLOAT, 16};
             if (number == uint) return {VK_FORMAT_R32G32B32A32_UINT, 16};
             return fail();
+        case 17:
+            if (swap != 0 || number != unorm) return fail();
+            return {VK_FORMAT_A1R5G5B5_UNORM_PACK16, 2, 0xc6u};
         default:
             return fail();
     }
@@ -517,6 +566,23 @@ void intersect(VkRect2D& result, const Registers& registers, std::uint32_t offse
     result.extent = {std::min(oldRight, right) > left ? std::min(oldRight, right) - left : 0, std::min(oldBottom, bottom) > top ? std::min(oldBottom, bottom) - top : 0};
 }
 
+}
+
+std::array<VkSampleLocationEXT, 8> SampleLocations(const State& state) {
+    Require(state.samples == 1 || state.samples == 2 || state.samples == 4 || state.samples == 8, "invalid sample count");
+    std::array<VkSampleLocationEXT, 8> locations{};
+    for (std::uint32_t sample = 0; sample < state.samples; ++sample) {
+        std::array<int, 2> position{};
+        if (state.customSampleLocations) {
+            const auto bits = state.sampleLocations[sample];
+            position = {static_cast<int>(bits & 7u) - static_cast<int>(bits & 8u), static_cast<int>((bits >> 4u) & 7u) - static_cast<int>((bits >> 4u) & 8u)};
+        } else if (state.samples != 1) {
+            const auto& standard = state.samples == 2 ? StandardLocations2[sample] : state.samples == 4 ? StandardLocations4[sample] : StandardLocations8[sample];
+            position = {standard[0], standard[1]};
+        }
+        locations[sample] = {0.5f + position[0] / 16.0f, 0.5f + position[1] / 16.0f};
+    }
+    return locations;
 }
 
 ShaderStages DecodeShaderStages(const QueueState& queue, bool vertexWorkgroup) {
@@ -576,7 +642,22 @@ ShaderStages DecodeShaderStages(const QueueState& queue, bool vertexWorkgroup) {
     return result;
 }
 
+bool DepthResummarizeDrawsNothing(const QueueState& queue) {
+    const auto& cx = queue.context;
+    const auto control = find(cx, 0x000);
+    const auto depthControl = find(cx, 0x200);
+    const auto zInfo = find(cx, 0x010);
+    const auto stencilInfo = find(cx, 0x011);
+    const auto targetMask = find(cx, 0x8e);
+    const auto shaderMask = find(cx, 0x8f);
+    if (control == cx.end() || control->second != 0x10u || depthControl == cx.end() || zInfo == cx.end() || stencilInfo == cx.end() || targetMask == cx.end() || shaderMask == cx.end()) return false;
+    const auto depth = depthControl->second;
+    const auto format = zInfo->second & 3u;
+    return (depth & 2u) != 0 && (depth & 0xc000000cu) == 0 && depthPassThrough(depth) && (format == 1u || format == 3u) && (stencilInfo->second & 1u) == 0 && ColorWriteMask(cx) == 0 && PixelProgramSkipped(queue);
+}
+
 std::string DepthMaintenanceRejection(const QueueState& queue) {
+    if (DepthResummarizeDrawsNothing(queue)) return {};
     const auto control = find(queue.context, 0x000);
     if (control == queue.context.end() || (control->second & ~0x2063u) == 0) return {};
     const auto depthControl = find(queue.context, 0x200);
@@ -619,13 +700,14 @@ State DecodeState(const QueueState& queue, bool vertexWorkgroup) {
     }
     zero(cx, 0x207, ~LayerExports, "clip distances, layer, viewport or auxiliary vertex exports");
     result.samples = decodeSamples(cx);
+    decodeSampleLocations(cx, result);
     {
         const auto depthControl = read(cx, 0x200);
         const auto renderControl = find(cx, 0x000);
         const bool clear = renderControl != cx.end() && (renderControl->second & 3u) != 0;
         const auto tests = planeTests(cx, depthControl);
         if (clear || (tests != 0 && depthSurfaceBound(cx))) {
-            decodeDepth(cx, depthControl, result);
+            decodeDepth(cx, depthControl, (read(cx, 0x203) & 2u) != 0 && !PixelProgramSkipped(queue), result);
         } else if (depthPassThrough(depthControl) || ((depthControl & 0xbu) != 0 && (tests == 0 || depthPlanesAbsent(cx)))) {
             static bool reported = false;
             if (!reported) {
@@ -648,8 +730,12 @@ State DecodeState(const QueueState& queue, bool vertexWorkgroup) {
     result.alphaToCoverage = read(cx, 0x2dc) == AlphaToCoverageUndithered;
     if (!result.alphaToCoverage) zero(cx, 0x2dc, AlphaToCoverageMask, "dithered or rounded alpha-to-coverage");
     Require(!result.depth || result.depth->samples == result.samples, "the depth target's sample count differs from the rasterizer's");
-    zero(cx, 0x292, result.samples > 1 ? ScanModeMask & ~1u : ScanModeMask, "scan conversion mode");
+    zero(cx, 0x292, ScanModeMask & ~1u, "scan conversion mode");
     Require(result.samples == 1 || (read(cx, 0x292) & 1u) != 0, "multisampled targets rasterized without MSAA_ENABLE are unsupported");
+    if (result.samples == 1 && (read(cx, 0x292) & 1u) != 0) {
+        for (std::uint32_t pixel = 0; pixel < 4; ++pixel) static_cast<void>(read(cx, 0x2feu + pixel * 4u));
+        if (auto reason = singleSampleMsaaRejection(queue); !reason.empty()) throw std::runtime_error(reason);
+    }
     zero(cx, 0x293, ScanControlMask, "sample iteration, primitive discard or out-of-order rasterization");
     zero(cx, 0x80, ~0u, "window offset");
     zero(cx, 0x8d, ScreenOffsetMask, "reserved PA_SU_HARDWARE_SCREEN_OFFSET bits");
@@ -1004,7 +1090,7 @@ std::optional<ColorMetadataPass> DecodeColorMetadataPass(const QueueState& queue
     if (mode != 2u && mode != 6u && !resolve) return std::nullopt;
     ColorMetadataPass pass{resolve ? ColorMetadataPass::Mode::Resolve : mode == 2u ? ColorMetadataPass::Mode::EliminateFastClear : ColorMetadataPass::Mode::DccDecompress, {}, std::nullopt};
     Require((control->second & ~0x70u) == 0xcc0000u, "CB metadata pass with a nonstandard ROP, dual quads disabled or degamma");
-    Require((read(cx, 0x200) & 0xfu) == 0 && (read(cx, 0x0) & 0xfu) == 0, "CB metadata pass with depth or stencil work");
+    Require(depthPlanesAbsent(cx) || ((read(cx, 0x200) & 0xfu) == 0 && (read(cx, 0x0) & 0xfu) == 0), "CB metadata pass with depth or stencil work");
     const auto samples = resolve ? decodeSamples(cx) : 1u;
     if (!resolve) zero(cx, 0x2f8, ~0u, "multisampling or coverage conversion");
     zero(cx, 0x80, ~0u, "window offset");
@@ -1100,7 +1186,10 @@ std::string DrawRejection(const QueueState& queue, bool indexed) {
     }
     if (auto reason = nonzero(cx, 0x2f8, ~(0x7u | 0x1e000u | 0x700000u), "coverage conversion or nonstandard multisampling"); !reason.empty()) return reason;
     const bool multisampled = value(cx, 0x2f8, word) && (word & 7u) != 0;
-    if (auto reason = nonzero(cx, 0x292, multisampled ? ScanModeMask & ~1u : ScanModeMask, "scan conversion mode"); !reason.empty()) return reason;
+    if (auto reason = nonzero(cx, 0x292, ScanModeMask & ~1u, "scan conversion mode"); !reason.empty()) return reason;
+    if (!multisampled && value(cx, 0x292, word) && (word & 1u) != 0) {
+        if (auto reason = singleSampleMsaaRejection(queue); !reason.empty()) return reason;
+    }
     if (auto reason = nonzero(cx, 0x293, ScanControlMask, "sample iteration, primitive discard or out-of-order rasterization"); !reason.empty()) return reason;
     if (auto reason = nonzero(cx, 0x80, ~0u, "window offset"); !reason.empty()) return reason;
     if (auto reason = nonzero(cx, 0x8d, ScreenOffsetMask, "reserved PA_SU_HARDWARE_SCREEN_OFFSET bits"); !reason.empty()) return reason;

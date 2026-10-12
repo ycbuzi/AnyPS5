@@ -11,6 +11,8 @@
 #include <cstring>
 #include <fstream>
 #include <future>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -106,6 +108,8 @@ int APS5_VABI sceKernelMunmap(void*, std::size_t);
 int APS5_VABI sceAmprAmmCommandBufferMapAsPrt(Apr::CommandBufferObject*, std::uint64_t, std::uint64_t);
 int APS5_VABI sceAmprAmmCommandBufferAllocatePaForPrt(Apr::CommandBufferObject*, std::uint64_t, std::uint64_t, std::int32_t, std::int32_t);
 int APS5_VABI sceAmprAmmCommandBufferRemapIntoPrt(Apr::CommandBufferObject*, std::uint64_t, std::uint64_t, std::uint64_t, std::int32_t, std::uint32_t);
+int APS5_VABI sceKernelWriteModifyMtypeProtectCommand(void*, std::uint64_t, std::uint64_t, std::uint64_t, std::uint64_t, std::uint64_t, std::uint64_t*);
+int APS5_VABI sceKernelWriteRemapIntoPrtCommand(std::uint32_t*, std::uint64_t, std::uint64_t, std::uint64_t, int, int, std::uint64_t*);
 int APS5_VABI sceAmprAmmCommandBufferUnmapToPrt(Apr::CommandBufferObject*, std::uint64_t, std::uint64_t);
 std::int64_t APS5_VABI sceAmprAmmMeasureAmmCommandSizeMapAsPrt(std::uint64_t, std::uint64_t);
 std::int64_t APS5_VABI sceAmprAmmMeasureAmmCommandSizeAllocatePaForPrt(std::uint64_t, std::uint64_t, std::int32_t, std::int32_t);
@@ -633,6 +637,40 @@ void TestResolveFailures() {
     std::remove(paths[0]);
 }
 
+void TestMalformedCommandSizes() {
+    const auto requireFailure = [](Apr::Opcode opcode, std::uint32_t recordBytes, std::uint32_t bufferBytes, const char* expected) {
+        std::array<std::uint8_t, 16> memory{};
+        const Apr::CommandHeader header{opcode, recordBytes};
+        std::memcpy(memory.data(), &header, sizeof(header));
+        Apr::CommandBufferObject buffer{Apr::BufferType::Generic, 0, bufferBytes, 1, bufferBytes, memory.data()};
+        bool rejected = false;
+        try {
+            sceKernelAprSubmitCommandBuffer(&buffer, 0);
+        } catch (const std::runtime_error& error) {
+            rejected = std::string(error.what()).starts_with(expected);
+        }
+        Require(rejected);
+    };
+
+    requireFailure(Apr::Opcode::ReadFile, sizeof(Apr::CommandHeader), sizeof(Apr::CommandHeader), "APR: truncated command payload");
+    requireFailure(Apr::Opcode::WriteAddress, sizeof(Apr::CommandHeader), sizeof(Apr::CommandHeader), "APR: truncated command payload");
+    requireFailure(Apr::Opcode::Nop, std::numeric_limits<std::uint32_t>::max(), 2u * sizeof(Apr::CommandHeader), "APR: malformed command");
+
+    std::array<std::uint8_t, 2 * sizeof(Apr::CommandHeader)> memory{};
+    const Apr::CommandHeader first{Apr::Opcode::Nop, sizeof(Apr::CommandHeader)};
+    const Apr::CommandHeader overflowing{Apr::Opcode::Nop, std::numeric_limits<std::uint32_t>::max()};
+    std::memcpy(memory.data(), &first, sizeof(first));
+    std::memcpy(memory.data() + sizeof(first), &overflowing, sizeof(overflowing));
+    Apr::CommandBufferObject buffer{Apr::BufferType::Generic, 0, sizeof(memory), 2, sizeof(memory), memory.data()};
+    bool rejected = false;
+    try {
+        sceKernelAprSubmitCommandBuffer(&buffer, 0);
+    } catch (const std::runtime_error& error) {
+        rejected = std::string(error.what()).starts_with("APR: malformed command");
+    }
+    Require(rejected);
+}
+
 void TestGatherScatter() {
     const char* path = "ampr_gather_scatter.bin";
     {
@@ -1086,6 +1124,87 @@ void TestAmmPrt() {
     Require(sceAmprAmmMeasureAmmCommandSizeAllocatePaForPrt(prt + 8, page, 0, cpuReadWrite) == ammRejected);
 }
 
+void TestKernelWriteCommands() {
+    std::uint64_t start = 0;
+    std::uint64_t end = 0;
+    std::uint64_t multimapStart = 0;
+    std::uint64_t multimapEnd = 0;
+    Require(sceAmprAmmGetVirtualAddressRanges(&start, &end, &multimapStart, &multimapEnd) == 0);
+    std::int64_t pool = -1;
+    Require(sceAmprAmmGiveDirectMemory(0, static_cast<std::int64_t>(sceKernelGetDirectMemorySize()), 4 * page, page, 1, &pool) == 0);
+
+    const std::uint64_t target = start + 0x400000;
+    const std::uint64_t source = start + 0x440000;
+    const std::uint64_t prt = start + 0x480000;
+
+    Recorder setup;
+    Require(sceAmprAmmCommandBufferMap(&setup.buffer, target, 2 * page, 0, cpuReadWrite) == 0);
+    Require(sceAmprAmmCommandBufferMap(&setup.buffer, source, page, 0, cpuReadWrite) == 0);
+    Require(sceAmprAmmCommandBufferMapAsPrt(&setup.buffer, prt, 2 * page) == 0);
+    SubmitAmm(setup);
+    At(source) = 0x9C;
+
+    std::uint64_t measured = 0;
+    Require(sceKernelWriteModifyMtypeProtectCommand(nullptr, target, 2 * page, 5, 0x13, 0x10, &measured) == 0);
+    Require(measured == sizeof(Apr::AmmProtectCommand));
+    std::array<std::uint8_t, 128> written{};
+    std::uint64_t reported = 0;
+    Require(sceKernelWriteModifyMtypeProtectCommand(written.data(), target, 2 * page, 5, 0x13, 0x10, &reported) == 0);
+    Require(reported == sizeof(Apr::AmmProtectCommand));
+    Apr::CommandHeader header;
+    std::memcpy(&header, written.data(), sizeof(header));
+    Require(header.opcode == Apr::Opcode::AmmModifyMtypeProtect && header.bytes == sizeof(Apr::AmmProtectCommand));
+    Recorder sibling;
+    Require(sceAmprAmmCommandBufferModifyMtypeProtect(&sibling.buffer, target, 2 * page, 5, 0x13, 0x10) == 0);
+    Require(std::memcmp(written.data(), sibling.memory.data(), sizeof(Apr::AmmProtectCommand)) == 0);
+    Require(sceKernelWriteModifyMtypeProtectCommand(written.data(), target, 2 * page, 5, 0x13, 0x10, nullptr) == 0);
+    std::uint32_t id = 0;
+    Require(sceAmprAmmSubmitCommandBuffer3(written.data(), static_cast<std::uint32_t>(reported), 0, &id) == 0);
+    Require(sceAmprAmmWaitCommandBufferCompletion(id) == 0);
+    Require(Protection(target) == 0x13 && Protection(target + page) == 0x13);
+    At(target) = 0x9D;
+    Require(At(target) == 0x9D);
+
+    std::uint64_t prtMeasured = 0;
+    Require(sceKernelWriteRemapIntoPrtCommand(nullptr, prt + page, source, page, cpuReadWrite, 0, &prtMeasured) == 0);
+    Require(prtMeasured == sizeof(Apr::AmmRemapCommand));
+    std::array<std::uint8_t, 128> prtWritten{};
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(prtWritten.data()), prt + page, source, page, cpuReadWrite, 0, &prtMeasured) == 0);
+    Apr::AmmRemapCommand remap;
+    std::memcpy(&remap, prtWritten.data(), sizeof(remap));
+    Require(remap.header.opcode == Apr::Opcode::AmmRemapIntoPrt && remap.header.bytes == sizeof(remap));
+    Require(remap.address == prt + page && remap.source == source && remap.size == page && remap.protection == cpuReadWrite && remap.reserved == 1011);
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(prtWritten.data()), prt + page, source, page, cpuReadWrite, 42, &prtMeasured) == 0);
+    std::memcpy(&remap, prtWritten.data(), sizeof(remap));
+    Require(remap.reserved == 42);
+    Recorder prtSibling;
+    Require(sceAmprAmmCommandBufferRemapIntoPrt(&prtSibling.buffer, prt + page, source, page, cpuReadWrite, 0) == 0);
+    std::array<std::uint8_t, 128> prtSubmit{};
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(prtSubmit.data()), prt + page, source, page, cpuReadWrite, 0, nullptr) == 0);
+    Require(std::memcmp(prtSubmit.data(), prtSibling.memory.data(), sizeof(Apr::AmmRemapCommand)) == 0);
+    Require(sceAmprAmmSubmitCommandBuffer3(prtSubmit.data(), static_cast<std::uint32_t>(sizeof(Apr::AmmRemapCommand)), 0, &id) == 0);
+    Require(sceAmprAmmWaitCommandBufferCompletion(id) == 0);
+    Require(At(prt + page) == 0x9C);
+
+    std::array<std::uint8_t, 128> untouched{};
+    untouched.fill(0xCC);
+    std::uint64_t sentinel = 0xDDDDDDDDDDDDDDDDULL;
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), target + 8, page, 0, 0x03, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), target, 0, 0, 0x03, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), 0, page, 0, 0x03, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), target, page, 0, 0x04, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), target, page, 0, 0x03, 0x04, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), ~std::uint64_t(0), page, 0, 0x03, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteModifyMtypeProtectCommand(untouched.data(), target, page, 0, 0x100000000ULL, 0x03, &sentinel) == invalidArgument);
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(untouched.data()), prt, source + 8, page, cpuReadWrite, 0, &sentinel) == invalidArgument);
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(untouched.data()), prt, source, 0, cpuReadWrite, 0, &sentinel) == invalidArgument);
+    Require(sceKernelWriteRemapIntoPrtCommand(reinterpret_cast<std::uint32_t*>(untouched.data()), prt, source, page, 0x04, 0, &sentinel) == invalidArgument);
+    Require(sentinel == 0xDDDDDDDDDDDDDDDDULL);
+    for (const auto byte : untouched) Require(byte == 0xCC);
+    Require(sceKernelWriteModifyMtypeProtectCommand(nullptr, target, page, 0, 0x03, 0x03, nullptr) == 0);
+    Require(sceKernelWriteRemapIntoPrtCommand(nullptr, prt, source, page, cpuReadWrite, 0, nullptr) == 0);
+}
+
 }
 
 int main() {
@@ -1110,10 +1229,12 @@ int main() {
     TestConstructed();
     TestZeroFilledBuffer();
     TestResolveFailures();
+    TestMalformedCommandSizes();
     TestGatherScatter();
     TestAmmRangesAboveHintedMaps();
     TestAmm();
     TestAmmRemapAndProtect();
     TestAmmPrt();
+    TestKernelWriteCommands();
     return 0;
 }

@@ -576,6 +576,32 @@ void sceDynlibDataOffsets() {
                    "Duplicate PT_SCE_DYNLIBDATA segments were accepted");
     requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, duplicate, input.Text, input.TextVaddr); },
                    "Strict filter accepted duplicate PT_SCE_DYNLIBDATA segments");
+
+    auto sectionRelative = bytes;
+    write<std::uint64_t>(sectionRelative, 208, 0x70);
+    write<std::uint64_t>(sectionRelative, 216, 0x70);
+    write<std::int64_t>(sectionRelative, 0x330, 0x61000039);
+    write<std::uint64_t>(sectionRelative, 0x338, 0x100);
+    write<std::int64_t>(sectionRelative, 0x340, 0x6100003B);
+    write<std::uint64_t>(sectionRelative, 0x348, 24);
+    write<std::int64_t>(sectionRelative, 0x350, 0x6100003F);
+    write<std::uint64_t>(sectionRelative, 0x358, 48);
+    write<std::uint8_t>(sectionRelative, 0x61C, 3);
+    write<std::uint64_t>(sectionRelative, 0x908, (std::uint64_t{1} << 32) | 8);
+    require(Relinker::MakeStrictUnusedNidFilter()->Filter(references, sectionRelative, input.Text, input.TextVaddr).size() == 1,
+            "Strict filter rejected a RELATIVE relocation against a zero-value section symbol");
+    auto valuedSection = sectionRelative;
+    write<std::uint64_t>(valuedSection, 0x620, 0x10);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, valuedSection, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation against a section symbol with a value");
+    auto untyped = sectionRelative;
+    write<std::uint8_t>(untyped, 0x61C, 0);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, untyped, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation against a non-section symbol");
+    auto outside = sectionRelative;
+    write<std::uint64_t>(outside, 0x908, (std::uint64_t{2} << 32) | 8);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, outside, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation symbol outside the symbol table");
 }
 
 }

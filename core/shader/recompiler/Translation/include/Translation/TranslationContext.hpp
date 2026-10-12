@@ -17,6 +17,7 @@ public:
     void TranslateInstruction(const RdnaInstruction& instruction);
     void SetPixelInput(const ShaderPixelInputInfo* info, bool barycentricEnabled) { pixelInput = info; fragmentShaderBarycentricEnabled = barycentricEnabled; }
     void SetFloatMode(const std::optional<ShaderFloatMode>& mode) { floatMode = mode; ieeeMode = mode.has_value() && mode->ieeeMode; }
+    void SetNativeFloat16(bool enabled) { nativeFloat16 = enabled; }
     void AddBranchCondition(const BasicBlock& source, BlockInfo& info);
     void TranslateCodeTableLoad(const RdnaInstruction& instruction, const ControlFlowGraph::CodeTableLoad& table);
 
@@ -60,6 +61,10 @@ private:
     void write16Bits(const RdnaOperand& operand, IrU32 value);
     void writeF16(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources);
     bool directedF16Rounding() const;
+    IrU32 flushF16Bits(IrU32 bits, std::uint32_t keepBit);
+    IrU32 flushF16Input(IrU32 bits);
+    IrU32 flushF16Result(IrU32 bits);
+    IrF32 flushF16InputValue(IrF32 value);
     IrU32 convertF32ToF16Bits(IrF32 value, std::initializer_list<IrValue*> sources);
     void writeF16Conversion(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources);
     IrU32 readU32(const RdnaOperand& operand);
@@ -160,6 +165,7 @@ private:
     void emitInteger16Compare(const RdnaInstruction& inst, IrOpcode opcode, bool signedValue, bool cmpx);
     void emitFloatCompare(const RdnaInstruction& inst, IrOpcode opcode, bool half, bool cmpx, bool swap = false);
     IrU1 floatCompareWithConstant(IrOpcode opcode, IrU32 variableBits, std::uint32_t constant);
+    IrU1 floatCompareKeepingDenormals(IrOpcode opcode, IrU32 lhsBits, IrU32 rhsBits);
     void emitInteger64Order(const RdnaInstruction& inst, bool signedValue, bool swap, bool negate, bool cmpx);
     void emitFloatOrderedCompare(const RdnaInstruction& inst, bool ordered, bool half, bool cmpx);
     void emitFloatClassCompare(const RdnaInstruction& inst, bool cmpx);
@@ -320,7 +326,7 @@ private:
     void vMovrelsdB32(const RdnaInstruction& inst, bool split, bool swap);
     void vSwapB32(const RdnaInstruction& inst);
     IrU32 readRelativeVector(const RdnaOperand& base, IrValue& offset, const char* name);
-    void writeRelativeVector(const RdnaOperand& base, IrValue& offset, IrU32 value, const char* name);
+    void writeRelativeVector(const RdnaOperand& base, IrValue& offset, IrU32 value, const char* name, IrValue* enable = nullptr);
     void vReadfirstlaneB32(const RdnaInstruction& inst);
     void vReadlaneB32(const RdnaInstruction& inst);
     void vWritelaneB32(const RdnaInstruction& inst);
@@ -344,6 +350,7 @@ private:
     bool fragmentShaderBarycentricEnabled = false;
     std::optional<ShaderFloatMode> floatMode;
     bool ieeeMode = false;
+    bool nativeFloat16 = false;
     IrBuilder ir;
     IrBlock& block;
     IrU1 instructionBranchCondition;

@@ -6,9 +6,19 @@
 #include <optional>
 #include <filesystem>
 #include <limits>
+#include <new>
+#include <stdexcept>
 #include <utility>
 #include <cerrno>
 #include <cstring>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
+#endif
 
 #include "prx/libc/include/FileStream.hpp"
 #include "prx/libc/include/ApplicationHeap.hpp"
@@ -43,9 +53,29 @@ static std::optional<GuestFileMode> ParseFileMode(const char* mode) {
 
 static std::FILE* OpenNative(const std::filesystem::path& path, const std::string& nativeMode) {
 #ifdef _WIN32
-    std::wstring wideMode;
-    for (const char character : nativeMode) wideMode.push_back(static_cast<unsigned char>(character));
-    return ::_wfopen(path.c_str(), wideMode.c_str());
+    const char access = nativeMode[0];
+    const bool update = nativeMode.find('+') != std::string::npos;
+    const DWORD desired = update ? GENERIC_READ | GENERIC_WRITE : access == 'r' ? GENERIC_READ : GENERIC_WRITE;
+    const DWORD disposition = access == 'r' ? OPEN_EXISTING
+        : nativeMode.find('x') != std::string::npos ? CREATE_NEW : access == 'w' ? CREATE_ALWAYS : OPEN_ALWAYS;
+    SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+    const auto handle = CreateFileW(path.c_str(), desired, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, &security,
+        disposition, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        errno = WindowsOpenError_nid_no_patch(GetLastError());
+        return nullptr;
+    }
+    const int descriptor = ::_open_osfhandle(reinterpret_cast<std::intptr_t>(handle), access == 'a' ? _O_APPEND : 0);
+    if (descriptor < 0) {
+        CloseHandle(handle);
+        return nullptr;
+    }
+    std::wstring streamMode;
+    for (const char character : nativeMode)
+        if (character != 'x') streamMode.push_back(static_cast<unsigned char>(character));
+    std::FILE* stream = ::_wfdopen(descriptor, streamMode.c_str());
+    if (!stream) ::_close(descriptor);
+    return stream;
 #else
     return std::fopen(path.c_str(), nativeMode.c_str());
 #endif
@@ -58,18 +88,17 @@ extern "C" {
 FileStream* APS5_VABI fdopen_nid_postfix(int descriptor, const char* mode) {
     if (descriptor < 0) { errno = 9; return nullptr; }
     if (!mode) { errno = 22; return nullptr; }
-    const char* supported[] = {"r", "w", "a", "rb", "wb", "ab", "r+", "w+", "a+",
-        "rb+", "wb+", "ab+", "r+b", "w+b", "a+b"};
-    bool valid = false;
-    for (const auto* candidate : supported) if (std::strcmp(mode, candidate) == 0) valid = true;
-    if (!valid) { errno = 22; return nullptr; }
+    const auto parsed = ParseFileMode(mode);
+    if (!parsed) { errno = 22; return nullptr; }
     try {
+        auto nativeMode = parsed->native;
+        std::erase(nativeMode, 'x');
         const auto release = [](void* pointer) { ::operator delete(pointer); };
         std::unique_ptr<void, decltype(release)> storage(::operator new(sizeof(FileStream)), release);
 #ifdef _WIN32
-        auto* native = ::_fdopen(descriptor, mode);
+        auto* native = ::_fdopen(descriptor, nativeMode.c_str());
 #else
-        auto* native = ::fdopen(descriptor, mode);
+        auto* native = ::fdopen(descriptor, nativeMode.c_str());
 #endif
         if (!native) return nullptr;
         auto* stream = new (storage.get()) FileStream(native, true);
@@ -148,7 +177,9 @@ FileStream* APS5_VABI fopen_nid_postfix(const char* filename, const char* mode) 
 int APS5_VABI fopen_s_nid_postfix(FileStream** result, const char* filename, const char* mode) {
     constexpr int GuestEinval = 22;
     constexpr int GuestEnoent = 2;
-    if (!result || !filename || !mode) return GuestEinval;
+    if (!result) return GuestEinval;
+    *result = nullptr;
+    if (!filename || !mode) return GuestEinval;
     *result = fopen_nid_postfix(filename, mode);
     return *result ? 0 : GuestEnoent;
 }
@@ -156,8 +187,7 @@ int APS5_VABI fopen_s_nid_postfix(FileStream** result, const char* filename, con
 int APS5_VABI fclose_nid_postfix(FileStream* stream) {
     GetNativeStream(stream);
     std::unique_ptr<FileStream> owner(stream->IsDynamic() ? stream : nullptr);
-    stream->Close();
-    return 0;
+    return stream->Close();
 }
 
 int APS5_VABI fseek_nid_postfix(FileStream* stream, std::int64_t offset, int origin);
@@ -292,6 +322,17 @@ void APS5_VABI free_nid_postfix(void* ptr) {
 
 void* APS5_VABI realloc_nid_postfix(void* ptr, size_t newSize) {
     return ApplicationHeapReallocate_nid_no_patch(ptr, newSize);
+}
+
+void* APS5_VABI reallocf_nid_postfix(void* ptr, size_t newSize) {
+    try {
+        return ApplicationHeapReallocate_nid_no_patch(ptr, newSize);
+    } catch (const std::bad_alloc&) {
+    } catch (const std::length_error&) {
+    }
+    ApplicationHeapFree_nid_no_patch(ptr);
+    errno = 12;
+    return nullptr;
 }
 
 void* APS5_VABI memalign_nid_postfix(size_t alignment, size_t size) {

@@ -288,6 +288,25 @@ int APS5_VABI sigtimedwait_nid_postfix(const GuestSignalSet* set, void* info, co
     NotImplemented_nid_no_patch("sigtimedwait: waiting for a pending signal");
     return -1;
 }
+
+int APS5_VABI sigwaitinfo_nid_postfix(const GuestSignalSet* set, void* info) {
+    (void)set;
+    (void)info;
+    NotImplemented_nid_no_patch("sigwaitinfo: waiting for a pending signal");
+    return -1;
+}
+
+int APS5_VABI sigwait_nid_postfix(const GuestSignalSet* set, int* received) {
+    (void)set;
+    (void)received;
+    NotImplemented_nid_no_patch("sigwait: waiting for a pending signal");
+    return -1;
+}
+
+int APS5_VABI pause_nid_postfix(void) {
+    NotImplemented_nid_no_patch("pause: waiting for a delivered signal");
+    return -1;
+}
 }
 
 extern "C" {

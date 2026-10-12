@@ -5,6 +5,7 @@
 #include "Optimization/ResourceMaterializer.hpp"
 #include "Optimization/ResourceProgram.hpp"
 #include "Optimization/ShaderStageInputInfo.hpp"
+#include "Optimization/SrtWalker.hpp"
 #include "Optimization/SrtWalker/SrtDescriptorEvaluation.hpp"
 #include "Optimization/SrtWalker/SrtEvaluator.hpp"
 #include "Optimization/SrtWalker/SrtInstructionPredicates.hpp"
@@ -49,7 +50,7 @@
 namespace {
 
 ShaderRecompiler::SpirvTarget BufferTarget() {
-    static constexpr std::array<std::uint32_t, 5> capabilities{spv::CapabilityShader, spv::CapabilityImageGatherExtended, spv::CapabilityInt64, spv::CapabilityPhysicalStorageBufferAddresses, spv::CapabilityStorageBuffer8BitAccess};
+    static constexpr std::array<std::uint32_t, 6> capabilities{spv::CapabilityShader, spv::CapabilityImageGatherExtended, spv::CapabilityInt64, spv::CapabilityPhysicalStorageBufferAddresses, spv::CapabilityStorageBuffer8BitAccess, spv::CapabilityClipDistance};
     static constexpr std::array<std::string_view, 2> extensions{"SPV_KHR_physical_storage_buffer", "SPV_KHR_8bit_storage"};
     ShaderRecompiler::SpirvTarget target{};
     target.bdaAbiVersion = ShaderRecompiler::BdaAbi::Version;
@@ -445,6 +446,9 @@ void verifySignedSrtComparison() {
     source.dwords[1] = &make(IrOpcode::SelectU32, IrType::U32, {&aboveMin, &greaterThanMin, &equalMin});
     source.dwords[2] = &make(IrOpcode::SelectU32, IrType::U32, {&belowMaxValue, &belowMax, &equalMax});
     plan.descriptorSources.push_back(source);
+    for (std::uint32_t dword = 0; dword < source.dwordCount; ++dword) {
+        require(SrtWalker().ValidateRuntimeValue(plan, source.dwords[dword]), "signed SRT comparison: the runtime validator rejects a descriptor dword the evaluator computes");
+    }
     const std::array<std::uint32_t, 1> sourceIndex{0u};
     const std::array<std::pair<std::uint32_t, std::array<std::uint32_t, 3>>, 4> cases{{
         {0x80000000u, {0xau, 0xdu, 0xeu}},
@@ -1198,7 +1202,7 @@ void verifyLanesOutsideHostSubgroup() {
 
 void verifyHalfWaveReduction() {
     using namespace ShaderRecompiler;
-    static constexpr std::array<std::uint32_t, 4> capabilities{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityGroupNonUniformArithmetic};
+    static constexpr std::array<std::uint32_t, 5> capabilities{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityGroupNonUniformArithmetic, spv::CapabilityClipDistance};
     const auto pixel = [](std::span<const std::uint32_t> code, std::uint32_t subgroupSize, bool arithmetic) {
         ShaderPixelStageInfo info{};
         info.inputAddr = PixelInputBit(PixelInput::PositionX);
@@ -1337,6 +1341,13 @@ void verifyHalfWaveReduction() {
     divergent.insert(divergent.begin() + 3, 0x88fe1a7eu);
     divergent.insert(divergent.begin() + 2, {0xbe860480u, 0x7d821688u, 0xbe9a246au, 0xbf880001u});
     require(reductions(pixel(divergent, 32u, true), spv::OpGroupNonUniformUMin) == 1u, "half-wave reduction: keys masked inside a divergent branch did not read lane 31 as a subgroup UMin");
+    auto windowed = umin;
+    windowed.insert(windowed.begin() + 23, 0x7e008514u);
+    require(reductions(pixel(windowed, 32u, true), spv::OpGroupNonUniformUMin) == 1u, "half-wave reduction: a UMin scan of registers in a v_movreld_b32 window did not read lane 31 as a subgroup UMin on 32 lanes");
+    require(halves(pixel(windowed, 64u, true), spv::OpGroupNonUniformUMin, 0xffffffffu), "half-wave reduction: a UMin scan of registers in a v_movreld_b32 window did not read lanes 31 and 63 as reductions of host invocations 0-31 and 32-63 on 64 lanes");
+    auto overwritten = umin;
+    overwritten.insert(overwritten.begin() + 17, {0x7ef80500u, 0x7e008514u});
+    expectFailure([&] { static_cast<void>(pixel(overwritten, 32u, true)); }, lane63, "half-wave reduction: a scan of window registers read lane 63 after a v_movreld_b32 at a runtime M0 that may overwrite them");
     const char* arithmetic = "v_readlane_b32 of lane 31 of a wave64 half-wave reduction scan needs subgroup arithmetic";
     expectFailure([&] { static_cast<void>(pixel(umin, 32u, false)); }, arithmetic, "half-wave reduction: a device without subgroup arithmetic read lane 31 on 32 lanes");
     expectFailure([&] { static_cast<void>(pixel(umin, 64u, false)); }, arithmetic, "half-wave reduction: a device without subgroup arithmetic read lane 31 on 64 lanes");
@@ -1360,7 +1371,7 @@ void verifyHalfWaveReduction() {
 
 void verifyNarrowVertexWave() {
     using namespace ShaderRecompiler;
-    static constexpr std::array<std::uint32_t, 4> capabilities{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityGroupNonUniformArithmetic};
+    static constexpr std::array<std::uint32_t, 5> capabilities{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityGroupNonUniformArithmetic, spv::CapabilityClipDistance};
     static constexpr std::array<std::uint32_t, 4> userData{0u, 0u, 0u, 0x2020u};
     const auto vertex = [](std::span<const std::uint32_t> code, std::uint32_t waveSize, std::uint32_t subgroupSize, std::uint32_t userDataBase) {
         RecompileRequest request{};
@@ -1407,7 +1418,7 @@ void verifyNarrowVertexWave() {
     const auto wide64 = prepared(culling, 64u);
     require(!wide64.empty() && reductions(wide64) == 0u, "narrow vertex wave: the NGG culling scan, keyed on lanes below 64 on 64 lanes, did not keep its DPP scan");
     require(prepares(patched({{6, 0x80060015u}}), 32u), "narrow vertex wave: the scan keyed on lanes below the vertex count in s3 did not prepare on 32 lanes");
-    static constexpr std::array<std::uint32_t, 3> noArithmetic{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle};
+    static constexpr std::array<std::uint32_t, 4> noArithmetic{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityClipDistance};
     const auto otherKeys = patched({{7, 0x360e0a82u}});
     auto withoutArithmetic = vertex(otherKeys, 64u, 32u, 8u);
     withoutArithmetic.target.supportedCapabilities = noArithmetic;
@@ -1538,7 +1549,7 @@ void verifyPixelRequestSerialization() {
                         value.posZ, value.posW, value.frontFace, value.ancillary, value.sampleShading,
                         value.noPerspective, value.linearCentroid, value.pixelKillEnable, value.depthExportEnable,
                         value.sampleMaskExportEnable, value.earlyZ, value.executeOnNoop, value.conservativeZExport, value.orderedPixelShader,
-                        value.targetOutputMode, value.targetExportMapping, value.alphaToCoverage);
+                        value.targetOutputMode, value.targetExportMapping, value.alphaToCoverage, value.stencilRefExportEnable);
     };
     const std::array<std::uint32_t, 1> code{0xbf810000u};
     const std::array<std::uint32_t, 3> userData{0x12345678u, 0xabcdef01u, 0x87654321u};
@@ -1582,6 +1593,7 @@ void verifyPixelRequestSerialization() {
     };
     for (std::uint32_t i = 0; i < pixel.interpolatorSettings.size(); ++i) pixel.interpolatorSettings[i] = 0x10101010u + i;
     pixel.alphaToCoverage = true;
+    pixel.stencilRefExportEnable = true;
     const std::array<std::array<std::uint8_t, 8>, 3> mappings{{
         {0x00u, 0xe4u, 0xc6u, 0x1bu, 0xffu, 0x80u, 0x55u, 0xaau},
         {0xe4u, 0xe4u, 0xe4u, 0xe4u, 0xe4u, 0xe4u, 0xe4u, 0xe4u},
@@ -1610,6 +1622,10 @@ void verifyPixelRequestSerialization() {
         withoutCoverage.context.pixel->alphaToCoverage = false;
         RecompileCacheKey::Build(withoutCoverage, replayKey);
         require(key != replayKey && RecompileCacheKey::ContextHash(request) != RecompileCacheKey::ContextHash(withoutCoverage), "alpha-to-coverage did not change the static shader identity");
+        auto withoutStencilRef = request;
+        withoutStencilRef.context.pixel->stencilRefExportEnable = false;
+        RecompileCacheKey::Build(withoutStencilRef, replayKey);
+        require(key != replayKey && RecompileCacheKey::ContextHash(request) != RecompileCacheKey::ContextHash(withoutStencilRef), "the stencil reference export did not change the static shader identity");
     }
     request.context.pixel.reset();
     request.shader.stage = ShaderStage::Vertex;
@@ -1621,12 +1637,12 @@ void verifyPixelRequestSerialization() {
     minimal.context.waveSize = 64;
     minimal.context.pixel = ShaderPixelStageInfo{};
     const auto encoded = serializer.Serialize(minimal);
-    require(requestPrefix(encoded, 8u) == "NVNQQRAAAAA=", "new requests did not use serialization version 16");
+    require(requestPrefix(encoded, 8u) == "NVNQQREAAAA=", "new requests did not use serialization version 17");
     constexpr std::size_t mappingOffset = 8u + 37u + 18u + 163u;
-    for (std::size_t bytes = 0; bytes < 18u; ++bytes) {
-        expectFailure([&] { static_cast<void>(serializer.Deserialize(requestPrefix(encoded, mappingOffset + bytes))); }, "truncated data", "a truncated pixel mapping, packing, dual-source or alpha-to-coverage flag was accepted");
+    for (std::size_t bytes = 0; bytes < 19u; ++bytes) {
+        expectFailure([&] { static_cast<void>(serializer.Deserialize(requestPrefix(encoded, mappingOffset + bytes))); }, "truncated data", "a truncated pixel mapping, packing, dual-source, alpha-to-coverage or stencil reference export flag was accepted");
     }
-    for (const auto unsupported : {"NVNQQQAAAAA=", "NVNQQREAAAA="}) {
+    for (const auto unsupported : {"NVNQQQAAAAA=", "NVNQQRIAAAA="}) {
         expectFailure([&] { static_cast<void>(serializer.Deserialize(unsupported)); }, "serialization version", "an unsupported request version was accepted");
     }
 }
@@ -1716,12 +1732,13 @@ void verifyLegacyPixelRequests() {
         require(pixel.targetExportPacking == std::array<ColorExportPacking, 8>{}, "a legacy request packed a color export");
         require(!pixel.dualSourceBlend, "a legacy request enabled dual-source blending");
         require(!pixel.alphaToCoverage, "a legacy request enabled alpha-to-coverage");
+        require(!pixel.stencilRefExportEnable, "a legacy request exported a stencil reference");
         require(pixel.inputAddr == 2u && pixel.hasPerspectiveCenterVgpr && pixel.targetOutputMode[0] == 9u, "legacy pixel layout was misread");
         require(pixel.conservativeZExport == (version >= 7u ? ConservativeZExport::GreaterThanZ : ConservativeZExport::AnyZ), "legacy conservative Z layout was misread");
         require(!pixel.orderedPixelShader, "a legacy request became a primitive-ordered pixel shader");
         require(request.shader.stage == ShaderStage::Fragment && request.shader.code.size() == 1u && request.shader.code[0] == 0xbf810000u && !request.context.vertex.has_value() && request.context.memory.empty(), "legacy guest context was misaligned");
         require(request.target.vulkanVersion == 0x00401000u && request.target.spirvVersion == 0x00010300u && request.target.subgroupSize == 64u && request.layout.firstBinding == 11u && request.layout.pushConstantSizeBytes == 128u, "legacy target or binding layout was misaligned");
-        require(request.useCache == (version == 1u) && request.target.nonConstantImageOffsets == (version >= 6u) && request.target.srgbDecodeFormats == 0u && !request.target.narrowSubgroupClock && !request.target.float64DenormPreserve, "legacy request trailer was misread");
+        require(request.useCache == (version == 1u) && request.target.nonConstantImageOffsets == (version >= 6u) && request.target.srgbDecodeFormats == 0u && !request.target.narrowSubgroupClock && !request.target.float64DenormPreserve && !request.target.registrationModules, "legacy request trailer was misread");
         const auto upgraded = serializer.Deserialize(serializer.Serialize(request));
         require(upgraded.request.context.pixel->targetExportMapping == pixel.targetExportMapping && RecompileCacheKey::ContextHash(upgraded.request) == RecompileCacheKey::ContextHash(request), "upgrading a legacy capture changed its pixel mapping");
     }
@@ -3214,6 +3231,16 @@ int main(int argc, char** argv) {
         auto float64Denormals = uncached;
         float64Denormals.target.float64DenormPreserve = true;
         require(RequestSerializer{}.Deserialize(RequestSerializer{}.Serialize(float64Denormals)).request.target.float64DenormPreserve, "f64 denormal preservation was lost in serialization");
+        auto registrationModules = uncached;
+        registrationModules.target.registrationModules = true;
+        registrationModules.target.registrationWordLimit = 1234u;
+        const auto roundTrip = RequestSerializer{}.Deserialize(RequestSerializer{}.Serialize(registrationModules)).request.target;
+        require(roundTrip.registrationModules && roundTrip.registrationWordLimit == 1234u, "registration modules were lost in serialization");
+        std::vector<std::uint64_t> plainKey;
+        std::vector<std::uint64_t> registrationKey;
+        RecompileCacheKey::Build(uncached, plainKey);
+        RecompileCacheKey::Build(registrationModules, registrationKey);
+        require(plainKey != registrationKey, "registration modules did not change the cache key");
         auto changedLayout = request;
         changedLayout.layout.pushConstantSizeBytes = 64;
         require(!Recompile(changedLayout).cacheHit, "binding layout change reused an incompatible variant");

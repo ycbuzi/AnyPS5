@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cstring>
 #include <limits>
+#include <tuple>
 #include <domain/ImportModule.hpp>
 
 namespace Relinker {
@@ -46,7 +47,7 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
 
     std::vector<std::uint8_t> textSection;
     VirtualAddress textVAddr = 0;
-    std::vector<std::pair<std::vector<std::uint8_t>, VirtualAddress>> executableSegments;
+    std::vector<std::tuple<std::vector<std::uint8_t>, VirtualAddress, FileByteOffset>> executableSegments;
     VirtualAddress gotVAddr = 0;
     ByteCount gotSize = 0;
 
@@ -58,7 +59,7 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
                     textSection = segment;
                     textVAddr = ph.MappedAddress;
                 }
-                executableSegments.emplace_back(std::move(segment), ph.MappedAddress);
+                executableSegments.emplace_back(std::move(segment), ph.MappedAddress, ph.Offset);
             }
         }
     }
@@ -218,6 +219,15 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
         return relaOff + off;
     };
 
+    auto isZeroSectionSymbol = [&](const std::uint32_t symIdx) {
+        const FileByteOffset symOff = dynSymTabOffset + static_cast<FileByteOffset>(symIdx) * symEntSize;
+        if (symOff < dynSymTabOffset || symOff > raw.size() || raw.size() - symOff < symEntSize)
+            throw RelinkerException("Symbol table entry out of bounds", symOff);
+        std::uint64_t value = 0;
+        std::memcpy(&value, raw.data() + symOff + 8, sizeof(value));
+        return (raw[symOff + 4] & 0xf) == 3 && value == 0;
+    };
+
     auto extractRela = [&](const FileByteOffset relaOff, const ByteCount relaSize) {
         for (ByteCount off = 0; relaSize >= relaEntSize && off <= relaSize - relaEntSize; off += relaEntSize) {
             const FileByteOffset pos = relaEntryPos(relaOff, off);
@@ -235,7 +245,7 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
                 continue;
 
             if (relType == 8) {
-                if (symIdx != 0)
+                if (symIdx != 0 && !isZeroSectionSymbol(symIdx))
                     throw RelinkerException("RELATIVE relocation has a nonzero symbol index", pos);
                 continue;
             }
@@ -260,7 +270,8 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
 
     if (std::any_of(programHeaders.begin(), programHeaders.end(), [](const ProgramHeader& ph) { return ph.Type == PT_SCE_DYNLIBDATA; })) {
         const auto functions = UnusedNidFilter::ReadExceptionFunctions(raw, programHeaders, {}, {});
-        for (auto& [segment, segmentVAddr] : executableSegments) {
+        for (auto& [segment, segmentVAddr, segmentFileOffset] : executableSegments) {
+            static_cast<void>(segmentFileOffset);
             VirtualAddress codeEnd = 0;
             for (const auto& function : functions)
                 if (function.Begin >= segmentVAddr && function.Begin - segmentVAddr < segment.size())
@@ -295,8 +306,16 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
         }
     }
 
-    for (const auto& [segment, segmentVAddr] : executableSegments)
-        _syscallScanner->ScanCodeSectionForSyscalls(segment, segmentVAddr, segment.size());
+    std::vector<RelinkPatch> syscallPatches;
+    for (auto& [segment, segmentVAddr, segmentFileOffset] : executableSegments) {
+        for (const auto offset : _syscallScanner->ScanCodeSectionForSyscalls(segment, segmentVAddr, segment.size())) {
+            if (offset > segment.size() || segment.size() - offset < 2u)
+                throw RelinkerException("Syscall trap patch exceeds executable segment", segmentVAddr + offset);
+            segment[offset] = 0x0F;
+            segment[offset + 1] = 0x0B;
+            syscallPatches.push_back({segmentFileOffset + offset, {0x0F, 0x0B}});
+        }
+    }
 
     _validationPolicy->ValidateSyscallAbsence();
 
@@ -395,9 +414,8 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
             std::memcpy(&rOffset, raw.data() + pos, 8);
             std::memcpy(&rInfo, raw.data() + pos + 8, 8);
             std::memcpy(&rAddend, raw.data() + pos + 16, 8);
-            const std::uint32_t symIdx = static_cast<std::uint32_t>(rInfo >> 32);
             const std::uint32_t relType = static_cast<std::uint32_t>(rInfo & 0xffffffff);
-            if (symIdx == 0 && relType == R_X86_64_RELATIVE)
+            if (relType == R_X86_64_RELATIVE)
                 appendRela(dynSection.RelaData, rOffset, static_cast<std::uint64_t>(R_X86_64_RELATIVE), rAddend);
         }
     };
@@ -419,7 +437,8 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
         entries.push_back(std::move(entry));
     }
 
-    for (const auto& [segment, segmentVAddr] : executableSegments) {
+    for (const auto& [segment, segmentVAddr, segmentFileOffset] : executableSegments) {
+        static_cast<void>(segmentFileOffset);
         for (auto& entry : entries) {
             auto segmentSites = _callSiteResolver->ResolveCallSites(segment, segmentVAddr, entry.TargetOffset, 8);
             entry.CallSites.insert(entry.CallSites.end(), segmentSites.begin(), segmentSites.end());
@@ -427,6 +446,7 @@ RelinkResult RelinkerPipeline::Relink(const std::vector<std::uint8_t>& sourceElf
         }
     }
 
+    patches.insert(patches.end(), std::make_move_iterator(syscallPatches.begin()), std::make_move_iterator(syscallPatches.end()));
     return RelinkResult{std::move(entries), std::move(programHeaders), std::move(dynSection), gotVAddr, std::move(patches)};
 }
 

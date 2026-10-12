@@ -41,7 +41,9 @@ public:
     // before, during and after the pass (GENERAL for resident targets, which then need no
     // transitions).
     Pipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    Pipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const PipelineSetLayouts& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     ~Pipeline();
+    static bool Prebuild(const Context& context, const State& state, const VertexInputLayout& vertexInput, const PipelineSetLayouts& resources, std::span<const CompiledShader> shaders);
     Pipeline(const Pipeline&) = delete;
     Pipeline& operator=(const Pipeline&) = delete;
     VkPipelineLayout Layout() const;
@@ -87,6 +89,7 @@ private:
     VkFormat depthFormat = VK_FORMAT_UNDEFINED;
     VkImageLayout attachmentLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     std::vector<std::uint32_t> colorSlots;
+    bool sampleLocationsEnabled = false;
     std::vector<CachedFramebuffer> framebuffers;
 };
 
@@ -97,6 +100,15 @@ private:
 // only evicted once no recorded draw holds them. Debug aid: APS5_NO_PIPELINE_CACHE=1 builds one per
 // draw as before.
 std::shared_ptr<Pipeline> CachedPipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const ShaderResources& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+std::shared_ptr<Pipeline> CachedPipeline(const Context& context, const State& state, const VertexInputLayout& vertexInput, const PipelineSetLayouts& resources, std::span<const CompiledShader> shaders, VkImageLayout attachmentLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+struct DescribedSetLayouts {
+    PipelineSetLayouts layouts;
+    std::vector<std::uint32_t> mainKey;
+    std::vector<std::uint32_t> fragmentKey;
+    PipelineSetLayouts View() const { return {layouts.main, layouts.fragment, layouts.split, mainKey, fragmentKey}; }
+};
+DescribedSetLayouts DescribeSetLayouts(const Context& context, std::span<const CompiledShader> shaders);
+bool SplitsSets(const Context& context, std::span<const CompiledShader> shaders);
 // Destroys the cached pipelines of a device; to be called before the device goes away. Without it,
 // entries of a gone device are recognised by their buffer pool (made and reset with the device, so
 // it tells device instances apart when the loader reuses a VkDevice handle) and forgotten unused.
@@ -106,11 +118,12 @@ bool HasStencil(VkFormat format);
 void ValidateViewport(const Context& context, const VkViewport& viewport);
 void ValidateDepthBounds(const Context& context, const State& state);
 void ValidateProvokingVertex(const Context& context, const State& state, std::span<const CompiledShader> shaders = {});
+bool ValidateSampleLocations(const Context& context, const State& state);
 
 void ValidateShaderPair(const ShaderRecompiler::RecompileResult& vertex, const ShaderRecompiler::RecompileResult& fragment);
 bool ShadersWriteMemory(std::span<const CompiledShader> shaders);
 // Returns the color attachment locations the pixel shader writes.
-std::set<std::uint32_t> ValidateShaders(std::span<const CompiledShader> shaders, const State& state, const VkPhysicalDeviceSubgroupProperties& subgroup, bool fragmentShaderBarycentric, bool descriptorIndexing = false, bool imageInt64Atomics = false, bool geometryShader = false, bool sampleRateShading = false, bool bufferInt64Atomics = false);
+std::set<std::uint32_t> ValidateShaders(std::span<const CompiledShader> shaders, const State& state, const VkPhysicalDeviceSubgroupProperties& subgroup, bool fragmentShaderBarycentric, bool descriptorIndexing = false, bool imageInt64Atomics = false, bool geometryShader = false, bool sampleRateShading = false, bool bufferInt64Atomics = false, bool shaderClipDistance = false);
 
 }
 

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iterator>
 #include <initializer_list>
+#include <limits>
 #include <chrono>
 #include <atomic>
 #include <thread>
@@ -121,7 +122,7 @@ static void CheckUnlockedStreams() {
     Require(std::ungetc('Q', stream.GetHandle()) == 'Q');
     Require(getc_unlocked_nid_postfix(&stream) == 'Q' && !(guest.flags & 0x20));
     std::rewind(stream.GetHandle());
-    stream.SetEncodingError();
+    stream.SetError();
     Require(putc_unlocked_nid_postfix('R', &stream) == 'R' && (guest.flags & 0x40));
     clearerr_nid_postfix(&stream);
     Require(!(guest.flags & 0x40));
@@ -229,6 +230,27 @@ static void CheckUnlockedStreamLock(bool write) {
     stream.Close();
 }
 
+static void CheckFgetsSize() {
+    FileStream stream(std::tmpfile());
+    Require(fwrite_nid_postfix("line\n", 1, 5, &stream) == 5);
+    rewind_nid_postfix(&stream);
+    for (const int size : {0, -1, std::numeric_limits<int>::min()}) {
+        char buffer[8];
+        std::memset(buffer, '!', sizeof(buffer));
+        *__error_nid_postfix() = 0;
+        Require(fgets_nid_postfix(buffer, size, &stream) == nullptr);
+        Require(*__error_nid_postfix() == 22 && ferror_nid_postfix(&stream) != 0 && feof_nid_postfix(&stream) == 0);
+        Require(buffer[0] == '!' && ftello_nid_postfix(&stream) == 0);
+        Require(ferror_nid_postfix(&stream) != 0);
+        clearerr_nid_postfix(&stream);
+        Require(ferror_nid_postfix(&stream) == 0);
+    }
+    char line[8]{};
+    Require(fgets_nid_postfix(line, sizeof(line), &stream) == line && std::strcmp(line, "line\n") == 0);
+    Require(ferror_nid_postfix(&stream) == 0);
+    stream.Close();
+}
+
 static void CheckRewind() {
     FileStream stream(std::tmpfile());
     Require(fwrite_nid_postfix("ab", 1, 2, &stream) == 2);
@@ -239,7 +261,7 @@ static void CheckRewind() {
     rewind_nid_postfix(&stream);
     Require(fgetc_nid_postfix(&stream) == 'a' && fgetc_nid_postfix(&stream) == 'b' && fgetc_nid_postfix(&stream) == EOF);
     Require(feof_nid_postfix(&stream) != 0);
-    stream.SetEncodingError();
+    stream.SetError();
     Require(ferror_nid_postfix(&stream) != 0);
     rewind_nid_postfix(&stream);
     Require(feof_nid_postfix(&stream) == 0 && ferror_nid_postfix(&stream) == 0 && fgetc_nid_postfix(&stream) == 'a');
@@ -312,6 +334,35 @@ static bool CheckBinaryModes() {
     return correct;
 }
 
+static int DuplicateDescriptor(std::FILE* stream) {
+#ifdef _WIN32
+    return _dup(_fileno(stream));
+#else
+    return ::dup(::fileno(stream));
+#endif
+}
+
+static void CheckDescriptorModes(std::FILE* original) {
+    for (const char* mode : {"rt", "r+t", "re", "rbe", "rw", "r+x"}) {
+        const int descriptor = DuplicateDescriptor(original);
+        Require(descriptor >= 0);
+        auto* wrapped = fdopen_nid_postfix(descriptor, mode);
+        Require(wrapped != nullptr && fseek_nid_postfix(wrapped, 0, SEEK_SET) == 0);
+        char contents[32]{};
+        Require(fgets_nid_postfix(contents, sizeof(contents), wrapped) == contents && std::strcmp(contents, "retained") == 0);
+        Require(fclose_nid_postfix(wrapped) == 0);
+    }
+    const int descriptor = DuplicateDescriptor(original);
+    Require(descriptor >= 0);
+    *__error_nid_postfix() = 0;
+    Require(fdopen_nid_postfix(descriptor, "rx") == nullptr && *__error_nid_postfix() == 22);
+#ifdef _WIN32
+    Require(_close(descriptor) == 0);
+#else
+    Require(::close(descriptor) == 0);
+#endif
+}
+
 int main() {
     Require(_Getmbcurmax_nid_postfix() == 1 && _Getmbcurmax_nid_postfix() == ___mb_cur_max_nid_postfix());
     Require(fdopen_nid_postfix(-1, "rb") == nullptr && *__error_nid_postfix() == 9);
@@ -339,6 +390,7 @@ int main() {
 #else
     Require(::close(descriptor) == -1);
 #endif
+    CheckDescriptorModes(original);
     Require(std::fclose(original) == 0);
     char stringOutput[256];
     std::memset(stringOutput, '!', sizeof(stringOutput));
@@ -511,6 +563,7 @@ int main() {
     Require(fgetc_nid_postfix(&locked) == 'A' && fgetc_nid_postfix(&locked) == 'B');
     locked.Close();
     CheckRewind();
+    CheckFgetsSize();
     CheckUnlockedStreams();
     CheckUnlockedStreamLock(false);
     CheckUnlockedStreamLock(true);

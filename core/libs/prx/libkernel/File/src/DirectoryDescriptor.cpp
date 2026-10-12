@@ -1,6 +1,7 @@
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
 #include "prx/libkernel/File/include/File.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
+#include "prx/libc/include/HostThreadLocal.hpp"
 
 #include <cerrno>
 #include <string>
@@ -126,6 +127,10 @@ int ReadDirectoryDescriptor(int fd, char* buf, int nbytes) {
     std::size_t used = 0;
     while (state.cursor < state.entries.size()) {
         const auto& [name, type] = state.entries[state.cursor];
+        if (name.size() > 255) {
+            if (used == 0) return SCE_KERNEL_ERROR_ENAMETOOLONG;
+            break;
+        }
         const std::size_t record = (8 + name.size() + 1 + 3) & ~std::size_t{3};
         if (used + record > static_cast<std::size_t>(nbytes)) {
             if (used == 0) return SCE_KERNEL_ERROR_EINVAL;
@@ -177,7 +182,8 @@ extern "C" const char* GetDirectoryDescriptorPath_nid_no_patch(int fd, int* erro
         *error = ENOTDIR;
         return nullptr;
     }
-    static thread_local std::string path;
+    struct PathTag {};
+    auto& path = HostThreadLocal<std::string, PathTag>();
     const auto utf8Path = directory->u8string();
     path.assign(reinterpret_cast<const char*>(utf8Path.data()), utf8Path.size());
     *error = 0;

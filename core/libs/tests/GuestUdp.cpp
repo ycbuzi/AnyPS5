@@ -1,4 +1,5 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -15,6 +16,7 @@ int APS5_VABI bind_nid_postfix(int, const void*, std::uint32_t);
 int APS5_VABI getsockname_nid_postfix(int, void*, std::uint32_t*);
 int APS5_VABI ioctl_nid_postfix(int, std::uint64_t, void*);
 int APS5_VABI _ioctl_nid_postfix(int, std::uint64_t, void*);
+std::int64_t APS5_VABI send_nid_postfix(int, const void*, std::uint64_t, int);
 std::int64_t APS5_VABI sendto_nid_postfix(int, const void*, std::uint64_t, int, const void*, std::uint32_t);
 std::int64_t APS5_VABI recvfrom_nid_postfix(int, void*, std::uint64_t, int, void*, std::uint32_t*);
 int APS5_VABI close_nid_postfix(int);
@@ -42,7 +44,61 @@ std::int64_t APS5_VABI sceKernelReadv(int, const Iovec*, int);
 std::int64_t APS5_VABI sceKernelWritev(int, const Iovec*, int);
 }
 static void Require(bool value) { if (!value) std::abort(); }
+
+static void CheckAddressLengths(int family) {
+    const std::uint32_t addressSize = family == 2 ? 16 : 28;
+    const int receiver = socket_nid_postfix(family, 2, 0);
+    if (receiver < 0 && family == 28 && *__error_nid_postfix() == 47) return;
+    Require(receiver >= 0);
+    const int sender = socket_nid_postfix(family, 2, 0);
+    Require(sender >= 0);
+    std::array<unsigned char, 28> destination{};
+    destination[0] = static_cast<unsigned char>(addressSize);
+    destination[1] = static_cast<unsigned char>(family);
+    if (family == 2) { destination[4] = 127; destination[7] = 1; }
+    else destination[23] = 1;
+    const int bound = bind_nid_postfix(receiver, destination.data(), addressSize);
+    if (bound < 0 && family == 28 && *__error_nid_postfix() == 49) {
+        Require(close_nid_postfix(sender) == 0 && close_nid_postfix(receiver) == 0);
+        return;
+    }
+    Require(bound == 0);
+    std::uint32_t size = destination.size();
+    Require(getsockname_nid_postfix(receiver, destination.data(), &size) == 0 && size == addressSize);
+    Require(connect_nid_postfix(sender, destination.data(), addressSize) == 0);
+    std::array<unsigned char, 28> expected{};
+    size = expected.size();
+    Require(getsockname_nid_postfix(sender, expected.data(), &size) == 0 && size == addressSize);
+    for (std::uint32_t capacity : {0u, 1u, 2u, addressSize - 1, addressSize, 32u, UINT32_MAX}) {
+        const auto copied = std::min(capacity, addressSize);
+        std::array<unsigned char, 32> address;
+        address.fill(0xa5);
+        size = capacity;
+        Require(getsockname_nid_postfix(receiver, address.data(), &size) == 0 && size == copied);
+        Require(std::memcmp(address.data(), destination.data(), copied) == 0);
+        Require(std::all_of(address.begin() + copied, address.end(), [](auto byte) { return byte == 0xa5; }));
+        const char payload[] = "address length";
+        char received[sizeof(payload)]{};
+        Require(sendto_nid_postfix(sender, payload, sizeof(payload), 0, nullptr, 0) == sizeof(payload));
+        address.fill(0xa5);
+        size = capacity;
+        Require(recvfrom_nid_postfix(receiver, received, sizeof(received), 2, address.data(), &size) == sizeof(payload));
+        Require(size == copied && std::memcmp(address.data(), expected.data(), copied) == 0);
+        Require(std::all_of(address.begin() + copied, address.end(), [](auto byte) { return byte == 0xa5; }));
+        address.fill(0xa5);
+        Iovec vector{received, sizeof(received)};
+        Msghdr message{address.data(), capacity, &vector, 1, nullptr, 0, -1};
+        Require(recvmsg_nid_postfix(receiver, &message, 0) == sizeof(payload));
+        Require(message.nameLength == copied && std::memcmp(received, payload, sizeof(payload)) == 0);
+        Require(std::memcmp(address.data(), expected.data(), copied) == 0);
+        Require(std::all_of(address.begin() + copied, address.end(), [](auto byte) { return byte == 0xa5; }));
+    }
+    Require(close_nid_postfix(sender) == 0 && close_nid_postfix(receiver) == 0);
+}
+
 int main() {
+    CheckAddressLengths(2);
+    CheckAddressLengths(28);
     const int receiver = socket_nid_postfix(2, 2, 0);
     const int sender = socket_nid_postfix(2, 2, 17);
     Require(receiver >= 0 && sender >= 0 && receiver != sender);
@@ -68,6 +124,13 @@ int main() {
     Require(getsockopt_nid_postfix(sender, 0xffff, 0x20, &option, &optionSize) == 0 && option != 0);
     Require(setsockopt_nid_postfix(sender, 0xffff, 12345, &enabled, sizeof(enabled)) == -1);
     Require(*__error_nid_postfix() == 42);
+    const int unconnected = socket_nid_postfix(2, 2, 0);
+    Require(unconnected >= 0);
+    Require(send_nid_postfix(unconnected, "x", 1, 0) == -1);
+    Require(*__error_nid_postfix() == 39);
+    Require(sendto_nid_postfix(unconnected, "x", 1, 0, nullptr, 0) == -1);
+    Require(*__error_nid_postfix() == 39);
+    Require(close_nid_postfix(unconnected) == 0);
     const int unsized = socket_nid_postfix(2, 2, 0);
     std::array<unsigned char, 16> unsizedAddress{0, 2, 0, 0, 127, 0, 0, 1};
     Require(unsized >= 0 && bind_nid_postfix(unsized, unsizedAddress.data(), unsizedAddress.size()) == 0);
@@ -156,4 +219,14 @@ int main() {
     const int stream = socket_nid_postfix(2, 1, 0);
     Require(stream >= 0);
     Require(close_nid_postfix(stream) == 0);
+    const int nonblocking = socket_nid_postfix(2, 2 | 0x20000000, 0);
+    Require(nonblocking >= 0 && fcntl_nid_postfix(nonblocking, 3) == 6);
+    std::array<unsigned char, 16> nonblockingAddress{16, 2, 0, 0, 127, 0, 0, 1};
+    Require(bind_nid_postfix(nonblocking, nonblockingAddress.data(), nonblockingAddress.size()) == 0);
+    Require(recvfrom_nid_postfix(nonblocking, buffer, sizeof(buffer), 0, nullptr, nullptr) == -1 && *__error_nid_postfix() == 35);
+    Require(close_nid_postfix(nonblocking) == 0);
+    const int closeOnExec = socket_nid_postfix(2, 1 | 0x10000000, 6);
+    Require(closeOnExec >= 0 && fcntl_nid_postfix(closeOnExec, 3) == 2);
+    Require(close_nid_postfix(closeOnExec) == 0);
+    Require(socket_nid_postfix(2, 0x20000000, 0) == -1 && *__error_nid_postfix() == 43);
 }

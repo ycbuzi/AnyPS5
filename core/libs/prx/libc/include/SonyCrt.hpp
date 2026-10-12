@@ -125,10 +125,11 @@ inline int SonyWcscpyS(std::uint16_t* dest, std::size_t size, const std::uint16_
 
 inline std::size_t SonyMbstowcs(std::uint16_t* dest, const char* src, std::size_t size) {
     if (!src) return 0;
+    if (!dest) return std::strlen(src);
     std::size_t converted = 0;
     while (converted < size) {
         const auto value = static_cast<unsigned char>(src[converted]);
-        if (dest) dest[converted] = value;
+        dest[converted] = value;
         if (value == 0) return converted;
         ++converted;
     }
@@ -192,6 +193,19 @@ inline unsigned __int128 SonyUdivti3(unsigned __int128 dividend, unsigned __int1
         }
     }
     return quotient;
+}
+
+inline __int128 SonyDivti3(__int128 dividend, __int128 divisor) {
+    if (divisor == 0) throw std::runtime_error("__divti3: integer divide by zero");
+    const bool negative = (dividend < 0) != (divisor < 0);
+    const unsigned __int128 magnitudeDividend = dividend < 0
+        ? (unsigned __int128)0 - (unsigned __int128)dividend
+        : (unsigned __int128)dividend;
+    const unsigned __int128 magnitudeDivisor = divisor < 0
+        ? (unsigned __int128)0 - (unsigned __int128)divisor
+        : (unsigned __int128)divisor;
+    const unsigned __int128 magnitude = SonyUdivti3(magnitudeDividend, magnitudeDivisor);
+    return (__int128)(negative ? (unsigned __int128)0 - magnitude : magnitude);
 }
 
 }

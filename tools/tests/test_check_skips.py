@@ -13,6 +13,7 @@ LIMITATIONS = [
     "skipped, the device lacks fragmentShaderPixelInterlock",
     "skipped, the device lacks geometryShader",
     "skipped, the device lacks shaderSubgroupClock",
+    "skipped, the device lacks VK_EXT_shader_stencil_export",
     "skipped, the device does not import guest memory",
     "skipped, the device imports no host memory",
     "skipped, the device flushes f64 subnormals without DenormPreserve",

@@ -11,6 +11,8 @@ char* APS5_VABI basename_nid_postfix(const char*);
 char* APS5_VABI __inet_ntoa_nid_postfix(unsigned int);
 char* APS5_VABI dirname_nid_postfix(const char*);
 int* APS5_VABI __error_nid_postfix();
+int APS5_VABI strcasecmp_nid_postfix(const char*, const char*);
+int APS5_VABI strncasecmp_nid_postfix(const char*, const char*, std::size_t);
 std::size_t APS5_VABI strnlen_nid_postfix(const char*, std::size_t);
 std::size_t APS5_VABI strnlen_s_nid_postfix(const char*, std::size_t);
 char* APS5_VABI strncat_nid_postfix(char*, const char*, std::size_t);
@@ -98,6 +100,18 @@ static void CheckBoundsCheckedFunctions() {
     Require(snprintf_s_nid_postfix(formatted, sizeof(formatted), "%d-%s", 42, "x") == 4 && std::strcmp(formatted, "42-x") == 0);
 }
 
+static void CheckCaseInsensitiveComparison() {
+    Require(strcasecmp_nid_postfix("", "") == 0 && strcasecmp_nid_postfix("AbC", "aBc") == 0);
+    Require(strcasecmp_nid_postfix("A", "b") == 'a' - 'b' && strcasecmp_nid_postfix("b", "A") == 'b' - 'a');
+    Require(strcasecmp_nid_postfix("ab", "A") == 'b' && strcasecmp_nid_postfix("AB", "a") == 'b');
+    Require(strcasecmp_nid_postfix("A", "aB") == -'b' && strcasecmp_nid_postfix("a", "AB") == -'b');
+    Require(strcasecmp_nid_postfix("", "Z") == -'z' && strcasecmp_nid_postfix("Z", "") == 'z');
+    Require(strncasecmp_nid_postfix("abc", "ABD", 2) == 0 && strncasecmp_nid_postfix("abc", "ABD", 3) == 'c' - 'd');
+    Require(strncasecmp_nid_postfix("Ab", "a", 2) == 'b' && strncasecmp_nid_postfix("a", "AB", 5) == -'b');
+    Require(strncasecmp_nid_postfix("Q", "", 1) == 'q' && strncasecmp_nid_postfix("", "Q", 1) == -'q');
+    Require(strncasecmp_nid_postfix("x", "y", 0) == 0 && strncasecmp_nid_postfix("same", "SAME", 99) == 0);
+}
+
 static void CheckSscanfS() {
 #ifndef _WIN32
     int number = 0;
@@ -119,8 +133,54 @@ static void CheckSscanfS() {
 #endif
 }
 
+static bool CheckDirnameLengths() {
+    const std::string longLeaf(4096, 'x');
+    const std::string longestParent(1023, 'p');
+    const std::string tooLongParent(1024, 'q');
+    struct Case {
+        std::string path;
+        const char* expected;
+    };
+    const Case cases[] = {
+        {std::string(1023, 'x'), "."},
+        {std::string(1024, 'x'), "."},
+        {longLeaf, "."},
+        {"/" + longLeaf, "/"},
+        {"one/" + longLeaf, "one"},
+        {"/one/" + longLeaf, "/one"},
+        {"one//" + longLeaf + "///", "one"},
+        {"/one//" + longLeaf + "///", "/one"},
+        {longLeaf + "///", "."},
+        {std::string(4096, '/'), "/"},
+        {longestParent + "/leaf", longestParent.c_str()},
+        {longestParent + "//leaf///", longestParent.c_str()},
+        {longestParent + "/", "."},
+        {tooLongParent + "/leaf", nullptr},
+        {tooLongParent + "//leaf///", nullptr},
+        {longLeaf + "/leaf", nullptr},
+    };
+    bool passed = true;
+    for (const auto& test : cases) {
+        const std::string original = test.path;
+        *__error_nid_postfix() = 77;
+        const char* result = dirname_nid_postfix(test.path.c_str());
+        const bool matches = test.expected
+            ? result != nullptr && std::strcmp(result, test.expected) == 0 && *__error_nid_postfix() == 77
+            : result == nullptr && *__error_nid_postfix() == 63;
+        if (!matches || test.path != original) {
+            std::fprintf(stderr, "dirname input length %zu: expected output length %zu, received %s, errno %d\n",
+                test.path.size(), test.expected ? std::strlen(test.expected) : 0,
+                result ? "a directory" : "null", *__error_nid_postfix());
+            passed = false;
+        }
+    }
+    return passed;
+}
+
 int main() {
+    if (!CheckDirnameLengths()) return 1;
     CheckBoundsCheckedFunctions();
+    CheckCaseInsensitiveComparison();
     CheckSscanfS();
     Require(std::strcmp(dirname_nid_postfix(nullptr), ".") == 0);
     char emptyPath[] = "";
@@ -142,8 +202,6 @@ int main() {
     Require(std::strcmp(dirname_nid_postfix(rootChild), "/") == 0);
     char onlySlashes[] = "////";
     Require(std::strcmp(dirname_nid_postfix(onlySlashes), "/") == 0);
-    const std::string longDirnamePath(1024, 'x');
-    Require(dirname_nid_postfix(longDirnamePath.c_str()) == nullptr && *__error_nid_postfix() == 63);
     Require(std::strcmp(basename_nid_postfix(nullptr), ".") == 0);
     Require(std::strcmp(basename_nid_postfix(""), ".") == 0);
     Require(std::strcmp(basename_nid_postfix("////"), "/") == 0);

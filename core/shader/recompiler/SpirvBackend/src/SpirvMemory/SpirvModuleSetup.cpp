@@ -55,6 +55,11 @@ void DefineModule(SpirvEmitterState& state) {
             state.scratchVariable.at(half) = state.module.AllocateId();
         }
     }
+    if (state.program.Metadata().vectorWindowSize != 0u) {
+        for (std::uint32_t half = 0; half < state.laneCount; half++) {
+            state.vectorWindowVariable.at(half) = state.module.AllocateId();
+        }
+    }
     state.mainFunc = state.module.AllocateId();
     if (StageOf(state) == IrShaderStage::Mesh) {
         const auto& mesh = VertexInfo(state).mesh;
@@ -180,7 +185,15 @@ void DefineModule(SpirvEmitterState& state) {
                 state.module.AddExecutionMode(state.mainFunc, spv::ExecutionModeDepthGreater);
             }
         }
-        if (pixel.psEarlyZ && !pixel.psPixelKillEnable && !pixel.psDepthExportEnable && !pixel.psSampleMaskExportEnable && !pixel.psAlphaToCoverage) {
+        if (state.stencilRefVariable != 0) {
+            if (std::find(state.supportedCapabilities.begin(), state.supportedCapabilities.end(), static_cast<std::uint32_t>(spv::CapabilityStencilExportEXT)) == state.supportedCapabilities.end()) {
+                throw std::runtime_error("a pixel shader that exports the stencil reference needs VK_EXT_shader_stencil_export, which the device lacks");
+            }
+            state.module.EmitCapability(spv::CapabilityStencilExportEXT);
+            state.module.EmitExtension("SPV_EXT_shader_stencil_export");
+            state.module.AddExecutionMode(state.mainFunc, spv::ExecutionModeStencilRefReplacingEXT);
+        }
+        if (pixel.psEarlyZ && !pixel.psPixelKillEnable && !pixel.psDepthExportEnable && !pixel.psSampleMaskExportEnable && !pixel.psStencilRefExportEnable && !pixel.psAlphaToCoverage) {
             state.module.AddExecutionMode(state.mainFunc, spv::ExecutionModeEarlyFragmentTests);
         }
         if (pixel.psOrderedPixelShader) {
@@ -202,6 +215,11 @@ void DefineModule(SpirvEmitterState& state) {
     if (state.requirements.functionScratch) {
         for (std::uint32_t half = 0; half < state.laneCount; half++) {
             state.module.AddName(state.scratchVariable.at(half), "scratch_dwords");
+        }
+    }
+    if (state.program.Metadata().vectorWindowSize != 0u) {
+        for (std::uint32_t half = 0; half < state.laneCount; half++) {
+            state.module.AddName(state.vectorWindowVariable.at(half), "vector_window");
         }
     }
 }

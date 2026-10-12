@@ -119,6 +119,62 @@ void importSpanTests(const Context& context) {
     ::operator delete(block, std::align_val_t{piece});
 }
 
+void failedImportRemapTests(const Context& context, const BdaTestAccess& access) {
+    constexpr std::size_t piece = 65536;
+    auto* block = static_cast<std::byte*>(::operator new(4 * piece, std::align_val_t{piece}));
+    auto importing = context;
+    importing.hostImportAlignment = piece;
+    const auto address = reinterpret_cast<std::uintptr_t>(block);
+    const auto add = [&](std::size_t index) {
+        GuestAllocations::Mutation mutation;
+        mutation.Add(block + index * piece, piece, true, true, true);
+    };
+    const auto remove = [&](std::size_t index) {
+        GuestAllocations::Mutation mutation;
+        mutation.Remove(block + index * piece);
+    };
+    SetHostImportWindow(0);
+    for (std::size_t replaced = 0; replaced < 2; ++replaced) {
+        add(0);
+        add(1);
+        std::weak_ptr<const GuestAllocations::Range> owner;
+        {
+            const auto lease = GuestAllocations::GuestAllocationsAcquire_nid_postfix();
+            const auto found = std::find_if(lease.begin(), lease.end(), [&](const auto& range) { return range->address == address + replaced * piece; });
+            Require(found != lease.end(), "failed import fixture has no registered owner");
+            owner = *found;
+        }
+        access.limitMemory(0);
+        const auto attempts = access.allocationAttempts();
+        Require(HostImportFor(importing, address, 2 * piece) == nullptr && access.allocationAttempts() == attempts + 1, "host import failure was not exercised");
+        Require(owner.use_count() == 1, "a failed import pins its owner");
+        Require(HostImportFor(importing, address, 2 * piece) == nullptr && access.allocationAttempts() == attempts + 1, "an unchanged failed import was retried");
+        add(3);
+        Require(HostImportFor(importing, address, 2 * piece) == nullptr && access.allocationAttempts() == attempts + 1, "an unrelated mapping retried a failed import");
+        remove(replaced);
+        Require(owner.expired(), "a failed import kept the replaced owner alive");
+        add(replaced);
+        access.limitMemory(std::nullopt);
+        const auto* imported = HostImportFor(importing, address, 2 * piece);
+        Require(imported != nullptr && imported->base == address && imported->bytes == 2 * piece && access.allocationAttempts() == attempts + 2, "same-address remap retained a failed import decision");
+        remove(0);
+        remove(1);
+        remove(3);
+        ClearHostImports(importing.device);
+    }
+    add(0);
+    add(1);
+    access.limitMemory(0);
+    Require(HostImportFor(importing, address, 2 * piece) == nullptr, "span failure was not exercised");
+    remove(1);
+    access.limitMemory(std::nullopt);
+    const auto* shortened = HostImportFor(importing, address, piece);
+    Require(shortened != nullptr && shortened->bytes == piece, "a failed span suppressed an import of its remaining range");
+    remove(0);
+    ClearHostImports(importing.device);
+    ::operator delete(block, std::align_val_t{piece});
+}
+
 void importWindowTests(const Context& context) {
     constexpr std::size_t piece = 65536;
     constexpr std::size_t window = 2 * piece;
@@ -1105,6 +1161,7 @@ void RunBdaResourceTests(const Context& context, const BdaTestAccess& access) {
     }
     importCrossingTests(context, access);
     importSpanTests(context);
+    failedImportRemapTests(context, access);
     importWindowTests(context);
     heapMirrorTests(context, access);
     importedHeapMirrorTests(context, access);

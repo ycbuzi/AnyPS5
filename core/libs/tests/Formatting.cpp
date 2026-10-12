@@ -1,5 +1,9 @@
 #include "SceTypes.hpp"
+#include "prx/libc/include/ApplicationHeap.hpp"
+#include "prx/libc/include/GuestHeap.hpp"
 #include <algorithm>
+#include <array>
+#include <cstdlib>
 #include <cstring>
 #include <stdexcept>
 #include <cstdint>
@@ -15,6 +19,8 @@ int APS5_VABI vsnprintf_nid_postfix(char*, size_t, const char*, VaList*);
 int APS5_VABI vsnprintf_s_nid_postfix(char*, size_t, const char*, VaList*);
 int APS5_VABI vsscanf_s_nid_postfix(const char*, const char*, VaList*);
 int APS5_VABI vprintf_nid_postfix(const char*, VaList*);
+int APS5_VABI asprintf_nid_postfix(char**, const char*, ...);
+void APS5_VABI free_nid_postfix(void*);
 }
 
 static void Require(bool condition) {
@@ -208,6 +214,20 @@ __attribute__((noinline)) static void APS5_VABI RunChecks() {
     Require(sscanf_nid_postfix("", "%*d", &scanned) == EOF);
     Require(sscanf_nid_postfix("  ", "%*d%d", &scanned) == EOF);
     Require(sscanf_nid_postfix("", "%d", &scanned) == EOF);
+#else
+    char16_t wide[4] = {u'!', u'!', u'!', u'!'};
+    const auto rejects = [&](const char* format) {
+        try { sscanf_nid_postfix("ab cd", format, wide); } catch (const std::runtime_error&) { return wide[0] == u'!'; }
+        return false;
+    };
+    Require(rejects("%ls") && rejects("%*s %3lc") && rejects("%l[a-z]") && rejects("%S") && rejects("%2$C") && rejects("%'ls"));
+    const auto secureRejects = [&](const char* format) {
+        try { ScanListS("ab cd", format, wide, 4u); } catch (const std::runtime_error&) { return wide[0] == u'!'; }
+        return false;
+    };
+    Require(secureRejects("%ls") && secureRejects("%lc"));
+    char narrow[8] = {};
+    Require(sscanf_nid_postfix("ab%", "%7[^%ls]", narrow) == 1 && std::strcmp(narrow, "ab") == 0);
 #endif
     long long count = -1;
     int smallCount = -1;
@@ -228,4 +248,17 @@ __attribute__((noinline)) static void APS5_VABI RunChecks() {
     std::puts("Formatting checks passed: 10000 iterations");
 }
 
-int main() { RunChecks(); return CheckWidePrecision() ? 0 : 1; }
+static void* APS5_VABI Allocate(std::size_t bytes) { return GuestHeap::GuestHeapAllocate_nid_postfix(bytes); }
+static void APS5_VABI Release(void* pointer) { GuestHeap::GuestHeapFree_nid_postfix(pointer); }
+static void* APS5_VABI Unused() { std::abort(); }
+
+static void CheckAllocatingFormat() {
+    const std::array<void*, 10> api{reinterpret_cast<void*>(&Allocate), reinterpret_cast<void*>(&Release), reinterpret_cast<void*>(&Unused),
+        reinterpret_cast<void*>(&Unused), reinterpret_cast<void*>(&Unused), reinterpret_cast<void*>(&Unused), reinterpret_cast<void*>(&Unused)};
+    ApplicationHeapRegister_nid_no_patch(api.data());
+    char* allocated = nullptr;
+    Require(asprintf_nid_postfix(&allocated, "%ls:%S:%lc:%d", u"\u00e9", u"ab", 0x20ac, 7) == 11 && std::strcmp(allocated, "\xc3\xa9:ab:\xe2\x82\xac:7") == 0);
+    free_nid_postfix(allocated);
+}
+
+int main() { RunChecks(); CheckAllocatingFormat(); return CheckWidePrecision() ? 0 : 1; }

@@ -1448,7 +1448,12 @@ struct SaveDataMountInfo {
 
 struct SceSaveDataTitleId { char data[10]; char pad[2]; };
 struct SceSaveDataDirName { char data[32]; };
-struct SaveDataSearchInfo { std::uint8_t opaque[128]; };
+struct SaveDataSearchInfo {
+    std::uint64_t blocks;
+    std::uint64_t free_blocks;
+    std::uint8_t reserved[32];
+};
+static_assert(sizeof(SaveDataSearchInfo) == 48);
 struct SaveDataMemoryData { void* buf; std::size_t buf_size; std::size_t offset; };
 
 struct SaveDataMount3 {
@@ -1571,6 +1576,13 @@ struct SaveDataBackup {
     std::uint8_t reserved[32];
 };
 
+struct SaveDataConvert {
+    std::int32_t user_id;
+    std::int32_t pad;
+    const SceSaveDataDirName* dir_name;
+    std::uint8_t unknown[48];
+};
+
 struct AppContentInitParam { char reserved[32]; };
 
 struct AppContentBootParam {
@@ -1588,6 +1600,19 @@ struct ContentExportInitParam2 {
     std::size_t buffer_size;
     std::int64_t reserved0;
     std::int64_t reserved1;
+};
+
+struct ContentExportParam {
+    char title[257];
+    char comment[257];
+    char content_type[65];
+};
+static_assert(sizeof(ContentExportParam) == 579);
+
+struct ContentExportCallbackParam {
+    std::size_t content_length;
+    void* func;
+    void* user_data;
 };
 
 struct ContentSearchInitParam { std::size_t memory_size; };

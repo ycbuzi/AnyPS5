@@ -248,6 +248,9 @@ bool _waitSatisfied(std::uint32_t compare, std::uint64_t value, std::uint64_t re
 
 template<class TCommand>
 TCommand _read(const Apr::CommandBufferObject& buffer, std::uint32_t cursor) {
+    Apr::CommandHeader header;
+    std::memcpy(&header, buffer.base + cursor, sizeof(header));
+    if (header.bytes < sizeof(TCommand)) throw std::runtime_error("APR: truncated command payload (opcode " + std::to_string(static_cast<std::uint32_t>(header.opcode)) + ", has " + std::to_string(header.bytes) + ", needs " + std::to_string(sizeof(TCommand)) + ")");
     TCommand command;
     std::memcpy(&command, buffer.base + cursor, sizeof(command));
     return command;
@@ -545,14 +548,15 @@ std::optional<Deferred> _execute(const Apr::CommandBufferObject& buffer, std::ui
         std::memcpy(&header, buffer.base + cursor, sizeof(header));
         if ((static_cast<std::uint32_t>(header.opcode) & 0xffu) == static_cast<std::uint32_t>(Apr::Opcode::CompactReadFileGather)) {
             if (sizeof(Apr::CompactReadFileGatherCommand) > buffer.offset - cursor) throw std::runtime_error("APR: truncated compact gather command");
-            const auto command = _read<Apr::CompactReadFileGatherCommand>(buffer, cursor);
+            Apr::CompactReadFileGatherCommand command;
+            std::memcpy(&command, buffer.base + cursor, sizeof(command));
             const auto offset = static_cast<std::uint64_t>(command.opcodeAndOffsetHigh >> 8u) << 32u | command.offsetLow;
             if (offset >= 0x10000000000ull) throw std::runtime_error("APR: malformed compact gather offset");
             _readResolved(Apr::Opcode::ReadFileGather, Apr::ReadFileCommand{{}, 0, 0, 0, static_cast<std::uint64_t>(command.sizeMinusOne) + 1u, offset}, read);
             cursor += sizeof(command);
             continue;
         }
-        if (header.bytes < sizeof(header) || cursor + header.bytes > buffer.offset) throw std::runtime_error("APR: malformed command");
+        if (header.bytes < sizeof(header) || header.bytes > buffer.offset - cursor) throw std::runtime_error("APR: malformed command");
         switch (header.opcode) {
         case Apr::Opcode::Nop:
         case Apr::Opcode::PushMarker:
@@ -598,8 +602,7 @@ std::optional<Deferred> _execute(const Apr::CommandBufferObject& buffer, std::ui
         case Apr::Opcode::MapEnd:
             break;
         case Apr::Opcode::WriteAddress: {
-            Apr::WriteAddressCommand command;
-            std::memcpy(&command, buffer.base + cursor, sizeof(command));
+            const auto command = _read<Apr::WriteAddressCommand>(buffer, cursor);
             _writeAddress(command);
             break;
         }
@@ -877,6 +880,31 @@ int APS5_VABI sceKernelAprResolveFilepathsWithPrefixToIdsForEach(const char* pre
 int APS5_VABI sceKernelAprResolveFilepathsWithPrefixToIdsAndFileSizesForEach(const char* prefix, const char** paths, uint32_t count, uint32_t* ids, uint64_t* sizes, int* results) {
     if (!prefix || !sizes) return _fail(GUEST_EINVAL);
     return _resolveForEach(prefix, paths, count, ids, sizes, results);
+}
+
+bool _validWriteRange(std::uint64_t address, std::uint64_t size) {
+    constexpr std::uint64_t pageMask = 0x3FFFu;
+    return address != 0u && size != 0u && ((address | size) & pageMask) == 0u && address + size > address;
+}
+
+bool _validWriteProtection(std::uint64_t protection) {
+    return (protection & ~0x3F3ULL) == 0u;
+}
+
+int APS5_VABI sceKernelWriteModifyMtypeProtectCommand(void* dst, std::uint64_t address, std::uint64_t size, std::uint64_t type, std::uint64_t protection, std::uint64_t mask, std::uint64_t* outSize) {
+    if (!_validWriteRange(address, size) || !_validWriteProtection(protection) || !_validWriteProtection(mask)) return SCE_KERNEL_ERROR_EINVAL;
+    const Apr::AmmProtectCommand command{{Apr::Opcode::AmmModifyMtypeProtect, sizeof(command)}, address, size, static_cast<std::int32_t>(type), static_cast<std::int32_t>(protection), static_cast<std::int32_t>(mask), 0};
+    if (dst) std::memcpy(dst, &command, sizeof(command));
+    if (outSize) *outSize = sizeof(command);
+    return 0;
+}
+
+int APS5_VABI sceKernelWriteRemapIntoPrtCommand(std::uint32_t* dst, std::uint64_t address, std::uint64_t source, std::uint64_t size, int protection, int opcode, std::uint64_t* outSize) {
+    if (!_validWriteRange(address, size) || !_validWriteRange(source, size) || !_validWriteProtection(static_cast<std::uint32_t>(protection))) return SCE_KERNEL_ERROR_EINVAL;
+    const Apr::AmmRemapCommand command{{Apr::Opcode::AmmRemapIntoPrt, sizeof(command)}, address, source, size, protection, opcode ? opcode : 1011};
+    if (dst) std::memcpy(dst, &command, sizeof(command));
+    if (outSize) *outSize = sizeof(command);
+    return 0;
 }
 
 }

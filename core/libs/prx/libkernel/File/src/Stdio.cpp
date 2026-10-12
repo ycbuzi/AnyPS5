@@ -12,10 +12,12 @@
 #include "prx/libkernel/File/include/NativeStat.hpp"
 #include "prx/libkernel/File/include/KernelStatfs.hpp"
 #include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
+#include "prx/libkernel/File/include/DescriptorControl.hpp"
 #include "prx/libkernel/File/include/FileLock.hpp"
 #include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
 #include "prx/libkernel/Socket/include/SocketRuntime.hpp"
+#include "prx/libkernel/Socket/include/SocketPoll.hpp"
 #include <cerrno>
 #include <cstring>
 #include <cstdarg>
@@ -46,6 +48,14 @@ static constexpr std::uint64_t KERNEL_MNT_NOSUID = 0x8;
 #include <direct.h>
 #include <sys/stat.h>
 #include "prx/libkernel/File/include/WindowsFileTime.hpp"
+extern "C" _invalid_parameter_handler _set_thread_local_invalid_parameter_handler(_invalid_parameter_handler);
+static void IgnoreDescriptorParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, std::uintptr_t) {}
+template <typename TCall> static auto WithoutParameterHandler(TCall call) {
+    const auto previous = _set_thread_local_invalid_parameter_handler(IgnoreDescriptorParameter);
+    const auto result = call();
+    _set_thread_local_invalid_parameter_handler(previous);
+    return result;
+}
 static int NativeRmdir(const std::filesystem::path& path) {
     return ::_wrmdir(path.wstring().c_str());
 }
@@ -164,7 +174,7 @@ std::int64_t NativePositioned_nid_no_patch(int descriptor, void* buf, std::size_
         const auto result = File::PwriteSharedMemory_nid_no_patch(descriptor, buf, nbytes, offset);
         if (result != -2) return result;
     }
-    const auto handle = reinterpret_cast<HANDLE>(::_get_osfhandle(descriptor));
+    const auto handle = reinterpret_cast<HANDLE>(WithoutParameterHandler([descriptor] { return ::_get_osfhandle(descriptor); }));
     if (handle == INVALID_HANDLE_VALUE) {
         errno = EBADF;
         return -1;
@@ -410,6 +420,8 @@ extern "C" int APS5_VABI pipe_nid_postfix(int* descriptors) {
     const int result = ::pipe(native);
 #endif
     if (result != 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
+    File::RememberDescriptor(native[0], 0);
+    File::RememberDescriptor(native[1], 0);
     std::memcpy(descriptors, native, sizeof(native));
     return 0;
 }
@@ -420,14 +432,6 @@ static int PathError(const char* path) {
 }
 
 #ifdef _WIN32
-extern "C" _invalid_parameter_handler _set_thread_local_invalid_parameter_handler(_invalid_parameter_handler);
-static void IgnoreDescriptorParameter(const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, std::uintptr_t) {}
-template <typename TCall> static int WithoutParameterHandler(TCall call) {
-    const auto previous = _set_thread_local_invalid_parameter_handler(IgnoreDescriptorParameter);
-    const int result = call();
-    _set_thread_local_invalid_parameter_handler(previous);
-    return result;
-}
 bool DescriptorIsOpen_nid_no_patch(int descriptor) {
     return descriptor >= 0 && WithoutParameterHandler([descriptor] { return ::_get_osfhandle(descriptor) == -1 ? -1 : 0; }) == 0;
 }
@@ -454,6 +458,28 @@ static bool HasNonDirectoryPrefix(const std::filesystem::path& native) {
     return false;
 }
 
+extern "C" int APS5_VABI dup_nid_postfix(int d);
+extern "C" int APS5_VABI close_nid_postfix(int d);
+
+int File::DuplicateFrom(int fd, int start) {
+#ifdef _WIN32
+    std::vector<int> below;
+    int duplicate;
+    while ((duplicate = dup_nid_postfix(fd)) >= 0 && duplicate < start) below.push_back(duplicate);
+    const int error = *__error_nid_postfix();
+    for (const int descriptor : below) close_nid_postfix(descriptor);
+    return duplicate < 0 ? PosixFailure(error) : duplicate;
+#else
+    const int duplicate = ::fcntl(fd, F_DUPFD, start);
+    if (duplicate < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
+    if (duplicate >= GuestSockets::FirstDescriptor)
+        throw std::runtime_error("fcntl: host descriptor reached the guest socket range");
+    if (File::IsRandomDevice(fd)) File::RememberRandomDevice(duplicate);
+    File::ShareDescriptor(fd, duplicate);
+    return duplicate;
+#endif
+}
+
 extern "C" {
 
 int APS5_VABI chmod_nid_postfix(const char* path, int mode) {
@@ -466,11 +492,18 @@ int APS5_VABI chmod_nid_postfix(const char* path, int mode) {
 
 int APS5_VABI close_nid_postfix(int d) {
     if (d >= GuestSockets::FirstDescriptor) return GuestSockets::Close(d);
+    int socketError = 0;
+    if (KernelCloseSocket_nid_no_patch(d, &socketError)) {
+        if (socketError == 0) return 0;
+        *__error_nid_postfix() = socketError;
+        return -1;
+    }
     File::ForgetRandomDevice(d);
+    File::ForgetDescriptor(d);
 #ifdef _WIN32
     File::ForgetDirectoryDescriptor(d);
     File::ForgetFileLock(d);
-    return _close(d);
+    return WithoutParameterHandler([d] { return ::_close(d); });
 #else
     return ::close(d);
 #endif
@@ -493,6 +526,7 @@ int APS5_VABI dup_nid_postfix(int d) {
     if (duplicate >= GuestSockets::FirstDescriptor)
         throw std::runtime_error(std::string(__func__) + ": host descriptor reached the guest socket range");
     if (File::IsRandomDevice(d)) File::RememberRandomDevice(duplicate);
+    File::ShareDescriptor(d, duplicate);
     return duplicate;
 }
 
@@ -517,6 +551,7 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     File::ForgetFileLock(to);
     File::ForgetRandomDevice(to);
     if (sourceIsRandom) File::RememberRandomDevice(to);
+    File::ShareDescriptor(from, to);
     return to;
 #else
     if (from == to) {
@@ -527,6 +562,7 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     if (result < 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     File::ForgetRandomDevice(to);
     if (sourceIsRandom) File::RememberRandomDevice(to);
+    File::ShareDescriptor(from, to);
     return result;
 #endif
 }
@@ -731,11 +767,13 @@ int APS5_VABI sceKernelFstat(int d, FileStat* sb) {
 }
 
 int APS5_VABI sceKernelFsync(int fd) {
+    if (fd >= GuestSockets::FirstDescriptor) return SceErrorFromErrno(GuestSockets::IsOpen(fd) ? GUEST_EINVAL : GUEST_EBADF);
 #ifdef _WIN32
- return NativeSync(fd);
+    if (NativeSync(fd) != 0) return SceErrorFromErrno(errno);
 #else
- return ::fsync(fd);
+    if (::fsync(fd) != 0) return SceErrorFromErrno(errno);
 #endif
+    return 0;
 }
 
 int APS5_VABI sceKernelFdatasync(int fd) {
@@ -1141,8 +1179,7 @@ int APS5_VABI futimes_nid_postfix(int d, const KernelTimeval* times) {
 }
 
 int APS5_VABI fsync_nid_postfix(int fd) {
-    if (sceKernelFsync(fd) != 0) return PosixFailure(errno);
-    return 0;
+    return PosixResult(sceKernelFsync(fd));
 }
 
 int APS5_VABI fdatasync_nid_postfix(int fd) {

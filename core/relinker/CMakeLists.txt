@@ -53,6 +53,8 @@ add_executable(relinker
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ClzeroLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalOperands.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreOperands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/parsing/ElfReader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/SyscallScanner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/CallSiteResolver.cpp
@@ -141,6 +143,8 @@ if(WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ClzeroLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalOperands.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreOperands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreLowering.cpp
     )
     target_include_directories(amd64_only_windows_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/include ${CMAKE_CURRENT_SOURCE_DIR}/domain/include ${CMAKE_CURRENT_SOURCE_DIR}/io/include ${CMAKE_CURRENT_SOURCE_DIR}/codegen/include ${CMAKE_CURRENT_SOURCE_DIR}/../libs/prx/libc/src/specifics/windows)
     if(BUILD_TESTING)
@@ -160,6 +164,22 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/include)
     add_test(NAME elf_reader_bounds COMMAND elf_reader_bounds_tests)
     set_tests_properties(elf_reader_bounds PROPERTIES TIMEOUT 20)
+
+    add_test_executable(call_site_index_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/CallSiteIndexTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/CallSiteResolver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/InstructionScanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/X64InstructionDecoder.cpp
+    )
+    target_include_directories(call_site_index_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/include
+    )
+    add_test(NAME call_site_index COMMAND call_site_index_tests)
+    set_tests_properties(call_site_index PROPERTIES TIMEOUT 20)
 
     add_test_executable(autorun_exit_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/cli/tests/AutorunExitTests.cpp
@@ -288,6 +308,8 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ClzeroLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalOperands.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/ReciprocalLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreOperands.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WideStoreLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/linux/LinuxElfPatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/general/SegmentFilter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/general/EntryStubBuilder.cpp
@@ -303,6 +325,18 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/io/include
     )
     add_test(NAME amd64_only_converter COMMAND amd64_only_converter_tests)
+    add_test_executable(call_site_resolver_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/CallSiteResolverTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/CallSiteResolver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/InstructionScanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/X64InstructionDecoder.cpp
+    )
+    target_include_directories(call_site_resolver_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/include
+    )
+    add_test(NAME call_site_resolver COMMAND call_site_resolver_tests)
     add_test_executable(decoder_length_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/DecoderLengthTests.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/X64InstructionDecoder.cpp
@@ -325,11 +359,14 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_rela_size.py $<TARGET_FILE:relinker>)
         add_test(NAME none_relocations COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_none_relocations.py $<TARGET_FILE:relinker>)
+        add_test(NAME guest_none_relocations COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_none_relocations.py $<TARGET_FILE:relinker>)
+        set_tests_properties(guest_none_relocations PROPERTIES TIMEOUT 20)
         add_test(NAME optional_plt COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_optional_plt.py $<TARGET_FILE:relinker>)
         add_test(NAME empty_tls COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_empty_tls.py $<TARGET_FILE:relinker>)
-        set(tlsCoverageGroups metadata padding register_loads displacement_bounds alu_execution register_address_loads rejected)
+        set(tlsCoverageGroups metadata padding register_loads displacement_bounds alu_execution register_address_loads moved_branch rejected)
         foreach(register IN ITEMS 0 1 2 3 5 6 7 8 9 10 11 12 13 14 15)
             list(APPEND tlsCoverageGroups displacement_r${register})
         endforeach()
@@ -377,6 +414,8 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_linux_desktop_entry_output.py $<TARGET_FILE:relinker>)
         add_test(NAME guest_intel_trampolines COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_intel_trampolines.py $<TARGET_FILE:relinker>)
+        add_test(NAME guest_syscall_trap COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_syscall_trap.py $<TARGET_FILE:relinker>)
         add_test(NAME guest_tls COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/test_guest_tls.py $<TARGET_FILE:relinker>)
         add_test(NAME guest_needed_modules COMMAND ${Python3_EXECUTABLE}
@@ -450,6 +489,21 @@ if(BUILD_TESTING)
     else()
         message(STATUS "Python3 interpreter not found; skipping Python relinker tests")
     endif()
+    add_test_executable(unwind_record_bounds_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/UnwindRecordBoundsTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/UnusedNidFilter/EhFrameReader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/src/BufferUtils.cpp
+    )
+    target_include_directories(unwind_record_bounds_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/include
+    )
+    add_test(NAME unwind_record_bounds COMMAND unwind_record_bounds_tests)
+    set_tests_properties(unwind_record_bounds PROPERTIES TIMEOUT 20)
+
     add_test_executable(windows_icon_resource_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/tests/WindowsIconResourceTests.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/windows/WindowsIconResourceBuilder.cpp
@@ -472,6 +526,20 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
     )
     add_test(NAME entry_stub COMMAND entry_stub_tests)
+
+    add_test_executable(control_flow_graph_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/ControlFlowGraphTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/UnusedNidFilter/ControlFlowGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/analysis/UnusedNidFilter/StrictReachability.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/X64InstructionDecoder.cpp
+    )
+    target_include_directories(control_flow_graph_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/domain/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/relinker/include
+    )
+    add_test(NAME control_flow_graph COMMAND control_flow_graph_tests)
+    set_tests_properties(control_flow_graph PROPERTIES TIMEOUT 20)
 
     add_test_executable(strict_nid_filter_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/tests/StrictNidFilterTests.cpp

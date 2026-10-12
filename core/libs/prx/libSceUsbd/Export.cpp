@@ -50,6 +50,14 @@ static_assert(offsetof(UsbdTransfer, timeout) == 12 && offsetof(UsbdTransfer, ca
 
 void* g_emptyDeviceList[1] = {nullptr};
 
+std::string AbsentDevice(const char* function) {
+    return std::string(function) + ": the device list is always empty, so the device was not returned by sceUsbdGetDeviceList";
+}
+
+std::string UnopenedHandle(const char* function) {
+    return std::string(function) + ": no device can be opened, so the handle was not returned by sceUsbdOpen";
+}
+
 }
 
 extern "C" {
@@ -116,99 +124,112 @@ void APS5_VABI sceUsbdFreeConfigDescriptor(void* config) {
     if (config != nullptr) throw std::runtime_error(std::string(__func__) + ": descriptor was not returned by this library");
 }
 
-int APS5_VABI sceUsbdAttachKernelDriver() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdAttachKernelDriver(void* deviceHandle, std::int32_t interfaceNumber) {
+    (void)interfaceNumber;
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdCheckConnected() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdCheckConnected(void* deviceHandle) {
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdClaimInterface() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdClaimInterface(void* deviceHandle, std::int32_t interfaceNumber) {
+    (void)interfaceNumber;
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdClose() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+void APS5_VABI sceUsbdClose(void* deviceHandle) {
+    if (deviceHandle != nullptr) throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdControlTransfer() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdControlTransfer(void* deviceHandle, std::uint8_t requestType, std::uint8_t request, std::uint16_t value, std::uint16_t index, std::uint8_t* data, std::uint16_t length, std::uint32_t timeout) {
+    (void)requestType;
+    (void)request;
+    (void)value;
+    (void)index;
+    (void)timeout;
+    if (deviceHandle == nullptr || (length != 0 && data == nullptr)) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdGetActiveConfigDescriptor() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdGetActiveConfigDescriptor(void* device, void** config) {
+    (void)config;
+    if (device == nullptr) throw std::runtime_error(std::string(__func__) + ": null device");
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdGetBusNumber() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::uint8_t APS5_VABI sceUsbdGetBusNumber(void* device) {
+    if (device == nullptr) return 0;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdGetConfigDescriptor() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdGetConfigDescriptor(void* device, std::uint8_t configIndex, void** config) {
+    (void)configIndex;
+    if (device == nullptr || config == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdGetDeviceAddress() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::uint8_t APS5_VABI sceUsbdGetDeviceAddress(void* device) {
+    if (device == nullptr) return 0;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdGetDeviceDescriptor() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdGetDeviceDescriptor(void* device, void* descriptor) {
+    if (device == nullptr || descriptor == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdGetStringDescriptor() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdGetStringDescriptor(void* deviceHandle, std::uint8_t descriptorIndex, std::uint16_t languageId, std::uint8_t* data, std::int32_t length) {
+    (void)descriptorIndex;
+    (void)languageId;
+    if (deviceHandle == nullptr || data == nullptr || length < 1) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdKernelDriverActive() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdKernelDriverActive(void* deviceHandle, std::int32_t interfaceNumber) {
+    (void)interfaceNumber;
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdOpen() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdOpen(void* device, void** deviceHandle) {
+    if (device == nullptr) throw std::runtime_error(std::string(__func__) + ": null device");
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdRefDevice() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+void* APS5_VABI sceUsbdRefDevice(void* device) {
+    if (device == nullptr) return nullptr;
+    throw std::runtime_error(AbsentDevice(__func__));
 }
 
-int APS5_VABI sceUsbdReleaseInterface() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdReleaseInterface(void* deviceHandle, std::int32_t interfaceNumber) {
+    (void)interfaceNumber;
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdResetDevice() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdResetDevice(void* deviceHandle) {
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdSetConfiguration() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdSetConfiguration(void* deviceHandle, std::int32_t configuration) {
+    (void)configuration;
+    if (deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdSubmitTransfer() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+std::int32_t APS5_VABI sceUsbdSubmitTransfer(UsbdTransfer* transfer) {
+    if (transfer == nullptr || transfer->deviceHandle == nullptr) return SCE_USBD_ERROR_INVALID_ARG;
+    throw std::runtime_error(UnopenedHandle(__func__));
 }
 
-int APS5_VABI sceUsbdUnrefDevice() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+void APS5_VABI sceUsbdUnrefDevice(void* device) {
+    if (device != nullptr) throw std::runtime_error(AbsentDevice(__func__));
 }
 
 }

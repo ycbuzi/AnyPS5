@@ -42,9 +42,11 @@ cmake --build build --target libs --parallel
 ```
 
 `libs` is a custom target: every library under [core/libs/prx](../../core/libs/prx) is built with
-`EXCLUDE_FROM_ALL`, so the first command alone does not produce them. Titles load the patched `.prx`
-files from `build/core/libs/libs`, which only that second step refreshes. Running a title after a
-library change without it therefore tests the previous binaries and can show no effect at all.
+`EXCLUDE_FROM_ALL`. With the default `BUILD_TESTING=OFF`, the default build does not produce them,
+so the explicit `--target libs` step is required. With `BUILD_TESTING=ON`, the default full build
+also builds `libs` through the `patched_libraries_tests` dependency. Titles load the patched `.prx`
+files from `build/core/libs/libs`; running a title after a library change without rebuilding `libs`
+therefore tests the previous binaries and can show no effect at all.
 
 [Relinker usage and runtime layout](../user/USAGE.md).
 

@@ -158,6 +158,7 @@ struct Context {
     bool imageInt64Atomics = false;
     bool geometryShader = false;
     bool sampleRateShading = false;
+    bool shaderClipDistance = false;
     bool nullDescriptors = false;
     bool bufferInt64Atomics = false;
     const PlaceholderImages* placeholderImages = nullptr;
@@ -170,6 +171,7 @@ struct Context {
     bool provokingVertexLast = false;
     bool provokingVertexModePerPipeline = false;
     bool singlePassStorage = false;
+    VkSampleCountFlags sampleLocationSampleCounts = 0;
 
     template<typename TFunction>
     TFunction Function(const char* name) const {

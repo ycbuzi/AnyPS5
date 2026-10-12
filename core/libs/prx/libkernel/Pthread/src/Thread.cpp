@@ -240,6 +240,16 @@ void SetLiveGuestThreadsAffinity(KernelCpumask mask) {
     }
 }
 
+KernelCpumask LiveGuestThreadsAffinity() {
+    auto& registry = CpuClocks();
+    std::lock_guard lock(registry.lock);
+    KernelCpumask mask = 0;
+    for (const auto& [id, thread] : registry.threads) {
+        if (!thread->_finished.load(std::memory_order_acquire)) mask |= thread->affinity.load(std::memory_order_relaxed);
+    }
+    return mask;
+}
+
 bool GuestThreadCpuNanos(int cpuClockThread, std::uint64_t* nanos) {
     auto& registry = CpuClocks();
     std::lock_guard lock(registry.lock);
@@ -523,7 +533,7 @@ extern "C" {
 
 int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, PthreadEntry entry, void* arg, const char* name) {
     if (!thread || !entry) throw std::runtime_error("scePthreadCreate: null arg");
-    if (attr && !*attr) throw std::runtime_error("scePthreadCreate: null attributes");
+    if (attr && !*attr) attr = nullptr;
     auto p = std::make_unique<PthreadPrivate>(attr ? *attr : nullptr);
     bool detached = false;
     if (attr && *attr) detached = ((*attr)->_detachstate == DETACH_DETACHED);
@@ -531,6 +541,12 @@ int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, Pthread
     p->stackSize = attr ? (*attr)->_stacksize : DEFAULT_STACK_SIZE;
     if (attr) {
         p->priority.store((*attr)->_schedpriority, std::memory_order_relaxed);
+        if ((*attr)->_inheritsched != GUEST_INHERIT_SCHED)
+            p->scope = (*attr)->_scope;
+        else if (CurrentGuestState().current)
+            p->scope = CurrentGuestState().current->scope;
+    } else if (CurrentGuestState().current) {
+        p->scope = CurrentGuestState().current->scope;
     }
     if (name) p->name = name;
     std::promise<bool> start;
@@ -608,10 +624,9 @@ int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, Pthread
 }
 
 int APS5_VABI scePthreadJoin(Pthread thread, void** retval) {
-    if (!thread) throw std::runtime_error("scePthreadJoin: null thread");
+    if (!thread) return SCE_KERNEL_ERROR_EINVAL;
     if (thread->_detached) return SCE_KERNEL_ERROR_EINVAL;
-    if (thread == CurrentGuestState().current)
-        throw std::runtime_error("scePthreadJoin: cannot join current thread");
+    if (thread == CurrentGuestState().current) return SCE_KERNEL_ERROR_EDEADLK;
     ThreadCancel::Check();
     {
         std::unique_lock lock(thread->_join_mtx);
@@ -632,7 +647,7 @@ int APS5_VABI scePthreadJoin(Pthread thread, void** retval) {
 }
 
 int APS5_VABI scePthreadDetach(Pthread thread) {
-    if (!thread) throw std::runtime_error("scePthreadDetach: null thread");
+    if (!thread) return SCE_KERNEL_ERROR_EINVAL;
     if (thread->_detached) return SCE_KERNEL_ERROR_EINVAL;
     thread->_detached = true;
 #ifdef _WIN32

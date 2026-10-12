@@ -50,6 +50,11 @@ std::uint64_t DrawRenderPassKey(const Context& context, const State& state, std:
     }
     mix(state.renderExtent.width);
     mix(state.renderExtent.height);
+    mix(state.samples);
+    mix(state.customSampleLocations);
+    if (state.customSampleLocations) {
+        for (const auto location : state.sampleLocations) mix(location);
+    }
     if (!context.provokingVertexModePerPipeline) mix(state.provokingVertexMode);
     return key;
 }
@@ -732,7 +737,7 @@ std::set<std::uint32_t> CachedFragmentOutputs(const Context& context, std::span<
     }
     std::set<std::uint32_t> outputs;
     try {
-        outputs = ValidateShaders(shaders, state, context.subgroup, context.fragmentShaderBarycentric, context.descriptorIndexing, context.imageInt64Atomics, context.geometryShader, context.sampleRateShading, context.bufferInt64Atomics);
+        outputs = ValidateShaders(shaders, state, context.subgroup, context.fragmentShaderBarycentric, context.descriptorIndexing, context.imageInt64Atomics, context.geometryShader, context.sampleRateShading, context.bufferInt64Atomics, context.shaderClipDistance);
     } catch (const std::exception& error) {
         if (keyed) {
             std::lock_guard lock(validationMutex());
@@ -971,6 +976,25 @@ const HostImport* InPlaceDrawInput(const Context& context, std::uint64_t address
     return import;
 }
 
+InPlaceIndices InPlaceIndexRange(Recorder& recorder, std::uint64_t address, std::size_t bytes, std::uint32_t indexSize, bool skipRestart) {
+    const std::span<const std::byte> range(reinterpret_cast<const std::byte*>(address), bytes);
+    InPlaceIndices indices;
+    if (bytes < Recorder::KeptIndexRangeIndices * indexSize) {
+        indices.highest = HighestDrawIndex(range, indexSize, skipRestart);
+        return indices;
+    }
+    const auto use = indexSize == 2 ? (skipRestart ? Recorder::SnapshotUse::Index16Restart : Recorder::SnapshotUse::Index16) : (skipRestart ? Recorder::SnapshotUse::Index32Restart : Recorder::SnapshotUse::Index32);
+    const auto registryGeneration = GuestAllocations::GuestAllocationsGeneration_nid_postfix();
+    const auto generation = GuestMemory::CollectWrites(address, bytes);
+    if (generation != 0 && recorder.KnownHighestIndex(address, bytes, use, indices.highest)) {
+        indices.reused = true;
+        return indices;
+    }
+    indices.highest = HighestDrawIndex(range, indexSize, skipRestart);
+    recorder.KeepHighestIndex(address, bytes, use, generation, registryGeneration, indices.highest);
+    return indices;
+}
+
 namespace {
 
 // The draw's inputs before its resources (prepareDrawInputs): the validated parameters, the index
@@ -1037,7 +1061,6 @@ DrawInputs prepareDrawInputs(const Context& context, const State& state, const P
     if (draw.indexed) GuestMemory::CheckRange(reinterpret_cast<const void*>(draw.indexAddress), static_cast<std::size_t>(indexBytes), draw.indexSize);
     APS5_LOG_CHARS_OUT_DEBUG("Index buffer range OK");
     Require(!draw.indexed || !state.hasColorTarget || draw.indexAddress + indexBytes <= state.color.address || state.color.address + state.color.bytes <= draw.indexAddress, "index buffer aliases the render target");
-    if (state.rectList) Require(draw.indexCount % 3 == 0, "incomplete rect-list primitive");
     APS5_LOG_CHARS_OUT_DEBUG("ValidateShaders");
     if (recipe != nullptr) {
         inputs.fragmentOutputs = recipe->fragmentOutputs;
@@ -1078,10 +1101,11 @@ DrawInputs prepareDrawInputs(const Context& context, const State& state, const P
         if (import == nullptr) copy = CopyDrawInput(context, context.recorder, draw.indexAddress, static_cast<std::size_t>(indexBytes), draw.indexSize, use);
         else GuestMemory::CheckRange(reinterpret_cast<const void*>(draw.indexAddress), static_cast<std::size_t>(indexBytes), draw.indexSize);
         std::optional<std::uint32_t> highest;
-        if (!copy.reused) {
-            const auto bytes = import != nullptr ? std::span<const std::byte>(reinterpret_cast<const std::byte*>(draw.indexAddress), static_cast<std::size_t>(indexBytes)) : copy.buffer->Bytes().first(static_cast<std::size_t>(indexBytes));
-            highest = HighestDrawIndex(bytes, draw.indexSize, skipRestart);
-            if (import == nullptr) KeepDrawInput(context.recorder, draw.indexAddress, copy, use, skipRestart ? (highest ? *highest + 1u : 0u) : highest.value_or(0u));
+        if (import != nullptr) {
+            highest = InPlaceIndexRange(*context.recorder, draw.indexAddress, static_cast<std::size_t>(indexBytes), draw.indexSize, skipRestart).highest;
+        } else if (!copy.reused) {
+            highest = HighestDrawIndex(copy.buffer->Bytes().first(static_cast<std::size_t>(indexBytes)), draw.indexSize, skipRestart);
+            KeepDrawInput(context.recorder, draw.indexAddress, copy, use, skipRestart ? (highest ? *highest + 1u : 0u) : highest.value_or(0u));
         } else if (!skipRestart) {
             highest = copy.derived;
         } else if (copy.derived != 0) {
@@ -1090,6 +1114,24 @@ DrawInputs prepareDrawInputs(const Context& context, const State& state, const P
         if (!highest) {
             inputs.nothing = true;
             return inputs;
+        }
+        constexpr std::uint32_t ZeroFetchSlack = 0x10000u;
+        if (const auto zeroFrom = state.stages.mesh ? std::nullopt : ZeroFetchVertex(shaders.front().program->vertexAttributes)) {
+            const auto limit = *zeroFrom > draw.firstVertex ? *zeroFrom - draw.firstVertex : 0u;
+            if (*highest >= limit && *highest - limit >= ZeroFetchSlack) {
+                GuestMemory::FlushGpuWrites(draw.indexAddress, static_cast<std::size_t>(indexBytes));
+                auto clamped = std::make_shared<Buffer>(context, static_cast<std::size_t>(indexBytes), VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                const auto bytes = clamped->Bytes().first(static_cast<std::size_t>(indexBytes));
+                GuestMemory::Read(draw.indexAddress, bytes, draw.indexSize);
+                highest = ClampDrawIndices(bytes, draw.indexSize, skipRestart, limit);
+                import = nullptr;
+                copy = DrawInputCopy{};
+                copy.buffer = std::move(clamped);
+                if (!highest) {
+                    inputs.nothing = true;
+                    return inputs;
+                }
+            }
         }
         Require(*highest <= context.limits.maxDrawIndexedIndexValue, "index exceeds the device's indexed draw limit");
         Require(!fanGeometry || !state.primitiveRestart || *highest != (draw.indexSize == 2 ? 0xffffu : 0xffffffffu), "primitive restart in a triangle fan geometry draw is unsupported");
@@ -1740,7 +1782,9 @@ void recordDraw(const Context& context, const State& state, const Pm4::DrawParam
     APS5_LOG_CHARS_OUT_DEBUG("Pipeline Begin OK");
     if (drawBindings != nullptr) {
         const auto set = drawBindings->allocation.set;
-        context.Resolved(&DeviceFunctions::cmdBindDescriptorSets, "vkCmdBindDescriptorSets")(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, record.pipeline->Layout(), 0, 1, &set, 0, nullptr);
+        const auto fragmentSet = drawBindings->fragmentAllocation.set;
+        if (set != VK_NULL_HANDLE) context.Resolved(&DeviceFunctions::cmdBindDescriptorSets, "vkCmdBindDescriptorSets")(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, record.pipeline->Layout(), 0, 1, &set, 0, nullptr);
+        if (fragmentSet != VK_NULL_HANDLE) context.Resolved(&DeviceFunctions::cmdBindDescriptorSets, "vkCmdBindDescriptorSets")(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, record.pipeline->Layout(), ShaderRecompiler::RuntimeAbi::FragmentDescriptorSet, 1, &fragmentSet, 0, nullptr);
     } else {
         resources.Bind(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, record.pipeline->Layout());
     }
@@ -2092,6 +2136,12 @@ void Draw(const Context& context, const State& state, const Pm4::DrawParameters&
         masked->blends.at(state.colors[index].exportIndex).colorWriteMask &= VK_COLOR_COMPONENT_R_BIT;
     }
     const State& pipelineState = masked.has_value() ? *masked : state;
+    static const bool verifySetLayouts = std::getenv("APS5_VERIFY_SET_LAYOUTS") != nullptr;
+    if (verifySetLayouts && context.descriptorCache != nullptr) {
+        const auto described = DescribeSetLayouts(context, shaders);
+        const auto built = resources->SetLayouts();
+        Require(described.layouts.main == built.main && described.layouts.fragment == built.fragment && described.layouts.split == built.split && std::ranges::equal(described.mainKey, built.mainKey) && std::ranges::equal(described.fragmentKey, built.fragmentKey), "set layouts described from the shaders differ from the draw's");
+    }
     auto pipeline = CachedPipeline(context, pipelineState, inputs.vertexInput, *resources, shaders, lean ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     // Resident targets' views are stable while their storage image lives, so the framebuffer is
     // reused with the pipeline; a per-draw RenderTarget gets a framebuffer of its own.

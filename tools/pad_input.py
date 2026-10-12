@@ -19,19 +19,27 @@ def main():
     parser.add_argument("path", type=Path)
     parser.add_argument("button", choices=BUTTONS)
     parser.add_argument("--hold-ms", type=int, default=300)
+    parser.add_argument("--left-stick", type=int, nargs=2, metavar=("X", "Y"))
+    parser.add_argument("--right-stick", type=int, nargs=2, metavar=("X", "Y"))
     args = parser.parse_args()
     if not 1 <= args.hold_ms <= 5000:
         parser.error("--hold-ms must be between 1 and 5000")
+    sticks = ""
+    if args.left_stick is not None or args.right_stick is not None:
+        axes = (args.left_stick or [128, 128]) + (args.right_stick or [128, 128])
+        if not all(0 <= axis <= 255 for axis in axes):
+            parser.error("stick axes must be between 0 and 255")
+        sticks = "".join(f" {axis}" for axis in axes)
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(mode="w", dir=args.path.parent, delete=False) as output:
             temporary = Path(output.name)
-            output.write(f"{time.monotonic_ns()} {BUTTONS[args.button]} {args.hold_ms}\n")
+            output.write(f"{time.monotonic_ns()} {BUTTONS[args.button]} {args.hold_ms}{sticks}\n")
         os.replace(temporary, args.path)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
-    print(f"Queued {args.button} for {args.hold_ms} ms in {args.path}")
+    print(f"Queued {args.button}{' with sticks' + sticks if sticks else ''} for {args.hold_ms} ms in {args.path}")
 
 
 if __name__ == "__main__":

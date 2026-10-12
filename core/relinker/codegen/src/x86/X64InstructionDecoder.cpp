@@ -242,7 +242,7 @@ std::size_t X64InstructionDecoder::Decode(const std::uint8_t* data, std::size_t 
             hasModRm = true;
         } else if (opcode >= TwoByteJccRel32Min && opcode <= TwoByteJccRel32Max) {
             immediateSize = ImmSize32;
-        } else if (opcode == TwoByteMovImm8ModRm) {
+        } else if (opcode == TwoByteMovImm8ModRm || opcode == TwoByte3DNow) {
             hasModRm = true;
             immediateSize = ImmSize8;
         } else if (opcode >= TwoByteShiftImm8Min && opcode <= TwoByteShiftImm8Max) {
@@ -556,7 +556,7 @@ DecodedInstructionInfo X64InstructionDecoder::DecodeInstruction(
             op == TwoByteImulRmModRm || op == TwoByteGrp7 ||
             op == TwoByteGrp15 || op == TwoByteXadd ||
             op == TwoByteGrp9 || op == TwoByteNopModRm ||
-            op == TwoByteEndbr || op == TwoByteMovImm8ModRm ||
+            op == TwoByteEndbr || op == TwoByteMovImm8ModRm || op == TwoByte3DNow ||
             op == ThreeByteEscape38 || op == ThreeByteEscape3A ||
             (op >= TwoByteShiftImm8Min && op <= TwoByteShiftImm8Max) ||
             op == TwoByteShldImm8 || op == TwoByteShrdImm8 ||

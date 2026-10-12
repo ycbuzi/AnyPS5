@@ -186,5 +186,26 @@ void RunDepthSurfaceReuseTests() {
     Require(lookup(context, {stencil, FormatR8G8B8A8Unorm, 320, 180, TileRenderTarget64KB}) == nullptr, "an RGBA8 view of a stencil plane's own extent must be read as reused memory");
     Require(lookup(context, {stencil, FormatR32Float, 320, 180}) == nullptr, "an R32F view of a stencil plane's own extent must be read as reused memory");
 
+    const auto storageAliasesDepth = [&](const Context& owner, const View& view) {
+        const auto words = tsharp(view);
+        return DepthSurfaceAt(owner, words, DecodeTextureResource(words));
+    };
+    Require(storageAliasesDepth(context, {depth32, FormatR32Float, 384, 384}), "storage access to the actual D32 plane must remain rejected");
+    Require(storageAliasesDepth(context, {depth16, FormatR16Uint, 256, 256}), "raw D16 storage access must remain rejected");
+    Require(!storageAliasesDepth(context, {depth32, FormatR32Float, 128, 128}), "temporary memory reused at a different extent is not a depth storage alias");
+    Require(!storageAliasesDepth(context, {depth32, FormatR11G11B10Float, 384, 384}), "temporary memory reused for a color format is not a depth storage alias");
+    Require(!storageAliasesDepth(context, {depth32, FormatR32Uint, 384, 384, TileRenderTarget64KB}), "raw integer color memory without a depth layout is not a depth storage alias");
+    auto otherDevice = context;
+    static int otherDeviceTag = 0;
+    otherDevice.device = reinterpret_cast<VkDevice>(&otherDeviceTag);
+    Require(!storageAliasesDepth(otherDevice, {depth32, FormatR32Float, 384, 384}), "a depth surface on another device must not block a storage lookup");
+
+    constexpr std::uint64_t stencil16 = 0x60000000;
+    DepthSurfaceView(context, {depth16, stencil16, {128, 128}, VK_FORMAT_D16_UNORM_S8_UINT, 1.0f, 0});
+    Require(!storageAliasesDepth(context, {depth16, FormatR16Unorm, 256, 256}), "an older depth extent at the same address must not override the newest surface");
+    Require(storageAliasesDepth(context, {depth16, FormatR16Unorm, 128, 128}), "the newest depth extent must still reject actual storage access");
+    Require(storageAliasesDepth(context, {stencil16, FormatR8Uint, 128, 128}), "storage access to the actual stencil plane must remain rejected");
+    Require(!storageAliasesDepth(context, {stencil16, FormatR11G11B10Float, 128, 128}), "a stencil address reused for color is not a stencil storage alias");
+
     ClearDepthSurfaces(context.device);
 }

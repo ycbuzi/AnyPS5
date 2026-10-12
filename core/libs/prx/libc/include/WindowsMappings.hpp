@@ -82,6 +82,9 @@ public:
             split(cursor + done, pageBytes);
             void* page = reinterpret_cast<void*>(cursor + done);
             if (!map(section, GetCurrentProcess(), page, offset + done, pageBytes, MEM_REPLACE_PLACEHOLDER, PAGE_EXECUTE_READWRITE, nullptr, 0)) fail("map shared guest page");
+            MEMORY_BASIC_INFORMATION memory{};
+            if (VirtualQuery(page, &memory, sizeof(memory)) != sizeof(memory)) fail("query shared guest page");
+            if (memory.State == MEM_RESERVE && !VirtualAlloc(page, pageBytes, MEM_COMMIT, PAGE_EXECUTE_READWRITE)) fail("commit shared guest page");
             DWORD previous;
             if (!VirtualProtect(page, pageBytes, protection, &previous)) fail("protect shared guest page");
             const auto key = std::make_pair(reinterpret_cast<std::uintptr_t>(section), offset + done);

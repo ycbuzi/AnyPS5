@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #endif
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include "prx/libc/include/HostThreadLocal.hpp"
 #include <cstdint>
 #include <array>
 #include <cstring>
@@ -129,7 +130,8 @@ GuestResolver::HostEntry* APS5_VABI gethostbyname_nid_postfix(const char* name) 
             return nullptr;
         }
 #endif
-        static thread_local HostLookup lookup;
+        struct LookupTag {};
+        auto& lookup = HostThreadLocal<HostLookup, LookupTag>();
         lookup.name = native->h_name;
         lookup.aliasNames.clear();
         lookup.aliases.clear();
@@ -284,13 +286,13 @@ int APS5_VABI getnameinfo_nid_postfix(const void* address, std::uint32_t length,
 const char* APS5_VABI gai_strerror_nid_postfix(int error) {
     static const char* messages[] = {
         "Success", "Address family for hostname not supported", "Temporary failure in name resolution",
-        "Invalid flags", "Name resolution failed", "Address family not supported",
-        "Memory allocation failed", "No address for hostname", "Name or service not known",
-        "Service not supported for socket type", "Socket type not supported", "System error",
-        "Invalid hints", "Unknown protocol", "Buffer too small"
+        "Invalid value for ai_flags", "Non-recoverable failure in name resolution", "ai_family not supported",
+        "Memory allocation failure", "No address associated with hostname", "hostname nor servname provided, or not known",
+        "servname not supported for ai_socktype", "ai_socktype not supported", "System error returned in errno",
+        "Invalid value for hints", "Resolved protocol is unknown", "Argument buffer overflow"
     };
     if (error < 0 || error >= static_cast<int>(sizeof(messages) / sizeof(messages[0])))
-        return "Unknown address resolution error";
+        return "Unknown error";
     return messages[error];
 }
 }

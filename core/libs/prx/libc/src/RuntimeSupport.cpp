@@ -9,7 +9,6 @@
 #include <mutex>
 #include <vector>
 #include <utility>
-#include <random>
 #include <string>
 #include <cinttypes>
 #ifdef _WIN32
@@ -20,6 +19,7 @@
 #include "prx/libc/include/SonyCrt.hpp"
 #include "prx/libc/include/specifics/gcc/AtomicOps.hpp"
 #include "prx/libc/include/FileStream.hpp"
+#include "prx/libc/include/HostEntropy.hpp"
 
 namespace {
 
@@ -123,10 +123,9 @@ std::uintmax_t APS5_VABI strtoumax_nid_postfix(const char* str, char** endptr, i
 }
 
 unsigned int APS5_VABI _ZSt14_Random_devicev_nid_postfix() {
-    static std::random_device device;
-    static std::mutex mutex;
-    std::lock_guard lock(mutex);
-    return device();
+    unsigned int value = 0;
+    HostEntropy_nid_no_patch(&value, sizeof(value));
+    return value;
 }
 
 [[noreturn]] void APS5_VABI _ZSt14_Throw_C_errori_nid_postfix(int code) {
@@ -179,6 +178,10 @@ void APS5_VABI _Locksyslock_nid_postfix() {
 
 void APS5_VABI _Unlocksyslock_nid_postfix() {
     g_sysLock.unlock();
+}
+
+__int128 APS5_VABI __divti3_nid_postfix(__int128 dividend, __int128 divisor) {
+    return SonyDivti3(dividend, divisor);
 }
 
 unsigned __int128 APS5_VABI __udivti3_nid_postfix(unsigned __int128 dividend, unsigned __int128 divisor) {

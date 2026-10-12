@@ -71,10 +71,11 @@ int Run(const int argc, char* argv[]) {
             sourceBytes = std::move(converted.Bytes);
             trampolines = std::move(converted.Trampolines);
             std::map<std::string, std::size_t> stubsByName;
+            const auto counted = [](const std::string& name) { return name == "VRSQRTPS" || name == "VRCPPS" || name == "256-bit store"; };
             for (const auto& report : converted.Reports) {
                 if (report.Lowering == Codegen::Amd64OnlyLowering::Kept)
                     std::cout << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) kept: no room for a jump\n";
-                else if (report.InstructionName == "VRSQRTPS" || report.InstructionName == "VRCPPS")
+                else if (counted(report.InstructionName))
                     ++stubsByName[report.InstructionName];
                 else
                     std::cout << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) -> " << (report.Lowering == Codegen::Amd64OnlyLowering::InPlace ? "in place " : "stub ") << report.ReplacementLength << " bytes\n";
@@ -85,7 +86,7 @@ int Run(const int argc, char* argv[]) {
         }
 
         auto elfReader = std::make_shared<Relinker::ElfReader>(sourceBytes);
-        const std::shared_ptr<Relinker::ISyscallScanner> syscallScanner = args.skipSyscallCheck ? Relinker::MakeNullSyscallScanner() : Relinker::MakeSyscallScanner();
+        const std::shared_ptr<Relinker::ISyscallScanner> syscallScanner = args.skipSyscallCheck ? Relinker::MakeNullSyscallScanner() : Relinker::MakeSyscallScanner(args.trapSdkSyscallStubs);
 
         const auto pipeline = std::make_shared<Relinker::RelinkerPipeline>(
             elfReader,
