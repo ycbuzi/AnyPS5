@@ -1,0 +1,4 @@
+# anyps5 frame reference 1
+device RTX 4070 SUPER (Ada) and GTX 1650 SUPER (Turing), NVIDIA 616.92
+skip 0
+frame frame_000.bmp 640 480 9984e9accf878cec 43.0662 53.7661 61.1397 255.0000

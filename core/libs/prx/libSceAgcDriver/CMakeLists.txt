@@ -1314,6 +1314,27 @@ if(AGC_BUILD_VISUAL_TEST)
 
         add_dependencies(agc_driver_visual_test agc_driver_visual_runtime)
     endif()
+
+    if(BUILD_TESTING)
+        find_package(Python3 COMPONENTS Interpreter)
+
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME agc_driver_frame_reference COMMAND ${CMAKE_COMMAND}
+                    -DFIXTURE=$<TARGET_FILE:agc_driver_visual_test>
+                    -DFRAME_HASH=${CMAKE_SOURCE_DIR}/tools/frame_hash.py
+                    -DMANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/tests/frames/VisualTriangle.txt
+                    -DOUTPUT_ROOT=${CMAKE_CURRENT_BINARY_DIR}/frame-reference-tests
+                    -DPYTHON=${Python3_EXECUTABLE}
+                    -DTOLERANCE=0
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/FrameReferenceRun.cmake)
+            set_tests_properties(agc_driver_frame_reference PROPERTIES TIMEOUT 180
+                    SKIP_REGULAR_EXPRESSION "frame reference run: skipped, no usable Vulkan device or display")
+
+            if(WIN32)
+                set_tests_properties(agc_driver_frame_reference PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+            endif()
+        endif()
+    endif()
 endif()
 
 include(PostCompile.cmake)

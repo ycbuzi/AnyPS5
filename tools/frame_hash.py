@@ -6,18 +6,17 @@ change that alters rendering is only caught by a human looking at a screenshot.
 
 This records a manifest of frame hashes for a run and verifies a later run against it. The manifest
 holds hashes and per-channel means rather than images, because the repository does not carry image
-files.
+files, and is line-oriented text rather than JSON, which the repository does not track either.
 
 The hash is FNV-1a 64 over the pixel bytes in top-down order, matching the Hash() used by
 ComputePipelineCapture so a C++ side can reproduce it.
 
-    python tools/frame_hash.py record  <run-dir> --manifest frames.json --device "RTX 4070 SUPER"
-    python tools/frame_hash.py verify  <run-dir> --manifest frames.json
+    python tools/frame_hash.py record  <run-dir> --manifest frames.txt --device "RTX 4070 SUPER"
+    python tools/frame_hash.py verify  <run-dir> --manifest frames.txt
     python tools/frame_hash.py selftest
 """
 
 import argparse
-import json
 import pathlib
 import re
 import struct
@@ -109,20 +108,57 @@ def deltas(directory, frame):
     return max(abs(now - then) for now, then in zip(means, frame["means"]))
 
 
+MANIFEST_BANNER = "# anyps5 frame reference 1"
+
+
+def write_manifest(path, device, skip, frames):
+    lines = [MANIFEST_BANNER, f"device {device}", f"skip {skip}"]
+    for frame in frames:
+        means = " ".join(f"{value:.4f}" for value in frame["means"])
+        lines.append(f"frame {frame['name']} {frame['width']} {frame['height']} {frame['hash']} {means}")
+    pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def read_manifest(path):
+    lines = pathlib.Path(path).read_text(encoding="utf-8").splitlines()
+    require(lines and lines[0].strip() == MANIFEST_BANNER, f"{path} is not a frame reference manifest")
+    manifest = {"device": "", "skip": 0, "frames": []}
+    for line in lines[1:]:
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if fields[0] == "device":
+            manifest["device"] = line.split(" ", 1)[1].strip() if " " in line else ""
+        elif fields[0] == "skip":
+            require(len(fields) == 2 and fields[1].isdigit(), f"{path}: malformed skip line")
+            manifest["skip"] = int(fields[1])
+        elif fields[0] == "frame":
+            require(len(fields) == 9, f"{path}: a frame line needs a name, size, hash and four means")
+            manifest["frames"].append({
+                "name": fields[1],
+                "width": int(fields[2]),
+                "height": int(fields[3]),
+                "hash": fields[4],
+                "means": [float(value) for value in fields[5:]],
+            })
+        else:
+            raise FrameError(f"{path}: unknown line {fields[0]!r}")
+    require(manifest["frames"], f"{path} lists no frames")
+    return manifest
+
+
 def record(args):
     frames = collect(args.directory, args.skip)
-    manifest = {"version": 1, "device": args.device, "skip": args.skip, "frames": frames}
-    pathlib.Path(args.manifest).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    write_manifest(args.manifest, args.device, args.skip, frames)
     print(f"recorded {len(frames)} frames from {args.directory} for device {args.device!r}, skipping {args.skip}")
     return 0
 
 
 def verify(args):
-    manifest = json.loads(pathlib.Path(args.manifest).read_text(encoding="utf-8"))
-    require(manifest.get("version") == 1, "unsupported manifest version")
+    manifest = read_manifest(args.manifest)
     expected = manifest["frames"]
-    actual = collect(args.directory, manifest.get("skip", 0))
-    if args.device and manifest.get("device") and args.device != manifest["device"]:
+    actual = collect(args.directory, manifest["skip"])
+    if args.device and manifest["device"] and args.device != manifest["device"]:
         print(f"warning: manifest recorded on {manifest['device']!r}, verifying on {args.device!r}; GPU and driver change rendering", file=sys.stderr)
     if len(actual) != len(expected):
         print(f"frame count changed: manifest has {len(expected)}, run produced {len(actual)}", file=sys.stderr)
@@ -140,6 +176,10 @@ def verify(args):
             failures += 1
             continue
         delta = deltas(args.directory, want)
+        if args.tolerance <= 0:
+            print(f"{want['name']}: hash {got['hash']} differs from the recorded {want['hash']}, mean channel delta {delta:.4f}", file=sys.stderr)
+            failures += 1
+            continue
         if delta is not None and delta <= args.tolerance:
             print(f"{want['name']}: pixels differ, mean channel delta {delta:.4f} within tolerance {args.tolerance}")
             continue
@@ -165,15 +205,23 @@ def selftest(args):
         base = bytes([(x * 7 + y * 13) % 256 for y in range(4) for x in range(4 * 4)])
         write_bmp(run / "frame_000.bmp", 4, 4, base)
         write_bmp(run / "frame_001.bmp", 4, 4, bytes(64))
-        manifest = pathlib.Path(root) / "frames.json"
+        manifest = pathlib.Path(root) / "frames.txt"
         code = record(argparse.Namespace(directory=str(run), manifest=str(manifest), device="selftest", skip=0))
         require(code == 0, "record failed")
-        recorded = json.loads(manifest.read_text(encoding="utf-8"))
+        recorded = read_manifest(manifest)
         require(len(recorded["frames"]) == 2, "expected two frames")
         require(recorded["frames"][0]["hash"] != recorded["frames"][1]["hash"], "distinct frames hashed the same")
+        require(recorded["device"] == "selftest", "device did not round-trip")
 
         common = dict(manifest=str(manifest), device="selftest", tolerance=0.0)
         require(verify(argparse.Namespace(directory=str(run), **common)) == 0, "identical run did not verify")
+
+        swapped = read_manifest(manifest)
+        write_manifest(manifest, swapped["device"], swapped["skip"], [
+            dict(swapped["frames"][0], hash="deadbeefdeadbeef"), swapped["frames"][1]])
+        require(verify(argparse.Namespace(directory=str(run), **common)) == 1, "a hash that differs with unchanged means was not caught at tolerance 0")
+        write_manifest(manifest, swapped["device"], swapped["skip"], swapped["frames"])
+        require(verify(argparse.Namespace(directory=str(run), **common)) == 0, "restoring the manifest did not verify")
 
         nudged = bytearray(base)
         nudged[0] = (nudged[0] + 1) % 256
