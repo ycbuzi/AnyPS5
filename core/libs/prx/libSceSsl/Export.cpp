@@ -1,4 +1,8 @@
 #include "SslTypes.hpp"
+#include <cstdint>
+#include <cstddef>
+#include <cstring>
+#include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 
 #include <mbedtls/asn1.h>
@@ -26,6 +30,10 @@ namespace {
 
 constexpr int ErrorNotFound = static_cast<int>(0x8095f004);
 constexpr int ErrorInvalidArg = static_cast<int>(0x8095177a);
+constexpr int ERROR_NOT_FOUND = static_cast<int>(0x8095F004);
+constexpr int ERROR_INVALID_ARG = static_cast<int>(0x8095177A);
+constexpr int ERROR_INVALID_ID = static_cast<int>(0x8095F006);
+constexpr int ERROR_INVALID_VALUE = static_cast<int>(0x8095F007);
 
 struct Pool {
     std::size_t size, current = 0, peak = 0;
@@ -516,6 +524,36 @@ int APS5_VABI sceSslClose() {
 }
 
 int APS5_VABI sceSslGetPem() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslCreateConnection(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslDeleteConnection(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslEnableVerifyOption(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslConnect(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslRead(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceSslWrite(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }

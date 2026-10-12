@@ -6,6 +6,8 @@
 #include <optional>
 #include <filesystem>
 #include <limits>
+#include <new>
+#include <stdexcept>
 #include <utility>
 #include <cerrno>
 #include <cstring>
@@ -13,6 +15,7 @@
 #include "prx/libc/include/FileStream.hpp"
 #include "prx/libc/include/ApplicationHeap.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/FilesystemError.hpp"
 #include "prx/libc/include/GuestArena.hpp"
 
 struct GuestFileMode {
@@ -83,7 +86,15 @@ FileStream* APS5_VABI freopen_nid_postfix(const char* filename, const char* mode
     const auto parsed = ParseFileMode(mode);
     if (!parsed) { errno = 22; return nullptr; }
     try {
-        const std::filesystem::path path = *filename ? ResolvePath_nid_no_patch(filename) : std::filesystem::path{};
+        std::filesystem::path path;
+        if (*filename) {
+            if (const int error = ResolvePathError_nid_no_patch(filename, path)) {
+                stream->Close();
+                if (stream->IsDynamic()) delete stream;
+                errno = error;
+                return nullptr;
+            }
+        }
         if (stream->Reopen(path, parsed->native.c_str())) {
             if (!path.empty() && parsed->writes) RecordWrittenPath_nid_no_patch(path);
             return stream;
@@ -103,7 +114,8 @@ FileStream* APS5_VABI fopen_nid_postfix(const char* filename, const char* mode) 
         errno = EINVAL;
         return nullptr;
     }
-    const std::filesystem::path fpath = ResolvePath_nid_no_patch(filename);
+    std::filesystem::path fpath;
+    if (const int error = ResolvePathError_nid_no_patch(filename, fpath)) { errno = error; return nullptr; }
     const auto abs_path = fpath.string();
     std::unique_ptr<std::FILE, int (*)(std::FILE*)> handle(OpenNative(fpath, parsed->native), std::fclose);
     if (!handle) {
@@ -246,6 +258,12 @@ int APS5_VABI fsetpos_nid_postfix(FileStream* stream, const std::int64_t* positi
     return fseeko_nid_postfix(stream, *position, SEEK_SET);
 }
 
+void APS5_VABI rewind_nid_postfix(FileStream* stream) {
+    const int saved = errno;
+    if (fseeko_nid_postfix(stream, 0, SEEK_SET) == 0) errno = saved;
+    stream->ClearError();
+}
+
 int APS5_VABI fputs_nid_postfix(const char* str, FileStream* stream) {
     if (!str) throw std::runtime_error("fputs: null string");
     const int result = std::fputs(str, GetNativeStream(stream));
@@ -260,6 +278,10 @@ int APS5_VABI fflush_nid_postfix(FileStream* stream) {
 
 int APS5_VABI malloc_stats_fast_nid_postfix(void* stats) {
     return ApplicationHeapStatsFast_nid_no_patch(stats);
+}
+
+size_t APS5_VABI malloc_usable_size_nid_postfix(void* pointer) {
+    return ApplicationHeapUsableSize_nid_no_patch(pointer);
 }
 
 void* APS5_VABI malloc_nid_postfix(size_t size) {
@@ -278,10 +300,11 @@ void* APS5_VABI reallocf_nid_postfix(void* ptr, size_t newSize) {
     try {
         return ApplicationHeapReallocate_nid_no_patch(ptr, newSize);
     } catch (const std::bad_alloc&) {
-        ApplicationHeapFree_nid_no_patch(ptr);
-        errno = ENOMEM;
-        return nullptr;
+    } catch (const std::length_error&) {
     }
+    ApplicationHeapFree_nid_no_patch(ptr);
+    errno = 12;
+    return nullptr;
 }
 
 void* APS5_VABI memalign_nid_postfix(size_t alignment, size_t size) {

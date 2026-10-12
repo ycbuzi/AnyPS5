@@ -233,6 +233,16 @@ void testDecode() {
         group.attribute.option = option;
         check(expectFailure([&] { DescribeVideoOutBuffer(registered, group); }).find("buffer option " + std::to_string(option)) != std::string::npos, "an unsupported buffer option was accepted");
     }
+    sceVideoOutSetBufferAttribute2(&group.attribute, 0x8000000000000000ull, 0, 259, 137, VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_NONE, 0, 0);
+    sceVideoOutAddBufferAttributeOption(&group.attribute, VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY);
+    check(group.attribute.option == VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY && group.attribute.width == 259 && group.attribute.height == 137, "an added buffer option was not stored");
+    sceVideoOutAddBufferAttributeOption(&group.attribute, VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY);
+    check(group.attribute.option == VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_STRICT_COLORIMETRY, "adding a buffer option twice changed it");
+    check(DescribeVideoOutBuffer(registered, group).address == plain.address, "a buffer with an added supported option was rejected");
+    sceVideoOutAddBufferAttributeOption(&group.attribute, 0x20);
+    check(group.attribute.option == 0x28, "an added buffer option did not keep the existing bits");
+    check(expectFailure([&] { DescribeVideoOutBuffer(registered, group); }).find("buffer option 40") != std::string::npos, "an unsupported added buffer option was accepted");
+    check(expectFailure([&] { sceVideoOutAddBufferAttributeOption(nullptr, 0x20); }).find("null attribute") != std::string::npos, "a null attribute was accepted");
     VideoOutBuffer dccBuffer{0, reinterpret_cast<uint64_t>(tiled.data()), 0x7f0000};
     sceVideoOutSetBufferAttribute2(&group.attribute, 0x8000000000000000ull, 0, 259, 137, VIDEO_OUT_BUFFER_ATTRIBUTE_OPTION_NONE, 0x208, 0x11223344);
     group.category = VIDEO_OUT_BUFFER_ATTRIBUTE_CATEGORY_COMPRESSED;
@@ -307,6 +317,14 @@ void testControls() {
     check(owner->GetTriggeredEvents(&event, 1) == 1, "initial output mode event missing");
     int64_t mode = 0;
     check(sceVideoOutGetEventData(&event, &mode) == 0 && mode == VIDEO_OUT_OUTPUT_MODE_DEFAULT && sceVideoOutGetEventCount(&event) == 1, "initial output mode event encoding is wrong");
+    check(sceVideoOutDeleteOutputModeEvent(queue, handle) == 0, "output mode unsubscription failed");
+    {
+        std::lock_guard lock(cfg->mutex);
+        check(cfg->outputModeEvents.empty(), "output mode unsubscription did not clear registration");
+    }
+    check(sceVideoOutDeleteOutputModeEvent(queue, handle) == 0, "duplicate output mode unsubscription failed");
+    expectFailure([&] { sceVideoOutDeleteOutputModeEvent(0, handle); });
+    expectFailure([&] { sceVideoOutDeleteOutputModeEvent(queue, -1); });
     check(sceVideoOutAddVblankEvent(queue, handle, nullptr) == 0 && sceVideoOutAddVblankEvent(queue, handle, &settings) == 0, "vblank subscription failed");
     {
         std::lock_guard lock(cfg->mutex);
@@ -340,7 +358,15 @@ void testControls() {
     vrrStatus.ident = VIDEO_OUT_EVENT_VRR_STATUS;
     vrrStatus.filter = EVFILT_VIDEO_OUT;
     check(sceVideoOutGetEventId(&vrrStatus) == VIDEO_OUT_EVENT_VRR_STATUS, "VRR status event id rejected");
+    check(sceVideoOutVrrPegToFixedRate(handle, 0, 0) == 0, "VRR peg on an open handle failed");
+    check(sceVideoOutVrrUnpegFromFixedRate(handle) == 0, "VRR unpeg on an open handle failed");
+    expectFailure([&] { sceVideoOutVrrPegToFixedRate(handle, 1, 0); });
+    expectFailure([&] { sceVideoOutVrrPegToFixedRate(handle, 0, 1); });
+    expectFailure([&] { sceVideoOutVrrPegToFixedRate(handle, 0x100000000ull, 0); });
+    expectFailure([&] { sceVideoOutVrrPegToFixedRate(handle, 0, 0x100000000ull); });
     sceVideoOutClose(handle);
+    expectFailure([&] { sceVideoOutVrrPegToFixedRate(handle, 0, 0); });
+    expectFailure([&] { sceVideoOutVrrUnpegFromFixedRate(handle); });
     check(owner->GetTriggeredEvents(&event, 1) == 0, "closed port retained pending events");
     check(sceKernelDeleteEqueue(queue) == 0, "event queue deletion failed");
     LibcRunShutdown_nid_postfix();

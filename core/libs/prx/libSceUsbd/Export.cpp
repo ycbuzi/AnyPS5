@@ -86,6 +86,14 @@ void LIBUSB_CALL CompleteTransfer_nid_no_patch(libusb_transfer* native) {
     }
 }
 
+std::string AbsentDevice(const char* function) {
+    return std::string(function) + ": the device list is always empty, so the device was not returned by sceUsbdGetDeviceList";
+}
+
+std::string UnopenedHandle(const char* function) {
+    return std::string(function) + ": no device can be opened, so the handle was not returned by sceUsbdOpen";
+}
+
 }
 
 extern "C" {

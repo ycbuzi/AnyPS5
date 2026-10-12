@@ -2,18 +2,28 @@
 #include <cstddef>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libkernel/File/include/RandomDevice.hpp"
 #include "prx/libkernel/Socket/include/SocketPoll.hpp"
+#include "prx/libkernel/Socket/include/SocketSelectDeadline.hpp"
+#include "prx/libkernel/Socket/include/SocketRuntime.hpp"
 
 #include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <thread>
+#include <string>
 #include <vector>
+
+#ifndef _WIN32
+#include <poll.h>
+#endif
 
 namespace {
 
 constexpr int GuestEinval = 22;
 constexpr int SelectDescriptorLimit = 1024;
+constexpr int SelectPollSliceMilliseconds = 10;
 
 struct GuestTimeval {
     std::int64_t seconds;
@@ -26,9 +36,53 @@ bool DescriptorSet(const void* set, int descriptor) {
     return set != nullptr && ((static_cast<const std::uint64_t*>(set)[descriptor / 64] >> (descriptor % 64)) & 1u) != 0;
 }
 
+void UnknownDescriptor(int descriptor, bool polled) {
+    const auto what = "select on descriptor " + std::to_string(descriptor) + (polled ? " (not a libSceNet socket)" : " (libSceNet is not loaded)");
+    NotImplemented_nid_no_patch(what.c_str());
+}
+
 void ClearDescriptor(void* set, int descriptor) {
     if (set != nullptr) static_cast<std::uint64_t*>(set)[descriptor / 64] &= ~(std::uint64_t{1} << (descriptor % 64));
 }
+
+#ifndef _WIN32
+
+short HostEventFlags(short events) {
+    short flags = 0;
+    if ((events & KernelSocketPoll::Readable) != 0) flags |= POLLIN;
+    if ((events & KernelSocketPoll::Writable) != 0) flags |= POLLOUT;
+    return flags;
+}
+
+short KernelEventFlags(short revents) {
+    short flags = 0;
+    if ((revents & POLLIN) != 0) flags |= KernelSocketPoll::Readable;
+    if ((revents & POLLOUT) != 0) flags |= KernelSocketPoll::Writable;
+    if ((revents & POLLERR) != 0) flags |= KernelSocketPoll::Error;
+    if ((revents & POLLHUP) != 0) flags |= KernelSocketPoll::HangUp;
+    return flags;
+}
+
+int HostPoll(KernelSocketPoll::Entry* descriptors, std::size_t count, int timeoutMilliseconds) {
+    std::vector<struct pollfd> native(count);
+    for (std::size_t index = 0; index < count; ++index) {
+        native[index].fd = descriptors[index].descriptor;
+        native[index].events = descriptors[index].events;
+        native[index].revents = 0;
+    }
+    const int result = ::poll(native.data(), static_cast<nfds_t>(count), timeoutMilliseconds);
+    if (result < 0) return -1;
+    for (std::size_t index = 0; index < count; ++index) {
+        if ((native[index].revents & POLLNVAL) != 0) {
+            errno = EBADF;
+            return -1;
+        }
+        descriptors[index].revents = KernelEventFlags(native[index].revents);
+    }
+    return result;
+}
+
+#endif
 
 }
 
@@ -57,53 +111,142 @@ int APS5_VABI select_nid_postfix(int nfds, void* readfds, void* writefds, void* 
         *__error_nid_postfix() = GuestEinval;
         return -1;
     }
-    std::vector<KernelSocketPoll::Entry> entries;
+    std::vector<KernelSocketPoll::Entry> sockets;
+    std::vector<std::size_t> socketSlots;
+    std::vector<KernelSocketPoll::Entry> hosts;
+    std::vector<std::size_t> hostSlots;
+    std::vector<KernelSocketPoll::Entry> devices;
+    std::vector<KernelSocketPoll::Entry> requested;
     for (int descriptor = 0; descriptor < nfds; ++descriptor) {
         short events = 0;
         if (DescriptorSet(readfds, descriptor)) events |= KernelSocketPoll::Readable;
         if (DescriptorSet(writefds, descriptor)) events |= KernelSocketPoll::Writable;
         if (DescriptorSet(exceptfds, descriptor)) events |= KernelSocketPoll::Urgent;
-        if (events != 0) entries.push_back({descriptor, events, 0});
+        if (events == 0) continue;
+        if (File::IsRandomDevice(descriptor)) devices.push_back({descriptor, events, static_cast<short>(events & (KernelSocketPoll::Readable | KernelSocketPoll::Writable))});
+        else if (descriptor <= 2) devices.push_back({descriptor, events, static_cast<short>(descriptor == 0 ? 0 : events & KernelSocketPoll::Writable)});
+        else {
+            sockets.push_back({descriptor, events, 0});
+            socketSlots.push_back(requested.size());
+            requested.push_back({descriptor, events, 0});
+        }
+    }
+    for (const auto& device : devices) requested.push_back(device);
+    const bool devicesReady = std::any_of(devices.begin(), devices.end(), [](const auto& entry) { return entry.revents != 0; });
+    const auto poller = g_socketPoller.load();
+    if (!sockets.empty()) {
+        if (poller == nullptr) {
+            for (std::size_t index = 0; index < sockets.size();) {
+                const int descriptor = sockets[index].descriptor;
+#ifndef _WIN32
+                if (descriptor < GuestSockets::FirstDescriptor) {
+                    hosts.push_back({descriptor, HostEventFlags(sockets[index].events), 0});
+                    hostSlots.push_back(socketSlots[index]);
+                    sockets.erase(sockets.begin() + static_cast<std::ptrdiff_t>(index));
+                    socketSlots.erase(socketSlots.begin() + static_cast<std::ptrdiff_t>(index));
+                    continue;
+                }
+#endif
+                UnknownDescriptor(descriptor, false);
+            }
+        } else {
+            for (auto& socket : sockets) socket.revents = 0;
+            const int probe = poller(sockets.data(), static_cast<int>(sockets.size()), 0);
+            if (probe < 0) {
+                *__error_nid_postfix() = -probe;
+                return -1;
+            }
+            for (std::size_t index = 0; index < sockets.size();) {
+                if ((sockets[index].revents & KernelSocketPoll::Unknown) == 0) {
+                    ++index;
+                    continue;
+                }
+                const int descriptor = sockets[index].descriptor;
+#ifndef _WIN32
+                if (descriptor < GuestSockets::FirstDescriptor) {
+                    hosts.push_back({descriptor, HostEventFlags(sockets[index].events), 0});
+                    hostSlots.push_back(socketSlots[index]);
+                    sockets.erase(sockets.begin() + static_cast<std::ptrdiff_t>(index));
+                    socketSlots.erase(socketSlots.begin() + static_cast<std::ptrdiff_t>(index));
+                    continue;
+                }
+#endif
+                UnknownDescriptor(descriptor, true);
+            }
+        }
     }
     const auto start = std::chrono::steady_clock::now();
     const auto deadline = limit == nullptr ? std::chrono::steady_clock::time_point::max()
-        : start + std::chrono::seconds(limit->seconds) + std::chrono::microseconds(limit->microseconds);
+        : KernelSocketSelect::DeadlineAfter(start, limit->seconds, limit->microseconds);
     for (;;) {
         int waitMilliseconds = 100;
         if (limit != nullptr) {
             const auto remaining = std::chrono::duration_cast<std::chrono::microseconds>(deadline - std::chrono::steady_clock::now()).count();
-            waitMilliseconds = static_cast<int>(std::clamp<std::int64_t>((remaining + 999) / 1000, 0, 100));
+            const auto roundedMilliseconds = remaining > 0 ? remaining / 1000 + (remaining % 1000 != 0) : 0;
+            waitMilliseconds = static_cast<int>(std::clamp<std::int64_t>(roundedMilliseconds, 0, 100));
         }
-        if (!entries.empty()) {
-            const auto poller = g_socketPoller.load();
-            if (poller == nullptr) NotImplemented_nid_no_patch("select on descriptors that are not libSceNet sockets");
-            for (auto& entry : entries) entry.revents = 0;
-            const int result = poller(entries.data(), static_cast<int>(entries.size()), waitMilliseconds);
+        if (devicesReady) waitMilliseconds = 0;
+#ifndef _WIN32
+        if (!hosts.empty() && !sockets.empty()) {
+            if (poller == nullptr) UnknownDescriptor(sockets.front().descriptor, false);
+            const auto sliceEnd = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitMilliseconds);
+            for (;;) {
+                for (auto& host : hosts) host.revents = 0;
+                const int hostReady = HostPoll(hosts.data(), hosts.size(), SelectPollSliceMilliseconds);
+                if (hostReady < 0) {
+                    *__error_nid_postfix() = errno;
+                    return -1;
+                }
+                for (std::size_t index = 0; index < hosts.size(); ++index) requested[hostSlots[index]].revents = hosts[index].revents;
+                for (auto& socket : sockets) socket.revents = 0;
+                const int socketReady = poller(sockets.data(), static_cast<int>(sockets.size()), SelectPollSliceMilliseconds);
+                if (socketReady < 0) {
+                    *__error_nid_postfix() = -socketReady;
+                    return -1;
+                }
+                for (std::size_t index = 0; index < sockets.size(); ++index) requested[socketSlots[index]].revents = sockets[index].revents;
+                if (hostReady > 0 || socketReady > 0) break;
+                if (std::chrono::steady_clock::now() >= sliceEnd) break;
+            }
+        } else if (!hosts.empty()) {
+            for (auto& host : hosts) host.revents = 0;
+            if (HostPoll(hosts.data(), hosts.size(), waitMilliseconds) < 0) {
+                *__error_nid_postfix() = errno;
+                return -1;
+            }
+            for (std::size_t index = 0; index < hosts.size(); ++index) requested[hostSlots[index]].revents = hosts[index].revents;
+        } else
+#endif
+        if (!sockets.empty()) {
+            if (poller == nullptr) UnknownDescriptor(sockets.front().descriptor, false);
+            for (auto& socket : sockets) socket.revents = 0;
+            const int result = poller(sockets.data(), static_cast<int>(sockets.size()), waitMilliseconds);
             if (result < 0) {
                 *__error_nid_postfix() = -result;
                 return -1;
             }
-            int ready = 0;
-            for (const auto& entry : entries) {
-                if ((entry.revents & KernelSocketPoll::Unknown) != 0) NotImplemented_nid_no_patch("select on descriptors that are not libSceNet sockets");
-                const bool readable = (entry.events & KernelSocketPoll::Readable) != 0 && (entry.revents & (KernelSocketPoll::Readable | KernelSocketPoll::HangUp | KernelSocketPoll::Error)) != 0;
-                const bool writable = (entry.events & KernelSocketPoll::Writable) != 0 && (entry.revents & (KernelSocketPoll::Writable | KernelSocketPoll::Error)) != 0;
-                const bool urgent = (entry.events & KernelSocketPoll::Urgent) != 0 && (entry.revents & KernelSocketPoll::Urgent) != 0;
-                ready += static_cast<int>(readable) + static_cast<int>(writable) + static_cast<int>(urgent);
-            }
-            if (ready > 0) {
-                for (const auto& entry : entries) {
-                    if ((entry.revents & (KernelSocketPoll::Readable | KernelSocketPoll::HangUp | KernelSocketPoll::Error)) == 0) ClearDescriptor(readfds, entry.descriptor);
-                    if ((entry.revents & (KernelSocketPoll::Writable | KernelSocketPoll::Error)) == 0) ClearDescriptor(writefds, entry.descriptor);
-                    if ((entry.revents & KernelSocketPoll::Urgent) == 0) ClearDescriptor(exceptfds, entry.descriptor);
-                }
-                return ready;
-            }
+            for (std::size_t index = 0; index < sockets.size(); ++index) requested[socketSlots[index]].revents = sockets[index].revents;
         } else if (waitMilliseconds > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(waitMilliseconds));
         }
+        int ready = 0;
+        for (const auto& entry : requested) {
+            if ((entry.revents & KernelSocketPoll::Unknown) != 0) UnknownDescriptor(entry.descriptor, true);
+            const bool readable = (entry.events & KernelSocketPoll::Readable) != 0 && (entry.revents & (KernelSocketPoll::Readable | KernelSocketPoll::HangUp | KernelSocketPoll::Error)) != 0;
+            const bool writable = (entry.events & KernelSocketPoll::Writable) != 0 && (entry.revents & (KernelSocketPoll::Writable | KernelSocketPoll::Error)) != 0;
+            const bool urgent = (entry.events & KernelSocketPoll::Urgent) != 0 && (entry.revents & KernelSocketPoll::Urgent) != 0;
+            ready += static_cast<int>(readable) + static_cast<int>(writable) + static_cast<int>(urgent);
+        }
+        if (ready > 0) {
+            for (const auto& entry : requested) {
+                if ((entry.revents & (KernelSocketPoll::Readable | KernelSocketPoll::HangUp | KernelSocketPoll::Error)) == 0) ClearDescriptor(readfds, entry.descriptor);
+                if ((entry.revents & (KernelSocketPoll::Writable | KernelSocketPoll::Error)) == 0) ClearDescriptor(writefds, entry.descriptor);
+                if ((entry.revents & KernelSocketPoll::Urgent) == 0) ClearDescriptor(exceptfds, entry.descriptor);
+            }
+            return ready;
+        }
         if (limit != nullptr && std::chrono::steady_clock::now() >= deadline) {
-            for (const auto& entry : entries) {
+            for (const auto& entry : requested) {
                 ClearDescriptor(readfds, entry.descriptor);
                 ClearDescriptor(writefds, entry.descriptor);
                 ClearDescriptor(exceptfds, entry.descriptor);

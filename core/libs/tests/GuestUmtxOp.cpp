@@ -20,6 +20,7 @@ static constexpr int UMTX_OP_MUTEX_LOCK = 5;
 static constexpr int UMTX_OP_WAIT_UINT = 11;
 static constexpr int UMTX_OP_WAIT_UINT_PRIVATE = 15;
 static constexpr int UMTX_OP_WAKE_PRIVATE = 16;
+static constexpr int UMTX_OP_NWAKE_PRIVATE = 21;
 static constexpr int UMTX_OP_SEM2_WAIT = 23;
 static constexpr int UMTX_OP_MAX = 27;
 static constexpr std::uint32_t UMTX_ABSTIME = 1;
@@ -80,7 +81,11 @@ static void WaitComparesALongAndWaitUintAnInt() {
 
     auto* low = reinterpret_cast<std::uint32_t*>(&value);
     Require(FailsWith(Umtx(low, UMTX_OP_WAIT_UINT, 1, nullptr, &none), GUEST_ETIMEDOUT));
-    Require(FailsWith(Umtx(low, UMTX_OP_WAIT_UINT_PRIVATE, 0x700000001ULL, nullptr, &none), GUEST_ETIMEDOUT));
+    Require(Umtx(low, UMTX_OP_WAIT_UINT_PRIVATE, 0x700000001ULL, nullptr, &none) == 0);
+    Require(Umtx(low, UMTX_OP_WAIT_UINT, 0x700000001ULL, nullptr, &none) == 0);
+    std::uint32_t all = 0xffffffffu;
+    Require(Umtx(&all, UMTX_OP_WAIT_UINT, 0xffffffffffffffffULL, nullptr, &none) == 0);
+    Require(FailsWith(Umtx(&all, UMTX_OP_WAIT_UINT, 0xffffffffULL, nullptr, &none), GUEST_ETIMEDOUT));
 }
 
 static void TimesOutWhileTheValueMatches() {
@@ -118,9 +123,19 @@ static void TimesOutWhileTheValueMatches() {
 static void RejectsAnInvalidTimeout() {
     std::uint32_t word = 1;
     KernelTimespec negative{-1, 0};
-    Require(FailsWith(Umtx(&word, UMTX_OP_WAIT_UINT, 1, nullptr, &negative), GUEST_EINVAL));
+    Require(FailsWith(Umtx(&word, UMTX_OP_WAIT_UINT, 1, SizeOf(sizeof(negative)), &negative), GUEST_EINVAL));
     KernelTimespec tooManyNanos{0, 1000000000};
-    Require(FailsWith(Umtx(&word, UMTX_OP_WAIT_UINT, 1, nullptr, &tooManyNanos), GUEST_EINVAL));
+    Require(FailsWith(Umtx(&word, UMTX_OP_WAIT_UINT, 1, SizeOf(sizeof(tooManyNanos)), &tooManyNanos), GUEST_EINVAL));
+    for (const int operation : {UMTX_OP_WAIT, UMTX_OP_WAIT_UINT}) {
+        bool threw = false;
+        try { Umtx(&word, operation, 1, nullptr, &tooManyNanos); }
+        catch (const std::runtime_error&) { threw = true; }
+        Require(threw);
+        threw = false;
+        try { Umtx(&word, operation, 1, nullptr, &negative); }
+        catch (const std::runtime_error&) { threw = true; }
+        Require(threw);
+    }
     UmtxTime negativeNanos{{0, -1}, 0, CLOCK_MONOTONIC_ID};
     Require(FailsWith(Umtx(&word, UMTX_OP_WAIT_UINT, 1, SizeOf(sizeof(negativeNanos)), &negativeNanos), GUEST_EINVAL));
 }
@@ -197,6 +212,63 @@ static void WakeWithoutWaitersSucceeds() {
     Require(Umtx(&word, UMTX_OP_WAKE_PRIVATE, INT_MAX) == 0);
 }
 
+static void NwakeWakesEveryWaiterOnEachListedAddress() {
+    std::uint32_t first = 1;
+    std::uint64_t second = 1;
+    std::uint32_t unlisted = 1;
+    std::atomic<int> started{0};
+    std::atomic<int> finished{0};
+    std::atomic<int> unlistedFinished{0};
+    std::vector<int> results(4, -2);
+    int unlistedResult = -2;
+
+    std::vector<std::thread> waiters;
+    for (int i = 0; i < 3; ++i) {
+        waiters.emplace_back([&, i] {
+            KernelTimespec failsafe = FailsafeTimeout();
+            ++started;
+            results[i] = Umtx(&first, UMTX_OP_WAIT_UINT_PRIVATE, 1, nullptr, &failsafe);
+            ++finished;
+        });
+    }
+    waiters.emplace_back([&] {
+        KernelTimespec failsafe = FailsafeTimeout();
+        ++started;
+        results[3] = Umtx(&second, UMTX_OP_WAIT, 1, nullptr, &failsafe);
+        ++finished;
+    });
+    std::thread unlistedWaiter([&] {
+        KernelTimespec failsafe = FailsafeTimeout();
+        ++started;
+        unlistedResult = Umtx(&unlisted, UMTX_OP_WAIT_UINT, 1, nullptr, &failsafe);
+        ++unlistedFinished;
+    });
+    AwaitCount(started, 5);
+    std::this_thread::sleep_for(SETTLE);
+
+    void* addresses[] = {&first, nullptr, &second};
+    Require(Umtx(addresses, UMTX_OP_NWAKE_PRIVATE, 3) == 0);
+    AwaitCount(finished, 4);
+    std::this_thread::sleep_for(SETTLE);
+    Require(unlistedFinished.load() == 0);
+
+    Require(Umtx(&unlisted, UMTX_OP_WAKE_PRIVATE, 1) == 0);
+    for (auto& waiter : waiters) waiter.join();
+    unlistedWaiter.join();
+    for (const int result : results) Require(result == 0);
+    Require(unlistedResult == 0);
+}
+
+static void NwakeReadsOnlyTheCountedEntries() {
+    Require(Umtx(nullptr, UMTX_OP_NWAKE_PRIVATE, 0) == 0);
+    Require(Umtx(nullptr, UMTX_OP_NWAKE_PRIVATE, 0xffffffff00000000ULL) == 0);
+    Require(Umtx(nullptr, UMTX_OP_NWAKE_PRIVATE, 0xffffffffULL) == 0);
+    Require(FailsWith(Umtx(nullptr, UMTX_OP_NWAKE_PRIVATE, 1), GUEST_EFAULT));
+    std::uint32_t word = 0;
+    void* addresses[] = {&word};
+    Require(Umtx(addresses, UMTX_OP_NWAKE_PRIVATE, 1) == 0);
+}
+
 static void RejectsBadObjectsAndOperations() {
     Require(FailsWith(Umtx(nullptr, UMTX_OP_WAIT, 0), GUEST_EFAULT));
     Require(FailsWith(Umtx(nullptr, UMTX_OP_WAIT_UINT, 0), GUEST_EFAULT));
@@ -205,11 +277,14 @@ static void RejectsBadObjectsAndOperations() {
 
     std::uint64_t value = 0;
     Require(FailsWith(Umtx(&value, 0, 0), GUEST_EOPNOTSUPP));
-    Require(FailsWith(Umtx(&value, 1, 0), GUEST_EOPNOTSUPP));
     Require(FailsWith(Umtx(&value, UMTX_OP_MAX, 0), GUEST_EINVAL));
     Require(FailsWith(Umtx(&value, -1, 0), GUEST_EINVAL));
 
     bool threw = false;
+    try { Umtx(&value, 1, 0); }
+    catch (const std::runtime_error&) { threw = true; }
+    Require(threw);
+    threw = false;
     try { Umtx(&value, UMTX_OP_MUTEX_LOCK, 0); }
     catch (const std::runtime_error&) { threw = true; }
     Require(threw);
@@ -227,5 +302,7 @@ int main() {
     WakeReleasesAWaiterWithoutAValueChange();
     WakeHonoursTheCountAndTheAddress();
     WakeWithoutWaitersSucceeds();
+    NwakeWakesEveryWaiterOnEachListedAddress();
+    NwakeReadsOnlyTheCountedEntries();
     RejectsBadObjectsAndOperations();
 }

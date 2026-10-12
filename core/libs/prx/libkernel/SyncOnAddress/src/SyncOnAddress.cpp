@@ -27,6 +27,7 @@ constexpr int UMTX_OP_WAKE = 3;
 constexpr int UMTX_OP_WAIT_UINT = 11;
 constexpr int UMTX_OP_WAIT_UINT_PRIVATE = 15;
 constexpr int UMTX_OP_WAKE_PRIVATE = 16;
+constexpr int UMTX_OP_NWAKE_PRIVATE = 21;
 constexpr int UMTX_OP_MAX = 27;
 constexpr std::uint32_t UMTX_ABSTIME = 1;
 constexpr int GUEST_CLOCK_REALTIME = 0;
@@ -137,6 +138,9 @@ int UmtxDeadline(const void* sizeArgument, const void* timeArgument, std::option
         time = *static_cast<const UmtxTime*>(timeArgument);
     }
     if (time.timeout.tv_sec < 0 || time.timeout.tv_nsec < 0 || time.timeout.tv_nsec >= NANOS_PER_SECOND) {
+        if (sizeArgument == nullptr) {
+            NotImplemented_nid_no_patch("_umtx_op timeout with size argument 0 that is not a valid timespec");
+        }
         return GUEST_EINVAL;
     }
 
@@ -155,7 +159,7 @@ int UmtxDeadline(const void* sizeArgument, const void* timeArgument, std::option
 }
 
 template <class TValue>
-int UmtxWait(void* object, TValue expected, const void* sizeArgument, const void* timeArgument, const void* caller) {
+int UmtxWait(void* object, std::uint64_t expected, const void* sizeArgument, const void* timeArgument, const void* caller) {
     std::optional<std::uint64_t> deadline;
     if (const int error = UmtxDeadline(sizeArgument, timeArgument, deadline); error != 0) {
         return error;
@@ -166,7 +170,10 @@ int UmtxWait(void* object, TValue expected, const void* sizeArgument, const void
     if (!IsAlignedAddress<TValue>(reinterpret_cast<std::uintptr_t>(object))) {
         APS5_INVALID_ARG_EX;
     }
-    return WaitOnAddressUntil(static_cast<TValue*>(object), expected, deadline, caller) ? 0 : GUEST_ETIMEDOUT;
+    if (expected > std::numeric_limits<TValue>::max()) {
+        return 0;
+    }
+    return WaitOnAddressUntil(static_cast<TValue*>(object), static_cast<TValue>(expected), deadline, caller) ? 0 : GUEST_ETIMEDOUT;
 }
 
 int UmtxWake(void* object, std::uint64_t count, bool isPrivate) {
@@ -174,6 +181,21 @@ int UmtxWake(void* object, std::uint64_t count, bool isPrivate) {
         return isPrivate ? 0 : GUEST_EFAULT;
     }
     WakeAddress(reinterpret_cast<std::uintptr_t>(object), static_cast<std::int32_t>(count), true);
+    return 0;
+}
+
+int UmtxNwakePrivate(void* object, std::uint64_t value) {
+    const auto count = static_cast<std::int32_t>(value);
+    if (count <= 0) {
+        return 0;
+    }
+    if (object == nullptr) {
+        return GUEST_EFAULT;
+    }
+    const auto* addresses = static_cast<void* const*>(object);
+    for (std::int32_t index = 0; index < count; ++index) {
+        WakeAddress(reinterpret_cast<std::uintptr_t>(addresses[index]), std::numeric_limits<std::int32_t>::max(), true);
+    }
     return 0;
 }
 
@@ -240,16 +262,21 @@ int APS5_VABI _umtx_op_nid_postfix(void* object, int operation, std::uint64_t va
             break;
         case UMTX_OP_WAIT_UINT:
         case UMTX_OP_WAIT_UINT_PRIVATE:
-            error = UmtxWait<std::uint32_t>(object, static_cast<std::uint32_t>(value), sizeArgument, timeArgument, caller);
+            error = UmtxWait<std::uint32_t>(object, value, sizeArgument, timeArgument, caller);
             break;
         case UMTX_OP_WAKE:
         case UMTX_OP_WAKE_PRIVATE:
             error = UmtxWake(object, value, operation == UMTX_OP_WAKE_PRIVATE);
             break;
+        case UMTX_OP_NWAKE_PRIVATE:
+            error = UmtxNwakePrivate(object, value);
+            break;
         default:
             if (operation < 0 || operation >= UMTX_OP_MAX) {
                 error = GUEST_EINVAL;
-            } else if (operation <= UMTX_OP_RESERVED1) {
+            } else if (operation == UMTX_OP_RESERVED1) {
+                NotImplemented_nid_no_patch("_umtx_op operation 1");
+            } else if (operation < UMTX_OP_RESERVED1) {
                 error = GUEST_EOPNOTSUPP;
             } else {
                 NotImplemented_nid_no_patch(("_umtx_op operation " + std::to_string(operation)).c_str());

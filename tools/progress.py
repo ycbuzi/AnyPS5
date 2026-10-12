@@ -13,9 +13,16 @@ ISA = Path(__file__).resolve().parent / "rdna_isa.txt"
 SOURCE = f'https://github.com/{os.environ.get("GITHUB_REPOSITORY", "boykopovar/AnyPS5")}/blob/main'
 DEFINITION = re.compile(r"\bAPS5_VABI\s+(\w+)\s*\([^;{]*\)\s*(?:noexcept\s*)?(?:try\s*)?\{")
 STUB = "NotImplemented_nid_no_patch"
+CALL = re.compile(r"\b(\w+)\s*\(")
 CMAKE_SHARED = re.compile(r'^\s*include\(\s*"?\$\{CMAKE_CURRENT_SOURCE_DIR\}/\.\./([\w.-]+)/[\w.-]+\.cmake"?\s*\)', re.M)
 SOURCE_SHARED = re.compile(r'^\s*#\s*include\s*"prx/([\w.-]+)/[\w./-]+\.cpp"', re.M)
 STUB_WRAPPER = re.compile(r"\bstatic\s+(?:\[\[noreturn\]\]\s+)?[\w:<>,\s*&]+?\s+(\w+)\s*\([^;{]*\)\s*\{")
+NON_CODE = re.compile(r'"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'|//[^\n]*|/\*.*?\*/', re.S)
+DISCARD = re.compile(r"\(void\)\s*\w+\s*;")
+EMPTY_RETURN = re.compile(r"return\s*;")
+CONST_RETURN = re.compile(r"return\s+(?:[+-]?\s*(?:0[xX][0-9a-fA-F]+|\d+)[uUlL]*|\w+|\"(?:\\.|[^\"\\])*\")\s*;")
+WRAPPER_RETURN = re.compile(r"return\s+(\w+)\s*\(([^()]*)\)\s*;")
+BARE_THROW = re.compile(r"throw\b[^;]*;")
 FLAT_SEGMENTS = ("GLOBAL_", "SCRATCH_")
 OPCODE_SENTINELS = {"Invalid", "Count", "Unknown", "Unsupported"}
 OPCODE_ALIASES = {
@@ -62,6 +69,16 @@ PANEL_WIDTH, GAP, MAP_HEIGHT, HEADER = 495, 10, 280, 30
 DONE_COLOR, TODO_COLOR, BORDER, TEXT = "#2ea043", "#6e7681", "#0d1117", "#ffffff"
 
 
+def blank(match):
+    if match.group(0).startswith(('"', "'")):
+        return "LITERAL"
+    return re.sub(r"[^\n]", " ", match.group(0))
+
+
+def code(text):
+    return NON_CODE.sub(blank, text)
+
+
 def body_end(text, start):
     depth = 0
     for i in range(start, len(text)):
@@ -75,29 +92,81 @@ def body_end(text, start):
 
 
 def stub_calls(text):
-    calls = [STUB]
+    calls = {STUB}
     for match in STUB_WRAPPER.finditer(text):
-        if STUB in text[match.end() - 1:body_end(text, match.end() - 1)]:
-            calls.append(match.group(1) + "(")
+        body = text[match.end() - 1:body_end(text, match.end() - 1)]
+        if any(call.group(1) == STUB for call in CALL.finditer(body)):
+            calls.add(match.group(1))
     return calls
 
 
+def statements(body):
+    depth, start, parts = 0, 1, []
+    for i, character in enumerate(body[1:], 1):
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+        elif character == ";" and not depth:
+            parts.append(body[start:i + 1])
+            start = i + 1
+    parts.append(body[start:])
+    return parts
+
+
+def inert_statement(statement, wrappers):
+    if EMPTY_RETURN.fullmatch(statement) or CONST_RETURN.fullmatch(statement) or BARE_THROW.fullmatch(statement):
+        return True
+    call = WRAPPER_RETURN.fullmatch(statement)
+    return bool(call) and call.group(1) in wrappers
+
+
+def inert_body(body, wrappers):
+    terminals = 0
+    for statement in statements(body):
+        statement = statement.strip()
+        if not statement:
+            continue
+        if DISCARD.fullmatch(statement):
+            continue
+        if terminals or not inert_statement(statement, wrappers):
+            return False
+        terminals += 1
+    return True
+
+
+def inert_wrappers(text):
+    bodies = {m.group(1): text[m.end() - 1:body_end(text, m.end() - 1)] for m in STUB_WRAPPER.finditer(text)}
+    names = set()
+    while True:
+        found = {name for name, body in bodies.items() if name not in names and inert_body(body, names)}
+        if not found:
+            return names
+        names |= found
+
+
 def scan_library(path):
-    done, todo = set(), set()
+    done, todo, inert, live = set(), set(), set(), set()
     for source in path.rglob("*.cpp"):
         if "tests" in source.relative_to(path).parts:
             continue
-        text = source.read_text(errors="ignore")
+        text = code(source.read_text(errors="ignore"))
         calls = stub_calls(text)
+        wrappers = inert_wrappers(text)
         for match in DEFINITION.finditer(text):
             name = match.group(1)
             if name.endswith("_nid_no_patch"):
                 continue
             body = text[match.end() - 1:body_end(text, match.end() - 1)]
-            (todo if any(call in body for call in calls) else done).add(name)
+            if any(call.group(1) in calls for call in CALL.finditer(body)):
+                todo.add(name)
+                continue
+            done.add(name)
+            (inert if inert_body(body, wrappers) else live).add(name)
     todo -= done
+    inert -= live
     group = {"name": path.name, "label": path.name.removeprefix("libSce"), "done": len(done), "todo": len(todo),
-             "done_names": sorted(done), "todo_names": sorted(todo)}
+             "done_names": sorted(done), "todo_names": sorted(todo), "inert_names": sorted(inert)}
     if not (done or todo):
         cmake = path / "CMakeLists.txt"
         texts = [(CMAKE_SHARED, cmake.read_text())] if cmake.is_file() else []
@@ -189,7 +258,7 @@ def squarify(values, x, y, w, h):
 
 
 def cells(count, x, y, w, h):
-    if not count:
+    if not count or w <= 0 or h <= 0:
         return []
     rows = max(1, min(count, round((count * h / w) ** 0.5)))
     result = []
@@ -284,7 +353,8 @@ def summary(libraries, shaders):
         f'<p>Generated by <a href="{SOURCE}/tools/progress.py">tools/progress.py</a> on every push to <code>main</code>. '
         'Raw numbers: <a href="progress.json">progress.json</a>.</p>',
         table("System libraries", "Library", libraries),
-        "<p>A function is implemented when it no longer calls <code>NotImplemented_nid_no_patch</code>. "
+        "<p>A function is implemented when it no longer calls <code>NotImplemented_nid_no_patch</code>; "
+        "comparison reports separately mark implemented functions whose body only returns a constant or throws. "
         f'The total only includes functions already declared in <a href="{SOURCE}/core/libs/prx">core/libs/prx</a>, '
         "not every function exported by the PS5 firmware. Shared-source libraries are counted only at their source library. "
         "Libraries with no exports only provide an empty module for titles that load them. "
@@ -320,6 +390,7 @@ def compare(title, column, unit, base, head):
     base_all, head_all = base_done | names(base, "todo", owners), head_done | names(head, "todo", owners)
     implemented, declared = head_done - base_done, head_all - base_all - head_done
     regressed, removed = base_done & (head_all - head_done), base_all - head_all
+    inert = implemented & names(head, "inert", owners)
     if not (implemented or declared or regressed or removed or shared):
         return []
     delta = round(head["percent"] - base["percent"], 2)
@@ -329,6 +400,7 @@ def compare(title, column, unit, base, head):
     changes = f', {", ".join(counts)} {unit}' if counts else ""
     lines = [f'{icon} **{title}**: {head["percent"]}% ({delta:+}%{changes})', ""]
     lines += details("✅", "implemented", column, implemented)
+    lines += details("⚪", "behaviourally empty (constant return or throw)", column, inert)
     lines += details("🆕", "declared as stubs", column, declared)
     lines += details("⚠️", "went back to stubs", column, regressed)
     lines += details("🗑️", "removed", column, removed)

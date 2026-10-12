@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "SceTypes.hpp"
+#include "prx/libSceVideoOut/include/Output.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libSceVideoOut/include/VideoOutDriver.hpp"
 
@@ -310,7 +311,7 @@ int APS5_VABI sceVideoOutVrrUnpegFromFixedRate(int handle) try {
     LibcAwaitExit_nid_postfix();
 }
 
-int APS5_VABI sceVideoOutVrrPegToFixedRate(int handle, int32_t arg1, int32_t arg2) try {
+int APS5_VABI sceVideoOutVrrPegToFixedRate(int handle, uint64_t arg1, uint64_t arg2) try {
     if (VideoOutDriver::Get().GetConfig(handle) == nullptr) {
         throw std::runtime_error(std::string(__func__) + ": VIDEO_OUT_ERROR_INVALID_HANDLE");
     }

@@ -116,7 +116,7 @@ bool Terminated_nid_no_patch(const char (&value)[TSize]) {
 }
 
 const MediaFormat* Format_nid_no_patch(const ContentExportParam& param) {
-    if (std::ranges::any_of(param.reserved, [](char value) { return value != 0; }))
+    if (std::ranges::any_of(param.comment, [](char value) { return value != 0; }))
         NotImplemented_nid_no_patch("content export: nonzero reserved/comment field");
     if (std::string_view(param.content_type).starts_with("video/"))
         NotImplemented_nid_no_patch("content export: video import semantics");
@@ -356,4 +356,25 @@ int APS5_VABI sceContentExportTerm() {
     return 0;
 }
 
+
+int APS5_VABI sceContentExportGetProgress(std::int32_t expId) {
+    (void)expId;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceContentExportCancel(std::int32_t expId) {
+    (void)expId;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceContentExportFromDataWithThumbnail(std::int32_t expId, const ContentExportParam* param,
+    const ContentExportCallbackParam* contentCallbackParam, const char* thumbnailType,
+    const ContentExportCallbackParam* thumbnailCallbackParam, char* path, std::size_t pathBufferLength) {
+    (void)expId; (void)param; (void)contentCallbackParam; (void)thumbnailType;
+    (void)thumbnailCallbackParam; (void)path; (void)pathBufferLength;
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
 }

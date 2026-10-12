@@ -173,4 +173,9 @@ int APS5_VABI _Cnd_broadcast_nid_postfix(void** handle) {
     return threadSuccess;
 }
 
+int SignalCondition_nid_no_patch(void** handle) {
+    ResolveCondition(handle, "_Cnd_signal")->native.notify_one();
+    return threadSuccess;
+}
+
 }

@@ -86,6 +86,32 @@ is a *different* harness that ranks by device type and ignores `ANYPS5_GPU` enti
 3. **Spend the one PR slot.** Intake is a concurrency cap now (1 open PR with 0 merged).
    #2971's `progress.py` regex fix is the longest-shelf-life candidate.
 
+### Resolving conflicts: the judgement is easy, the splicing is what breaks
+
+The 1204-commit merge took **9 build attempts**, and **every single failure was mechanical**,
+not a disagreement about the code. Deciding which side owns a behaviour was always possible
+from evidence (see the ownership rules below). Splicing text across boundaries that do not
+respect syntax is what cost the time. Seven distinct classes, each with a guard in
+`scratchpad/` that runs in seconds against a ~20-minute build:
+
+| class | symptom | guard |
+|---|---|---|
+| hunk cuts mid-statement/function | unbalanced `{` or `(` | `check-balance.py` |
+| upstream re-implemented ours, same file | redefinition | `check-dupes.py` |
+| upstream re-implemented ours, **other file in the same library** | linker `multiple definition` | `check-dupes-crossfile.py` |
+| hunk straddles `#ifdef` | orphan `#else`/`#endif` | `check-preproc.py` |
+| hand-merged block drops a declaration | "does not name a type" | `check-missing-types.py` |
+| variable declared on one side, used in the common region | "not declared in this scope" | compiler only |
+| both sides declare the same local | redeclaration | compiler only |
+
+Run all five scripts after resolving and **before** building. Two caveats learned the hard
+way: a definition regex must accept one-liners (`... APS5_VABI f(x) { return y; }`) or it
+silently misses most of them, and always run the same scan against `.upstream-wt` so
+pre-existing upstream duplicates (`sprintf_s`/`vsprintf_s`) are not mistaken for ours.
+
+**Never resolve a conflict by deleting a test.** `GuestWideStrings.cpp` had both sides
+testing `wcstok` with the same local names; the answer was a nested scope, keeping both.
+
 ### The one bug shape behind every sync breakage (read before syncing)
 
 Taking upstream's version of a file silently reverts every harvested PR that touched it. It never

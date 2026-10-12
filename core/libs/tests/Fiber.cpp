@@ -18,6 +18,7 @@ std::int32_t APS5_VABI sceFiberReturnToThread(std::uint64_t, std::uint64_t*);
 std::int32_t APS5_VABI sceFiberGetSelf(FiberObject**);
 std::int32_t APS5_VABI sceFiberGetInfo(FiberObject*, FiberInfo*);
 std::int32_t APS5_VABI sceFiberGetThreadFramePointerAddress(std::uint64_t*);
+std::int32_t APS5_VABI _sceFiberGetThreadFramePointerAddress(std::uint64_t*);
 std::int32_t APS5_VABI sceFiberStartContextSizeCheck(std::uint32_t);
 std::int32_t APS5_VABI sceFiberStopContextSizeCheck(void);
 }
@@ -54,6 +55,9 @@ void APS5_VABI FirstEntry(std::uint64_t argOnInitialize, std::uint64_t argOnRun)
     std::uint64_t framePointer = 0;
     Require(sceFiberGetThreadFramePointerAddress(nullptr) == FiberErrorNull, "frame pointer null");
     Require(sceFiberGetThreadFramePointerAddress(&framePointer) == 0 && framePointer == g_threadFramePointer, "thread frame pointer");
+    framePointer = 0;
+    Require(_sceFiberGetThreadFramePointerAddress(nullptr) == FiberErrorNull, "underscore frame pointer null");
+    Require(_sceFiberGetThreadFramePointerAddress(&framePointer) == 0 && framePointer == g_threadFramePointer, "underscore thread frame pointer");
     volatile double carried = 1.5;
     std::uint64_t received = 0;
     Require(sceFiberSwitch(g_second, 200, &received) == 0, "switch to second fiber");
@@ -81,6 +85,30 @@ void APS5_VABI CheckedEntry(std::uint64_t, std::uint64_t) {
     for (;;) sceFiberReturnToThread(0, &received);
 }
 
+constexpr std::size_t SmallContextSize = 2048;
+constexpr unsigned char SmallGuardFill = 0xa5;
+alignas(16) std::array<unsigned char, 64 * 1024> g_smallArea;
+FiberStorage g_smallStorage;
+
+void APS5_VABI SmallEntry(std::uint64_t, std::uint64_t) {
+    std::uint64_t received = 0;
+    for (;;) sceFiberReturnToThread(0, &received);
+}
+
+void RunSmallContextFirst() {
+    auto* small = reinterpret_cast<FiberObject*>(&g_smallStorage);
+    auto* context = g_smallArea.data() + g_smallArea.size() - SmallContextSize;
+    g_smallArea.fill(SmallGuardFill);
+    Require(sceFiberReturnToThread(0, nullptr) == FiberErrorPermission, "return to thread outside a fiber");
+    Require(_sceFiberInitializeImpl_nid_postfix(small, "small", SmallEntry, 0, context, SmallContextSize, nullptr, 0) == 0, "initialize small");
+    Require(sceFiberRun_nid_postfix(small, 0, nullptr) == 0, "first fiber run of the process on a 2 KiB context");
+    Require(sceFiberRun_nid_postfix(small, 0, nullptr) == 0, "resume on a 2 KiB context");
+    Require(sceFiberFinalize(small) == 0, "finalize small");
+    for (auto* byte = g_smallArea.data(); byte != context; ++byte) {
+        Require(*byte == SmallGuardFill, "nothing is written below a 2 KiB context");
+    }
+}
+
 [[gnu::noinline]] std::int32_t RunFirst(std::uint64_t* returned) {
     g_threadFramePointer = reinterpret_cast<std::uint64_t>(__builtin_frame_address(0));
     const std::int32_t result = sceFiberRun_nid_postfix(g_first, 100, returned);
@@ -91,6 +119,7 @@ void APS5_VABI CheckedEntry(std::uint64_t, std::uint64_t) {
 }
 
 int main() {
+    RunSmallContextFirst();
     FiberObject* self = nullptr;
     Require(sceFiberGetSelf(&self) == FiberErrorPermission, "no fiber on the thread");
     Require(_sceFiberInitializeImpl_nid_postfix(g_first, "first", FirstEntry, 11, g_firstContext.data(), g_firstContext.size(), nullptr, 0) == 0, "initialize first");
@@ -99,6 +128,7 @@ int main() {
     std::uint64_t returned = 0;
     std::uint64_t framePointer = 0;
     Require(sceFiberGetThreadFramePointerAddress(&framePointer) == FiberErrorPermission, "frame pointer outside a fiber");
+    Require(_sceFiberGetThreadFramePointerAddress(&framePointer) == FiberErrorPermission, "underscore frame pointer outside a fiber");
     Require(RunFirst(&returned) == 0 && returned == 250, "run first until second returns");
     Require(_mm_getcsr() == threadCsr, "thread MXCSR restored after the fibers");
     std::thread([&] {

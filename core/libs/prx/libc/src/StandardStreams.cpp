@@ -41,7 +41,7 @@ int APS5_VABI getc_unlocked_nid_postfix(FileStream* stream) {
 #else
     const int result = ::getc_unlocked(GetNativeStream(stream));
 #endif
-    stream->SyncStatus();
+    stream->SyncUnlockedStatus();
     return result;
 }
 int APS5_VABI __srget_nid_postfix(FileStream* stream) { return fgetc_nid_postfix(stream); }
@@ -58,7 +58,7 @@ int APS5_VABI putc_unlocked_nid_postfix(int value, FileStream* stream) {
 #else
     const int result = ::putc_unlocked(value, GetNativeStream(stream));
 #endif
-    stream->SyncStatus();
+    stream->SyncUnlockedStatus();
     return result;
 }
 int APS5_VABI __swbuf_nid_postfix(int value, FileStream* stream) { return fputc_nid_postfix(value, stream); }
@@ -83,10 +83,6 @@ int APS5_VABI ferror_nid_postfix(FileStream* stream) {
 }
 void APS5_VABI clearerr_nid_postfix(FileStream* stream) {
     stream->ClearError();
-}
-void APS5_VABI rewind_nid_postfix(FileStream* stream) {
-    std::rewind(GetNativeStream(stream));
-    stream->SyncStatus();
 }
 int APS5_VABI fileno_nid_postfix(FileStream* stream) {
 #ifdef _WIN32

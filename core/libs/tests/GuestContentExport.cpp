@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
     auto unsupported = MakeParam("unsupported", "application/octet-stream");
     Require(sceContentExportFromFile(session, &unsupported, "/source.png", path.data(), path.size()) == UnsupportedFormat, "unknown format accepted");
     unsupported = param;
-    unsupported.reserved[0] = 1;
+    unsupported.comment[0] = 1;
     Require(Throws([&] { sceContentExportFromFile(session, &unsupported, "/source.png", path.data(), path.size()); }), "unknown field accepted");
     unsupported = param;
     std::memset(unsupported.title, 't', sizeof(unsupported.title));

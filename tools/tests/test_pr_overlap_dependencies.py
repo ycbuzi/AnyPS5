@@ -54,11 +54,32 @@ class DependencyTests(unittest.TestCase):
             with self.subTest(body=body):
                 self.assertEqual(pull_requests(body)[1]["depends"], {2})
 
+    def test_colon_declaration_stops_before_unrelated_prose(self):
+        for body in ("Depends on: #2. Related #3 covers something else.",
+                     "Depends on: #2; related #3 covers something else.",
+                     "Depends on: none; see issue #3.",
+                     "Depends on: #2, related work is in #3."):
+            with self.subTest(body=body):
+                expected = set() if "none" in body else {2}
+                self.assertEqual(pull_requests(body)[1]["depends"], expected)
+
     def test_checklist_declaration_keeps_precedence(self):
         for declaration, expected in (("#3", {3}), ("none", set())):
             body = "Previously: Depends on #2.\n\n- [x] Depends on: " + declaration
             with self.subTest(body=body):
                 self.assertEqual(pull_requests(body)[1]["depends"], expected)
+
+    def test_template_placeholder_does_not_hide_prose(self):
+        placeholder = "- [ ] Depends on: <!-- #PR, or none -->"
+        for prose, expected in (("Adds X. Depends on #2.", {2}), ("Adds X.", set()), ("Depends on #2, #3.", {2, 3})):
+            for newline in ("\n", "\r\n"):
+                body = newline.join((prose, placeholder))
+                with self.subTest(body=body):
+                    self.assertEqual(pull_requests(body)[1]["depends"], expected)
+
+    def test_checklist_none_wins_over_prose_with_placeholder_comment(self):
+        body = "Depends on #2.\n- [x] Depends on: none <!-- #PR, or none -->"
+        self.assertEqual(pull_requests(body)[1]["depends"], set())
 
     def test_documented_dependency_suppresses_overlap(self):
         prs = pull_requests("Depends on #2.")

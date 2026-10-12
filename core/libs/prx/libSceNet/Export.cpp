@@ -172,7 +172,7 @@ bool guest_to_native_address(const void* address, std::uint32_t length,
                              sockaddr_storage& native, NativeLength& native_length) {
     if (!address || length < 2) return false;
     const auto* bytes = static_cast<const std::uint8_t*>(address);
-    if (bytes[1] == NET_AF_INET && bytes[0] == 16 && length >= 16) {
+    if (bytes[1] == NET_AF_INET && length >= 16) {
         auto& v4 = reinterpret_cast<sockaddr_in&>(native);
         v4.sin_family = AF_INET;
         std::memcpy(&v4.sin_port, bytes + 2, 2);
@@ -180,7 +180,7 @@ bool guest_to_native_address(const void* address, std::uint32_t length,
         native_length = sizeof(v4);
         return true;
     }
-    if (bytes[1] == NET_AF_INET6 && bytes[0] == 28 && length >= 28) {
+    if (bytes[1] == NET_AF_INET6 && length >= 28) {
         auto& v6 = reinterpret_cast<sockaddr_in6&>(native);
         v6.sin6_family = AF_INET6;
         std::memcpy(&v6.sin6_port, bytes + 2, 2);
@@ -388,6 +388,7 @@ std::int64_t message_length(const NetMsghdr* message) {
 extern "C" {
 
 extern const std::uint32_t sce_net_in6addr_any[4] = {};
+alignas(std::uint32_t) extern const std::uint8_t sce_net_in6addr_linklocal_allnodes[16] = {0xff, 0x02, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 
 int* APS5_VABI sceNetErrnoLoc(void) {
     return errno_slot();
@@ -664,6 +665,9 @@ int64_t APS5_VABI sceNetRecv(int s, void* buf, size_t len, int flags) {
     }
     const int native_flags = flags == 2 ? MSG_PEEK : 0;
     const int result = ::recv(socket.native->value, static_cast<char*>(buf), static_cast<int>(len), native_flags);
+#ifdef _WIN32
+    if (result < 0 && socket.type == NET_SOCK_DGRAM && WSAGetLastError() == WSAEMSGSIZE) return static_cast<int64_t>(len);
+#endif
     return result >= 0 ? result : fail(native_error());
 }
 
@@ -682,8 +686,11 @@ int64_t APS5_VABI sceNetRecvfrom(int s, void* buf, size_t len, int flags, void* 
     sockaddr_storage peer{};
     NativeLength peer_length = sizeof(peer);
     const int native_flags = flags == 2 ? MSG_PEEK : 0;
-    const int result = ::recvfrom(socket.native->value, static_cast<char*>(buf), static_cast<int>(len),
+    int result = ::recvfrom(socket.native->value, static_cast<char*>(buf), static_cast<int>(len),
         native_flags, from ? reinterpret_cast<sockaddr*>(&peer) : nullptr, from ? &peer_length : nullptr);
+#ifdef _WIN32
+    if (result < 0 && socket.type == NET_SOCK_DGRAM && WSAGetLastError() == WSAEMSGSIZE) result = static_cast<int>(len);
+#endif
     if (result < 0) return fail(native_error());
     if (from && !native_to_guest_address(peer, from, fromlen)) return fail(NET_EAFNOSUPPORT);
     return result;
@@ -931,13 +938,13 @@ int APS5_VABI sceNetEpollCreate(const char* name, int flags) {
 }
 
 int APS5_VABI sceNetGetMemoryPoolStats(int memid, NetMemoryPoolStats* stats) {
-    if (stats == nullptr) {
-        return fail(NET_EINVAL);
-    }
     std::lock_guard lk(g_mutex);
     const auto pool = g_pools.find(memid);
     if (pool == g_pools.end()) {
         return fail(NET_EBADF);
+    }
+    if (stats == nullptr) {
+        return fail(NET_EINVAL);
     }
     *stats = {pool->second, 0, 0};
     return 0;
@@ -1287,6 +1294,11 @@ int APS5_VABI sceNetResolverAbort(int rid, int flags) {
     if ((flags & ~known) != 0) throw std::runtime_error("sceNetResolverAbort: flags " + std::to_string(flags) + " are not supported");
     if ((flags & NET_RESOLVER_ABORT_FLAG_NTOA_PRESERVATION) != 0) resolver->second.abortNtoa = true;
     if ((flags & NET_RESOLVER_ABORT_FLAG_ATON_PRESERVATION) != 0) resolver->second.abortAton = true;
+    return 0;
+}
+
+int APS5_VABI sceNetShowIfconfig() {
+    NotImplemented_nid_no_patch(__func__);
     return 0;
 }
 

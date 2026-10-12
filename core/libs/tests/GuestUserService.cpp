@@ -13,6 +13,7 @@ int APS5_VABI sceUserServiceGetTriggerEffectStrength(int user_id, int* strength)
 int APS5_VABI sceUserServiceGetVibrationStrength(int user_id, int* strength);
 int APS5_VABI sceUserServiceGetMonoOutput(int user_id, int* mono_output);
 int APS5_VABI sceUserServiceGetPlatformPrivacyWs1Internal(int32_t user_id, int32_t* value);
+int APS5_VABI sceUserServiceGetAgeLevel(int user_id, std::uint32_t* age_level);
 }
 
 namespace {
@@ -76,5 +77,15 @@ int main() {
     Require(sceUserServiceGetPlatformPrivacyWs1Internal(123, &privacyValue) == USER_SERVICE_ERROR_INVALID_ARGUMENT);
     Require(sceUserServiceGetPlatformPrivacyWs1Internal(USER_SERVICE_INITIAL_USER_ID, &privacyValue) == USER_SERVICE_OK);
     Require(privacyValue == 0);
+    std::uint32_t age_level = 0x5a5a5a5au;
+    Require(sceUserServiceGetAgeLevel(USER_SERVICE_INITIAL_USER_ID, nullptr) == USER_SERVICE_ERROR_INVALID_ARGUMENT);
+    const int absent_users[] = {0, USER_SERVICE_USER_ID_INVALID, 0xff, 0x12345678};
+    for (int user_id : absent_users) {
+        Require(sceUserServiceGetAgeLevel(user_id, &age_level) == USER_SERVICE_ERROR_NOT_LOGGED_IN);
+        Require(age_level == 0x5a5a5a5au);
+        Require(sceUserServiceGetAgeLevel(user_id, nullptr) == USER_SERVICE_ERROR_NOT_LOGGED_IN);
+    }
+    Require(sceUserServiceGetAgeLevel(USER_SERVICE_INITIAL_USER_ID, &age_level) == USER_SERVICE_OK);
+    Require(age_level == 0xffffffffu);
 }
 

@@ -1,6 +1,6 @@
 #include "prx/libc/include/general/AsmMacros.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
-#include "prx/libkernel/System/include/GuestContext.hpp"
+#include "prx/libkernel/System/include/UserContext.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -16,15 +16,15 @@
 using ContextEntry = void (APS5_VABI*)();
 
 extern "C" {
-[[gnu::returns_twice]] int APS5_VABI getcontext_nid_postfix(GuestUcontext* context);
-int APS5_VABI setcontext_nid_postfix(const GuestUcontext* context);
-void APS5_VABI makecontext_nid_postfix(GuestUcontext* context, ContextEntry entry, int count, ...);
+[[gnu::returns_twice]] int APS5_VABI getcontext_nid_postfix(UserUcontext* context);
+int APS5_VABI setcontext_nid_postfix(const UserUcontext* context);
+void APS5_VABI makecontext_nid_postfix(UserUcontext* context, ContextEntry entry, int count, ...);
 [[gnu::returns_twice]] int APS5_VABI setjmp_nid_postfix(std::uint64_t* buffer);
 [[noreturn]] void APS5_VABI longjmp_nid_postfix(std::uint64_t* buffer, int value);
 int APS5_VABI sigprocmask_nid_postfix(int how, const void* set, void* previousSet);
 int* APS5_VABI __error_nid_postfix();
 
-int APS5_VABI CaptureKnownRegisters(GuestUcontext* context);
+int APS5_VABI CaptureKnownRegisters(UserUcontext* context);
 void CaptureReturnAddress();
 void RecordRegisters();
 void APS5_VABI EntryThunk();
@@ -35,7 +35,7 @@ std::uint64_t RecordedRegisters[18] = {};
 std::uint32_t RecordedMxcsr = 0;
 std::uint16_t RecordedControlWord = 0;
 alignas(16) std::uint8_t RecordedXmm[16 * 16] = {};
-GuestUcontext ReturnContext = {};
+UserUcontext ReturnContext = {};
 }
 
 asm(".text\n"
@@ -136,7 +136,7 @@ struct alignas(16) Stack {
 };
 
 struct Fibre {
-    GuestUcontext context;
+    UserUcontext context;
     std::uint64_t jump[12];
     int started;
 };
@@ -203,17 +203,17 @@ void CheckErrors() {
     Require(getcontext_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == GuestEinval, "getcontext rejects a null context");
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects a null context");
-    GuestUcontext context{};
+    UserUcontext context{};
     Require(getcontext_nid_postfix(&context) == 0, "capture a context to corrupt");
     context.mcontext.len = 0;
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(&context) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects a wrong mc_len");
-    context.mcontext.len = sizeof(GuestMcontext);
+    context.mcontext.len = sizeof(UserMcontext);
     context.mcontext.flags = 0x8;
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(&context) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects unknown mc_flags");
     context.mcontext.flags = 0;
-    GuestUcontext invalid = context;
+    UserUcontext invalid = context;
     invalid.stackPointer = g_contextStack.bytes;
     invalid.stackSize = StackBytes;
     makecontext_nid_postfix(&invalid, &EntryThunk, 7);
@@ -238,9 +238,9 @@ void CheckErrors() {
 }
 
 void CheckCapture() {
-    GuestUcontext context;
+    UserUcontext context;
     std::memset(&context, 0xa5, sizeof(context));
-    GuestUcontext untouched;
+    UserUcontext untouched;
     std::memset(&untouched, 0xa5, sizeof(untouched));
     std::uint32_t previous[4] = {};
     const std::uint32_t blocked[4] = {0x24, 0, 0, 0};
@@ -259,24 +259,23 @@ void CheckCapture() {
     Require((machine.rflags & 1) == 0, "getcontext clears the carry flag");
     Require(machine.rip == reinterpret_cast<std::uint64_t>(&CaptureReturnAddress), "getcontext saves its return address");
     Require(machine.rsp == CapturedStackPointer, "getcontext saves the caller's stack pointer");
-    Require(machine.len == sizeof(GuestMcontext) && machine.fpformat == 0x10002 && machine.ownedfp == 0x20001, "getcontext sets mc_len, mc_fpformat and mc_ownedfp");
+    Require(machine.len == sizeof(UserMcontext) && machine.fpformat == 0x10002 && machine.ownedfp == 0x20001, "getcontext sets mc_len, mc_fpformat and mc_ownedfp");
     Require(machine.onstack == 0 && machine.trapno == 0 && machine.addr == 0 && machine.flags == 0 && machine.err == 0, "getcontext zeroes the trap fields");
-    Require(machine.fsbase == 0 && machine.gsbase == 0 && machine.lbrfrom == 0 && machine.lbrto == 0 && machine.aux1 == 0 && machine.aux2 == 0, "getcontext zeroes the bases and branch records");
+    Require(machine.fsbase == 0 && machine.gsbase == 0 && machine.xfpustate == 0 && machine.xfpustateLength == 0, "getcontext zeroes the bases and the extended FPU state");
+    for (const auto word : machine.spare) Require(word == 0, "getcontext zeroes mc_spare");
     Require(context.sigmask[0] == 0x24 && context.sigmask[1] == 0 && context.sigmask[2] == 0 && context.sigmask[3] == 0, "getcontext saves the signal mask");
-    for (const auto word : context.reserved) Require(word == 0, "getcontext zeroes the words after the signal mask");
     std::uint32_t mxcsr = 0;
     std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(machine.fpstate) + FxsaveMxcsr, sizeof(mxcsr));
     std::uint16_t control = 0;
     std::memcpy(&control, machine.fpstate, sizeof(control));
     Require(mxcsr == _mm_getcsr() && control == ControlWord(), "getcontext saves MXCSR and the x87 control word");
-    for (std::size_t index = 64; index < 104; ++index) Require(machine.fpstate[index] == 0, "getcontext zeroes mc_fpstate after the FXSAVE image");
-    Require(std::memcmp(&context.link, &untouched.link, sizeof(GuestUcontext) - offsetof(GuestUcontext, link)) == 0, "getcontext keeps uc_link, uc_stack and uc_flags");
+    Require(std::memcmp(&context.link, &untouched.link, sizeof(UserUcontext) - offsetof(UserUcontext, link)) == 0, "getcontext keeps uc_link, uc_stack and uc_flags");
 }
 
 void CheckRestore() {
     const auto mxcsrBefore = _mm_getcsr();
     const auto controlBefore = ControlWord();
-    GuestUcontext target{};
+    UserUcontext target{};
     volatile int phase = 0;
     Require(getcontext_nid_postfix(&ReturnContext) == 0, "capture the return context");
     if (phase == 0) {
@@ -375,8 +374,8 @@ void CheckMakecontext() {
     ULONG_PTR threadHigh = 0;
     GetCurrentThreadStackLimits(&threadLow, &threadHigh);
 #endif
-    GuestUcontext caller{};
-    GuestUcontext context{};
+    UserUcontext caller{};
+    UserUcontext context{};
     volatile int phase = 0;
     Require(getcontext_nid_postfix(&caller) == 0, "capture the caller");
     if (phase == 0) {
@@ -386,7 +385,7 @@ void CheckMakecontext() {
         context.stackSize = StackBytes;
         context.link = &caller;
         makecontext_nid_postfix(&context, &EntryThunk, 6, 0x8000000000000001ull, 0x8000000000000002ull, 0x8000000000000003ull, 0x8000000000000004ull, 0x8000000000000005ull, 0x8000000000000006ull);
-        Require(context.mcontext.len == sizeof(GuestMcontext), "makecontext keeps the context valid");
+        Require(context.mcontext.len == sizeof(UserMcontext), "makecontext keeps the context valid");
         setcontext_nid_postfix(&context);
         Require(false, "setcontext into the made context returned");
     }
@@ -431,7 +430,7 @@ void CheckSignalMask() {
     Require(sigprocmask_nid_postfix(GuestSigBlock, nullptr, original) == 0, "read the signal mask");
     const std::uint32_t first[4] = {0x10, 0, 0, 0};
     const std::uint32_t second[4] = {0x20, 0, 0, 0};
-    GuestUcontext context{};
+    UserUcontext context{};
     volatile int phase = 0;
     Require(sigprocmask_nid_postfix(GuestSigSetmask, first, nullptr) == 0, "set the first mask");
     Require(getcontext_nid_postfix(&context) == 0, "capture the masked context");
@@ -447,7 +446,7 @@ void CheckSignalMask() {
 }
 
 int ExitFromContext() {
-    GuestUcontext context{};
+    UserUcontext context{};
     Require(getcontext_nid_postfix(&context) == 0, "capture the exiting template");
     context.stackPointer = g_exitStack.bytes;
     context.stackSize = StackBytes;
