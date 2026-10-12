@@ -47,6 +47,24 @@ from declined PRs — and all three test conflicts debugged on 2026-10-11 came f
 `#1993` among them. Rejected-PR code is what costs sync time. Check before harvesting:
 `gh pr view <n> --repo boykopovar/AnyPS5 --json mergedAt`.
 
+### Comparing against upstream main on this PC (recipe)
+
+To test a claim against upstream rather than our divergent tree, build a worktree of
+`origin/main`. **It must live under `D:\AnyPS5`**, because the build links `glslang.exe` and
+then *runs* it for shader generation, and ASR blocks freshly built executables outside the
+user's exclusions. Proven: the identical binary runs from `D:\AnyPS5` and returns "Access is
+denied" from `D:\AnyPS5-tools`. The exclusions cover `D:\AnyPS5` and `D:\AnyPS5-games` only.
+
+    git worktree add --detach D:\AnyPS5\.upstream-wt origin/main
+    # add ".upstream-wt/" to .git/info/exclude so git status stays clean
+    cd D:\AnyPS5\.upstream-wt && git submodule update --init --recursive --depth 1
+    cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DANYPS5_ENABLE_SPIRV_TOOLS=ON
+
+Configure takes ~3.5 min, a full test build ~2400 targets. Do not assume a result from our tree
+transfers to main: the four #3358 test *sources* are byte-identical to upstream, but the code
+they exercise differs by 70 recompiler, 33 Execution and 39 Graphics files, and those failures
+depend on exactly which SPIR-V the recompiler emits.
+
 ### Running GPU tests on a chosen adapter (non-obvious, cost an hour)
 
 The `agc_driver_*` execution tests build a device through `OpenVulkanTestDevice()`, which does
