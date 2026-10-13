@@ -5,13 +5,19 @@ Last updated: 2026-10-12, by the PC session.
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-12 late — SECOND SYNC DONE, ZERO BEHIND
+## START HERE — 2026-10-12 late — ZERO BEHIND, SUITE FULLY GREEN
 
-`stack/open-prs` @ `888981d48` has **merged upstream `495bf91a0` (793 commits)** and is
-**269 ahead / 0 behind** `origin/main` — fully current for the first time. Build clean.
-Progress **3290/3680 = 89.4%**, up from 88.9%: **+109 implemented** on a board **+102** larger.
-The suite gained 99 tests, 960 → 1059. Tag: `post-sync-495bf91a0`; previous state
-`pre-sync-793`.
+`stack/open-prs` @ `8199c514d` has **merged upstream `495bf91a0` (793 commits)** and is
+**274 ahead / 0 behind** `origin/main` — fully current for the first time. Build clean.
+Progress **3291/3680 = 89.43%**, up from 88.9%: **+110 implemented** on a board **+102** larger.
+
+**The suite is 1057/1057, zero failures** — green for the first time in this effort, tagged
+`green-1057-495bf91a0`. The 7 skips are the known environment ones
+(`agc_driver_stencil_ref_export`, five `video_out_flip_*`,
+`guest_video_out_wqhd_detection_no_vulkan`). Earlier states: `post-sync-495bf91a0`, `pre-sync-793`.
+
+**To reproduce that number, delete `build/tests/libc.prx` and `libkernel.prx` first** (see the
+gotchas below), or the guest tests silently run against stale libraries.
 
 ### The measurement that decides these merges
 
