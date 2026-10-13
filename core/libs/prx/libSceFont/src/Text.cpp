@@ -546,10 +546,6 @@ int APS5_VABI sceFontCharacterGetBidiLevel(const FontTextCharacter* textCharacte
     return SCE_FONT_OK;
 }
 
-// sceFontCharacterGetSyllableStringState is defined further down: upstream's version
-// inspects the neighbouring characters via IsSyllableFreeCode, which is strictly more than
-// the Thai-range check the harvested copy that used to sit here performed.
-
 int APS5_VABI sceFontCharacterGetTextFontCode(const FontTextCharacter* textCharacter, FontHandle* pFontHandle, std::uint32_t* textCode) {
     if (!textCharacter) {
         if (pFontHandle) *pFontHandle = nullptr;
@@ -599,7 +595,10 @@ FontTextCharacter* APS5_VABI sceFontCharacterRefersTextNext(const FontTextCharac
 }
 
 int APS5_VABI sceFontCharacterGetSyllableStringState(const FontTextCharacter* textCharacter, int* syllableStringState) {
-    if (!textCharacter || !syllableStringState) return SCE_FONT_ERROR_INVALID_PARAMETER;
+    if (!textCharacter || !syllableStringState) {
+        if (syllableStringState) *syllableStringState = SYLLABLE_STRING_NON_DETECTION;
+        return SCE_FONT_ERROR_INVALID_PARAMETER;
+    }
     const FontTextCharacter* const neighbourhood[] = {textCharacter->prev, textCharacter, textCharacter->next};
     for (const FontTextCharacter* character : neighbourhood) {
         if (character && !IsSyllableFreeCode(character->characterCode)) Unsupported(__func__, "syllable detection next to " + CodeName(character->characterCode) + " is not modelled");
