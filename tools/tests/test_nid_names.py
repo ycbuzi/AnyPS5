@@ -94,6 +94,38 @@ class DatabaseCacheTests(unittest.TestCase):
 class NidArgumentTests(unittest.TestCase):
     options = ["-h", "--help", "--db", "--nid", "--json"]
 
+    def test_invalid_nids_fail_before_database_or_source_access(self):
+        for nid in ("short", "ABCDEFGHIJKL", "ABCDEFGHIJ/", "ABCDEFGHIJ_", "ABCDEFGHIJ\u00e9", "", "--jsooon"):
+            with self.subTest(nid=nid):
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as error, \
+                        patch.object(nid_names, "load_db", return_value={}) as database, \
+                        patch.object(nid_names, "collect_unknowns") as sources, \
+                        patch.object(nid_names, "collect_real_names", return_value=set()), \
+                        self.assertRaises(SystemExit) as exited:
+                    nid_names.main(["--nid=" + nid, "--json"])
+                self.assertEqual(exited.exception.code, 2)
+                self.assertIn("invalid NID", error.getvalue())
+                database.assert_not_called()
+                sources.assert_not_called()
+
+    def test_option_typo_in_nid_list_is_not_an_unknown_success(self):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as error, \
+                patch.object(nid_names, "load_db", return_value={}) as database, \
+                patch.object(nid_names, "collect_real_names", return_value=set()), self.assertRaises(SystemExit) as exited:
+            nid_names.main(["--nid", "ZjtRqSMJwdw", "--jsooon"])
+        self.assertEqual(exited.exception.code, 2)
+        self.assertIn("--jsooon", error.getvalue())
+        database.assert_not_called()
+
+    def test_valid_unknown_nid_remains_a_successful_lookup(self):
+        output = io.StringIO()
+        with patch.object(nid_names, "load_db", return_value={}), \
+                patch.object(nid_names, "collect_real_names", return_value=set()), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(nid_names.main(["--nid=AAAAAAAAAA+", "--json"]), 0)
+        row, = json.loads(output.getvalue())["rows"]
+        self.assertEqual((row["nid"], row["status"]), ("AAAAAAAAAA+", "unknown"))
+
     def normalize(self, arguments):
         return nid_names.nid_arguments(arguments, self.options)
 
@@ -160,6 +192,11 @@ int APS5_VABI sceReal() { return 0; }
     def test_formatted_alias_macro_is_detected(self):
         self.write_source('APS5_EXPORT (\n "AAAAAAAAAAA" ,\n exampleUnknown00\n );\n')
         self.assertEqual(nid_names.collect_unknowns(), {"AAAAAAAAAAA": "core/libs/prx/libSceExample/Export.cpp:exampleUnknown00"})
+
+    def test_known_aliases_are_not_unknown_exports(self):
+        self.write_source('APS5_EXPORT("AAAAAAAAAAA", sceKnownCall);\n'
+                          'APS5_EXPORT("BBBBBBBBBBB", exampleUnknown00);\n')
+        self.assertEqual(nid_names.collect_unknowns(), {"BBBBBBBBBBB": "core/libs/prx/libSceExample/Export.cpp:exampleUnknown00"})
 
     def test_windows_source_paths_use_portable_separators(self):
         self.write_source('APS5_EXPORT("AAAAAAAAAAA", exampleUnknown00);\n')

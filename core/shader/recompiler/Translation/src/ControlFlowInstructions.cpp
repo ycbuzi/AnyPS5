@@ -331,8 +331,12 @@ struct RelativeWindowAccess {
     IrValue* inRange = nullptr;
 };
 
-RelativeWindowAccess relativeWindowAccess(IrBuilder& ir, const IrProgram& program, std::uint32_t reg, IrValue& offset, const char* name) {
+RelativeWindowAccess relativeWindowAccess(IrBuilder& ir, const IrProgram& program, std::uint32_t reg, IrValue& offset, const char* name, std::uint32_t vectorLimit) {
     const auto& metadata = program.Metadata();
+    if (metadata.vectorWindowSize == 0u) {
+        if (reg >= vectorLimit) throw std::runtime_error(std::string(name) + " addresses a register outside the relative-addressing span");
+        return {nullptr, &ir.ULessThan(offset, ir.Constant(vectorLimit - reg))};
+    }
     if (metadata.vectorWindowSize == 0u || reg < metadata.vectorWindowBase) throw std::runtime_error(std::string(name) + " addresses a register outside the relative-addressing window");
     const auto first = reg - metadata.vectorWindowBase;
     IrValue& index = ir.Emit(IrOpcode::UMin32, IrType::U32, {&ir.IAdd(ir.Constant(first), offset), &ir.Constant(metadata.vectorWindowSize - 1u)});
@@ -343,7 +347,15 @@ IrU32 TranslationContext::readRelativeVector(const RdnaOperand& base, IrValue& o
     if (base.kind != RdnaOperandKind::VectorRegister) {
         throw std::runtime_error(std::string(name) + " source is not a vector register");
     }
-    const auto access = relativeWindowAccess(ir, program, base.reg, offset, name);
+    const auto access = relativeWindowAccess(ir, program, base.reg, offset, name, currentVectorLimit);
+    if (access.index == nullptr) {
+        IrU32 result(ir.GetVectorReg(static_cast<VectorReg>(0)));
+        for (std::uint32_t reg = base.reg; reg < currentVectorLimit; ++reg) {
+            IrValue& hit = ir.IEqual(offset, ir.Constant(reg - base.reg));
+            result = IrU32(ir.Select(hit, ir.GetVectorReg(static_cast<VectorReg>(reg)), result.Value()));
+        }
+        return applyBitSourceModifiers(base, result);
+    }
     IrValue& loaded = ir.Emit(IrOpcode::LoadVectorWindow, IrType::U32, {access.index});
     return applyBitSourceModifiers(base, IrU32(ir.Select(*access.inRange, loaded, ir.GetVectorReg(static_cast<VectorReg>(0)))));
 }
@@ -353,7 +365,21 @@ void TranslationContext::writeRelativeVector(const RdnaOperand& base, IrValue& o
     if (destination.kind != RdnaOperandKind::VectorRegister) {
         throw std::runtime_error(std::string(name) + " destination is not a vector register");
     }
-    const auto access = relativeWindowAccess(ir, program, destination.reg, offset, name);
+    const auto access = relativeWindowAccess(ir, program, destination.reg, offset, name, currentVectorLimit);
+    if (access.index == nullptr) {
+        for (std::uint32_t reg = destination.reg; reg < currentVectorLimit; ++reg) {
+            IrValue& previous = ir.GetVectorReg(static_cast<VectorReg>(reg));
+            IrValue* merged = nullptr;
+            if (destination.dpp) {
+                const DppMoveFlags flags{destination.dpp8 ? DppMoveFlags::Lanes8 | destination.dppCtrl : destination.dppCtrl, static_cast<std::uint8_t>(destination.dppRowMask), static_cast<std::uint8_t>(destination.dppBankMask), destination.dppFetchInactive, destination.dppBoundCtrl};
+                merged = &ir.Emit(IrOpcode::DppUpdateU32, IrType::U32, {&value.Value(), &previous, &ir.GetExec()}, flags);
+            } else merged = &ir.Select(ir.GetExec(), value.Value(), previous);
+            IrValue* written = &ir.IEqual(offset, ir.Constant(reg - destination.reg));
+            if (enable != nullptr) written = &ir.LogicalAnd(*written, *enable);
+            ir.SetVectorReg(static_cast<VectorReg>(reg), ir.Select(*written, *merged, previous));
+        }
+        return;
+    }
     IrValue& previous = ir.Emit(IrOpcode::LoadVectorWindow, IrType::U32, {access.index});
     IrValue* merged = nullptr;
     if (destination.dpp) {
@@ -387,7 +413,7 @@ void TranslationContext::vMovrelsdB32(const RdnaInstruction& inst, bool split, b
         return;
     }
     const IrU32 previous = readRelativeVector(plainOperand(inst.destination), destinationOffset, name);
-    IrValue& bothInRange = ir.LogicalAnd(*relativeWindowAccess(ir, program, sourceAt(inst, 0u).reg, sourceOffset, name).inRange, *relativeWindowAccess(ir, program, inst.destination.reg, destinationOffset, name).inRange);
+    IrValue& bothInRange = ir.LogicalAnd(*relativeWindowAccess(ir, program, sourceAt(inst, 0u).reg, sourceOffset, name, currentVectorLimit).inRange, *relativeWindowAccess(ir, program, inst.destination.reg, destinationOffset, name, currentVectorLimit).inRange);
     writeRelativeVector(inst.destination, destinationOffset, value, name, &bothInRange);
     writeRelativeVector(sourceAt(inst, 0u), sourceOffset, previous, name, &bothInRange);
 }

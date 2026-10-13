@@ -5,6 +5,8 @@
 #include <limits>
 #include <mutex>
 #include <vector>
+#include <stdexcept>
+#include <string>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
@@ -15,6 +17,13 @@ static std::atomic<uint64_t> g_coredumpContext{0};
 
 static std::mutex g_userDataLock;
 static std::vector<std::uint8_t> g_userData;
+static constexpr int SCE_COREDUMP_ERROR_NOT_IN_COREDUMP_HANDLER = static_cast<int>(0x81180003u);
+
+static int attachOutsideCoredumpHandler(const char* function, const void* mem, size_t size) {
+    if (mem == nullptr || size == 0 || size > UINTPTR_MAX - reinterpret_cast<uintptr_t>(mem))
+        throw std::runtime_error(std::string(function) + ": null, empty or wrapping region outside the core dump handler");
+    return SCE_COREDUMP_ERROR_NOT_IN_COREDUMP_HANDLER;
+}
 
 extern "C" {
 
@@ -90,13 +99,13 @@ int APS5_VABI sceCoredumpWriteUserString() {
     return 0;
 }
 
-int APS5_VABI sceCoredumpAttachUserMemoryFile(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceCoredumpAttachUserMemoryFile(uint32_t userValue, const void* mem, size_t size) {
+    (void)userValue;
+    return attachOutsideCoredumpHandler(__func__, mem, size);
 }
 
-int APS5_VABI sceCoredumpAttachMemoryRegion(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceCoredumpAttachMemoryRegion(uint32_t userValue, const void* mem, size_t size) {
+    (void)userValue;
+    return attachOutsideCoredumpHandler(__func__, mem, size);
 }
 }

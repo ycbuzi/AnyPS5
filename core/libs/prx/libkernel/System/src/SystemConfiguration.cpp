@@ -128,6 +128,21 @@ int APS5_VABI sysctl_nid_postfix(const int* name, std::uint32_t nameLength, void
         static constexpr char path[] = "/app0/eboot.bin";
         return CopyOut(path, sizeof(path), oldValue, oldLength);
     }
+    if (nameLength == 2 && name[0] == 1 && name[1] == 37) {
+        if (newValue != nullptr) {
+            *__error_nid_postfix() = 1;
+            return -1;
+        }
+        if (oldLength == nullptr) return 0;
+        const std::size_t count = std::min(*oldLength, static_cast<std::size_t>(256));
+        if (oldValue != nullptr) {
+            static std::random_device device;
+            auto* bytes = static_cast<std::uint8_t*>(oldValue);
+            for (std::size_t i = 0; i < count; ++i) bytes[i] = static_cast<std::uint8_t>(device());
+        }
+        *oldLength = count;
+        return 0;
+    }
     std::string mib;
     for (std::uint32_t i = 0; i < nameLength; ++i) mib += (i == 0 ? "" : ".") + std::to_string(name[i]);
     throw std::runtime_error(std::string(__func__) + ": unsupported MIB " + mib);
@@ -145,6 +160,10 @@ int APS5_VABI sysctlbyname_nid_postfix(const char* name, void* oldValue, std::si
     if (std::strcmp(name, "kern.proc.pathname") == 0) {
         *__error_nid_postfix() = 22;
         return -1;
+    }
+    if (std::strcmp(name, "kern.arandom") == 0) {
+        static constexpr int mib[] = {1, 37};
+        return sysctl_nid_postfix(mib, 2, oldValue, oldLength, newValue, newLength);
     }
     if (std::strcmp(name, "kern.rng_pseudo") == 0) {
         if (newValue != nullptr) {

@@ -2081,6 +2081,45 @@ void drawInputInPlaceTests(const Device& device, Recorder& recorder) {
     Require(InPlaceDrawInput(unrecorded, vertices, 256, 4) == nullptr, "a draw without a recorder bound its input in place");
     recorder.Sync();
     Require(!recorder.PendingReadOverlaps(vertices, 256), "an in-place draw input's read outlived its batch");
+    if (!AgcDriver::GuestMemory::Watched(address, bytes)) {
+        std::cout << "host imports are compared, not watched: kept highest indices not tested\n";
+        return;
+    }
+    const auto indices = address + 20480;
+    constexpr std::size_t kept = Recorder::KeptIndexRangeIndices * 2;
+    std::vector<std::uint16_t> first(Recorder::KeptIndexRangeIndices * 2, 1);
+    first[0] = 3;
+    first[1] = 9;
+    first[2] = 0xffff;
+    std::memcpy(reinterpret_cast<void*>(indices), first.data(), kept * 2);
+    auto range = InPlaceIndexRange(recorder, indices, kept, 2, false);
+    Require(!range.reused && range.highest == 0xffffu, "an in-place index range was not scanned at its first use");
+    range = InPlaceIndexRange(recorder, indices, kept, 2, false);
+    Require(range.reused && range.highest == 0xffffu, "an unchanged in-place index range was scanned again");
+    range = InPlaceIndexRange(recorder, indices, kept, 2, true);
+    Require(!range.reused && range.highest == 9u, "an in-place index range served a scan made under the other restart rule");
+    Require(!InPlaceIndexRange(recorder, indices, kept + 2, 2, true).reused, "an in-place index range served a scan of another size");
+    const std::uint16_t raised = 12;
+    std::memcpy(reinterpret_cast<void*>(indices + 2), &raised, sizeof(raised));
+    range = InPlaceIndexRange(recorder, indices, kept, 2, true);
+    Require(!range.reused && range.highest == 12u, "an in-place index range kept its highest index over a guest write");
+    range = InPlaceIndexRange(recorder, indices, kept, 2, true);
+    Require(range.reused && range.highest == 12u, "a rescanned in-place index range was not kept");
+    range = InPlaceIndexRange(recorder, indices, kept - 2, 2, true);
+    Require(!range.reused && range.highest == 12u, "an in-place index range below the kept size was not scanned");
+    range = InPlaceIndexRange(recorder, indices, kept - 2, 2, true);
+    Require(!range.reused && range.highest == 12u, "an in-place index range below the kept size was kept");
+    range = InPlaceIndexRange(recorder, indices, kept * 2 - 4, 4, false);
+    Require(!range.reused && range.highest == 0x000c0003u, "a 32-bit in-place index range below the kept size was not scanned");
+    Require(!InPlaceIndexRange(recorder, indices, kept * 2 - 4, 4, false).reused, "a 32-bit in-place index range below the kept size was kept");
+    Require(!InPlaceIndexRange(recorder, indices, kept * 2, 4, false).reused, "a 32-bit in-place index range was not scanned at its first use");
+    range = InPlaceIndexRange(recorder, indices, kept * 2, 4, false);
+    Require(range.reused && range.highest == 0x000c0003u, "an unchanged 32-bit in-place index range was scanned again");
+    const std::vector<std::uint16_t> restarts(Recorder::KeptIndexRangeIndices, 0xffff);
+    std::memcpy(reinterpret_cast<void*>(indices + 20480), restarts.data(), kept);
+    Require(!InPlaceIndexRange(recorder, indices + 20480, kept, 2, true).highest.has_value(), "an index range of restart indices has a highest index");
+    range = InPlaceIndexRange(recorder, indices + 20480, kept, 2, true);
+    Require(range.reused && !range.highest.has_value(), "an empty in-place index range was scanned again");
 }
 
 // Unit shadows (UnitShadow.hpp) over a host import of write-watched arena memory: a retile piece's
@@ -2526,6 +2565,71 @@ void hostImportUnmapTests(const Device& device, Recorder& recorder) {
     }
     Require(retiredBeforeRelease, "guest unmap released pages before retiring their host import");
     std::cout << "host import unmap lifetime: ok\n";
+}
+
+void parkedImportUnmapTests(const Device& device) {
+    const auto& context = device.GetContext();
+    if (context.hostImportAlignment == 0) {
+        std::cout << "host imports unavailable: parked import unmap not tested\n";
+        return;
+    }
+    const auto alignment = static_cast<std::size_t>(std::max<VkDeviceSize>(65536u, context.hostImportAlignment));
+    const auto bytes = alignment * 4u;
+#ifdef _WIN32
+    void* block = VirtualAlloc(nullptr, bytes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+#else
+    void* block = std::aligned_alloc(alignment, bytes);
+#endif
+    Require(block != nullptr, "cannot allocate the parked import unmap block");
+    const auto release = [&] {
+#ifdef _WIN32
+        VirtualFree(block, 0, MEM_RELEASE);
+#else
+        std::free(block);
+#endif
+    };
+    const auto address = reinterpret_cast<std::uint64_t>(block);
+    {
+        GuestAllocations::Mutation mutation;
+        mutation.Add(block, bytes, true, true, true);
+    }
+    std::unique_ptr<Device> replacement;
+    bool imported = false;
+    {
+        std::lock_guard gpu(GpuMutex());
+        imported = HostImportFor(context, address, bytes) != nullptr;
+    }
+    if (imported) {
+        replacement = std::make_unique<Device>();
+        std::lock_guard gpu(GpuMutex());
+        imported = HostImportFor(replacement->GetContext(), address, bytes) != nullptr;
+    }
+    if (!imported) {
+        GuestAllocations::Mutation mutation;
+        mutation.Remove(block);
+        if (replacement) ClearHostImports(replacement->GetContext().device);
+        release();
+        std::cout << "host import refused: parked import unmap not tested\n";
+        return;
+    }
+    bool unmapped = false;
+    try {
+        GuestAllocations::Mutation mutation;
+        mutation.Unmap(block, bytes, [&](const void*, std::size_t, const void*, bool) { unmapped = true; });
+    } catch (const std::exception& error) {
+        ClearHostImports(replacement->GetContext().device);
+        ClearHostImports(context.device);
+        GuestAllocations::Mutation mutation;
+        mutation.Remove(block);
+        release();
+        throw std::runtime_error(std::string("guest unmap after a device replacement: ") + error.what());
+    }
+    ClearHostImports(replacement->GetContext().device);
+    ClearImageMirrors(replacement->GetContext().device);
+    replacement.reset();
+    release();
+    Require(unmapped, "guest unmap of a range a replaced device imported did not run");
+    std::cout << "parked import unmap: ok\n";
 }
 
 void importWatchTests(const Device& device) {
@@ -4524,6 +4628,8 @@ void multisampleGuestAccessTests(const Device& device, Recorder& recorder) {
     }
     std::array<std::byte, 64> texels{};
     refused([&] { AgcDriver::GuestMemory::Read(address + 256u, texels); }, "a CPU read", "a CPU read");
+    refused([&] { AgcDriver::GuestMemory::ReadCommitted(address + 256u, texels); }, "a CPU read", "a committed CPU read");
+    refused([&] { AgcDriver::GuestMemory::ReadCommittedUnsynced(address + 256u, texels); }, "a CPU read", "a committed CPU read without the flush hook");
     refused([&] { RequireNoMultisampleTarget(address, 64u, "a DMA copy"); }, "a DMA copy", "a DMA copy");
     ShaderRecompiler::RecompileResult program;
     ShaderRecompiler::DescriptorBinding binding;
@@ -5130,6 +5236,21 @@ void keysFillTests(const Device& device, Recorder& recorder) {
     recorder.Sync();
 }
 
+void integerClearTests(const Device& device) {
+    const auto& context = device.GetContext();
+    std::size_t tested = 0;
+    for (const std::uint32_t format : {5u, 11u, 20u}) {
+        if (!StorageFormatAvailable(context, format)) continue;
+        ++tested;
+        Require(StorageClearAvailable(context, format, DccKeys::Clear0000), "an integer storage format refused the 0000 clear");
+        for (const auto keys : {DccKeys::Clear0001, DccKeys::Clear1111, DccKeys::ClearRegister, DccKeys::Uncompressed}) {
+            Require(!StorageClearAvailable(context, format, keys), "an integer storage format took a clear code other than 0000");
+        }
+    }
+    Require(tested == 3, "an integer storage format has no storage form");
+    std::cout << "integer storage clears: " << tested << " formats ok\n";
+}
+
 void denormalClearTests(const Device& device, Recorder& recorder) {
     const auto& base = device.GetContext();
     if (base.hostImportAlignment == 0) {
@@ -5292,6 +5413,37 @@ void pipelineLibraryTests(const Device& device) {
     state.samples = 1;
     state.colors.front().samples = 1;
     Require(lookup() != multisampled && counters().built == std::array<std::uint64_t, 4>{2, 2, 4, 4}, "the 1x pipeline after a 4x one built its libraries again");
+    if ((context.sampleLocationSampleCounts & VK_SAMPLE_COUNT_4_BIT) != 0) {
+        state.samples = 4;
+        state.colors.front().samples = 4;
+        state.customSampleLocations = true;
+        state.sampleLocations = {0x10, 0x21, 0x32, 0x43};
+        const auto pattern = lookup();
+        const auto beforePatternChange = counters().built;
+        state.sampleLocations[0] = 0x20;
+        const auto otherPattern = lookup();
+        Require(otherPattern != pattern && counters().built[2] == beforePatternChange[2] + 1u && counters().built[3] == beforePatternChange[3] + 1u && counters().built[0] == beforePatternChange[0] && counters().built[1] == beforePatternChange[1], "a custom sample pattern did not rebuild exactly the fragment shader and fragment output libraries");
+        state.sampleLocations[0] = 0x10;
+        Require(lookup() == pattern && counters().built[2] == beforePatternChange[2] + 1u && counters().built[3] == beforePatternChange[3] + 1u, "a cached custom sample pattern was not reused");
+
+        std::optional<VkFormat> compatibleDepth, incompatibleDepth;
+        state.customSampleLocations = false;
+        for (const auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D16_UNORM, VK_FORMAT_D24_UNORM_S8_UINT, VK_FORMAT_D32_SFLOAT_S8_UINT}) {
+            state.depth = DepthTarget{};
+            state.depth->format = format;
+            state.depth->samples = state.samples;
+            (ValidateSampleLocations(context, state) ? compatibleDepth : incompatibleDepth) = format;
+        }
+        if (compatibleDepth && incompatibleDepth) {
+            state.depth->format = *compatibleDepth;
+            const auto compatible = lookup();
+            const auto beforeDepthChange = counters().built;
+            state.depth->format = *incompatibleDepth;
+            const auto incompatible = lookup();
+            Require(incompatible != compatible && counters().built[2] == beforeDepthChange[2] + 1u && counters().built[3] == beforeDepthChange[3] + 1u, "depth-format sample-location enablement did not rebuild both fragment libraries");
+        }
+        state.customSampleLocations = true;
+    }
     WaitForOptimizedPipelines(context.device);
     const auto lto = std::getenv("APS5_NO_PIPELINE_LTO") == nullptr && context.pipelineLinkTimeOptimization;
     Require(counters().optimized == (lto ? counters().linked : 0u), "a linked pipeline was not optimized in the background");
@@ -5342,6 +5494,10 @@ int main(int argc, char** argv) {
             unchangedCpuStampTests(device, recorder);
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--integer-clear-only") {
+            integerClearTests(device);
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--settled-baseline-only") {
             settledBaselineTests(device, recorder);
             return 0;
@@ -5361,6 +5517,11 @@ int main(int argc, char** argv) {
             hostImportUnmapTests(device, recorder);
             return 0;
         }
+        if (argc == 2 && std::string_view(argv[1]) == "--parked-import-unmap-only") {
+            gpu.unlock();
+            parkedImportUnmapTests(device);
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--unit-shadow-only") {
             if (!AgcDriver::Graphics::UnitShadowEnabled() || device.GetContext().hostImportAlignment == 0) {
                 std::cout << "skipped, unit shadows or host imports are unavailable\n";
@@ -5372,6 +5533,11 @@ int main(int argc, char** argv) {
         if (argc == 2 && std::string_view(argv[1]) == "--cmask-only") {
             cmaskPassTests(device, recorder);
             std::cout << "CMASK copied clear, write-back and failure tests passed\n";
+            return 0;
+        }
+        if (argc == 2 && std::string_view(argv[1]) == "--draw-inputs-in-place-only") {
+            drawInputInPlaceTests(device, recorder);
+            std::cout << "In-place draw input tests passed\n";
             return 0;
         }
         if (argc == 2 && std::string_view(argv[1]) == "--multisample-only") {
@@ -5422,6 +5588,7 @@ int main(int argc, char** argv) {
         movedMetadataTests(device, recorder);
         viewPastLastMipTests(device, recorder);
         keysFillTests(device, recorder);
+        integerClearTests(device);
         denormalClearTests(device, recorder);
         unitShadowTests(device, recorder);
         storageRefreshTests(device, recorder, false);

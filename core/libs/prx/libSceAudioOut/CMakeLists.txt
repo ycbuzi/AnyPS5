@@ -101,7 +101,7 @@ if(BUILD_TESTING)
     configure_windows_unwind(audio_out2_timing_tests)
     add_test(NAME audio_out2_timing COMMAND audio_out2_timing_tests)
     if(WIN32)
-        set_tests_properties(audio_out2_timing PROPERTIES ENVIRONMENT_MODIFICATION
+        set_tests_properties(audio_out2_timing PROPERTIES RUN_SERIAL TRUE ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceAudioOut>")
     endif()
 endif()

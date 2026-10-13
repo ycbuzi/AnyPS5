@@ -47,7 +47,6 @@ long double CheckNeighbor_nid_no_patch(long double from, long double to, long do
 
 extern "C" {
 
-long double APS5_VABI asinl_nid_postfix(long double value) { return std::asin(value); }
 long double APS5_VABI atan2l_nid_postfix(long double y, long double x) { return std::atan2(y, x); }
 
 long double APS5_VABI acoshl_nid_postfix(long double value) {
@@ -96,8 +95,6 @@ long double APS5_VABI ceill_nid_postfix(long double value) { return std::ceil(va
 long double APS5_VABI floorl_nid_postfix(long double value) { return std::floor(value); }
 long double APS5_VABI roundl_nid_postfix(long double value) { return std::round(value); }
 std::int64_t APS5_VABI lroundl_nid_postfix(long double value) { return std::llround(value); }
-std::int64_t APS5_VABI llroundl_nid_postfix(long double value) { return std::llround(value); }
-long double APS5_VABI nearbyintl_nid_postfix(long double value) { return std::nearbyint(value); }
 
 long double APS5_VABI fmodl_nid_postfix(long double x, long double y) { return std::fmod(x, y); }
 long double APS5_VABI remainderl_nid_postfix(long double x, long double y) { return std::remainder(x, y); }

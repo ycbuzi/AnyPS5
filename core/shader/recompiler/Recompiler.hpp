@@ -113,6 +113,13 @@ enum class ColorExportPacking : std::uint8_t {
     Unorm10_11_11
 };
 
+enum class RasterPrimitive : std::uint8_t {
+    Point,
+    Line,
+    Triangle,
+    Rectangle
+};
+
 struct ShaderPixelStageInfo {
     std::uint32_t interpolatorCount;
     std::array<std::uint32_t, 32> interpolatorSettings;
@@ -141,6 +148,8 @@ struct ShaderPixelStageInfo {
     std::array<ColorExportPacking, 8> targetExportPacking;
     bool dualSourceBlend;
     bool alphaToCoverage;
+    bool stencilRefExportEnable;
+    RasterPrimitive rasterPrimitive = RasterPrimitive::Triangle;
 };
 
 struct ShaderVertexBufferResource {
@@ -229,6 +238,9 @@ struct SpirvTarget {
     bool narrowSubgroupClock = false;
     bool fixedPushSlots = false;
     bool float64DenormPreserve = false;
+    bool registrationModules = false;
+    std::uint32_t registrationWordLimit = 200000u;
+    bool vertexSubgroups = true;
 };
 
 struct BindingLayout {
@@ -388,6 +400,7 @@ struct FragmentParameter {
     bool flat;
     bool perVertex;
     bool custom = false;
+    bool flatP10 = false;
 };
 
 struct BarycentricEmulation {
@@ -475,6 +488,7 @@ struct CompiledShaderArtifact {
     std::uint32_t imageMetadataDword = 0;
     std::uint32_t runtimeImageCount = 0;
     std::vector<std::uint32_t> runtimeImageResources;
+    bool registrationModule = false;
     std::uint32_t bdaAbiVersion = 0;
     std::uint32_t runtimeAbiVersion = RuntimeAbi::Version;
     std::vector<VertexInput> vertexInputs;

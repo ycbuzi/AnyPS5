@@ -66,15 +66,16 @@ int Run(const int argc, char* argv[]) {
 
         std::vector<Codegen::TrampolineSite> trampolines;
         if (args.toIntel) {
-            const auto codeSegments = Relinker::ElfReader(sourceBytes).ReadCodeSegments();
-            auto converted = Codegen::MakeAmd64OnlyConverter(args.toRosetta ? Codegen::Amd64OnlyTarget::Rosetta : Codegen::Amd64OnlyTarget::Intel)->Convert(std::move(sourceBytes), codeSegments);
+            const auto segments = Relinker::ElfReader(sourceBytes).ReadProgramHeaders();
+            auto converted = Codegen::MakeAmd64OnlyConverter(args.toRosetta ? Codegen::Amd64OnlyTarget::Rosetta : Codegen::Amd64OnlyTarget::Intel)->Convert(std::move(sourceBytes), segments);
             sourceBytes = std::move(converted.Bytes);
             trampolines = std::move(converted.Trampolines);
             std::map<std::string, std::size_t> stubsByName;
+            const auto counted = [](const std::string& name) { return name == "VRSQRTPS" || name == "VRCPPS" || name == "256-bit store"; };
             for (const auto& report : converted.Reports) {
                 if (report.Lowering == Codegen::Amd64OnlyLowering::Kept)
                     std::cout << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) kept: no room for a jump\n";
-                else if (report.InstructionName == "VRSQRTPS" || report.InstructionName == "VRCPPS")
+                else if (counted(report.InstructionName))
                     ++stubsByName[report.InstructionName];
                 else
                     std::cout << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) -> " << (report.Lowering == Codegen::Amd64OnlyLowering::InPlace ? "in place " : "stub ") << report.ReplacementLength << " bytes\n";
@@ -127,19 +128,16 @@ int Run(const int argc, char* argv[]) {
             checkOutputInputs(desktopEntry->IconPath, "Icon");
             checkOutputInputs(desktopEntry->EntryPath, "Desktop entry");
         }
+        if (args.windowsDiagnostics)
+            checkOutputInputs(std::filesystem::absolute("windows-diagnostics-imports.txt"), "Windows import diagnostics");
 
+        std::vector<std::filesystem::path> registryPaths;
         if (args.writeRegistry) {
             const std::filesystem::path outFsPath = Io::NativePath(absPath);
-            std::vector<std::filesystem::path> registryPaths{
-                outFsPath.parent_path() / Io::NativePath(Io::Utf8Path(outFsPath.stem()) + ".registry.json")
-            };
+            registryPaths.push_back(outFsPath.parent_path() / Io::NativePath(Io::Utf8Path(outFsPath.stem()) + ".registry.json"));
             for (const auto& artifact : guestArtifacts)
                 registryPaths.push_back(outFsPath.parent_path() / Io::NativePath(Io::Utf8Path(outFsPath.stem()) + "." + Io::Utf8Path(artifact.Path.filename()) + ".registry.json"));
             for (const auto& path : registryPaths) checkOutputInputs(path, "Registry");
-            const auto registryWriter = std::make_shared<Relinker::CallRegistryWriter>();
-            fileWriter.Write(Io::Utf8Path(registryPaths.front()), registryWriter->WriteCallRegistry(result.RegistryEntries));
-            for (std::size_t index = 0; index < guestArtifacts.size(); ++index)
-                fileWriter.Write(Io::Utf8Path(registryPaths[index + 1]), registryWriter->WriteModuleImports(guestArtifacts[index].Imports));
         }
 
         auto byteWriter = std::make_shared<Io::ByteWriter>();
@@ -174,6 +172,12 @@ int Run(const int argc, char* argv[]) {
             std::cout << "Guest module: " << Io::Utf8Path(artifact.Path) << '\n';
         }
         fileWriter.Write(absPath, executableBytes);
+        if (args.writeRegistry) {
+            const auto registryWriter = std::make_shared<Relinker::CallRegistryWriter>();
+            fileWriter.Write(Io::Utf8Path(registryPaths.front()), registryWriter->WriteCallRegistry(result.RegistryEntries));
+            for (std::size_t index = 0; index < guestArtifacts.size(); ++index)
+                fileWriter.Write(Io::Utf8Path(registryPaths[index + 1]), registryWriter->WriteModuleImports(guestArtifacts[index].Imports));
+        }
         if (desktopEntry) std::cout << "Desktop entry: " << Io::Utf8Path(desktopEntryWriter.Write(*desktopEntry)) << '\n';
         std::cout << "External prx references: " << result.RegistryEntries.size() << "\nOutput file: " << absPath << '\n';
         std::cout << "Expected runtime layout (relative to the output executable):\n"

@@ -69,6 +69,10 @@ private:
     void write16Bits(const RdnaOperand& operand, IrU32 value);
     void writeF16(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources);
     bool directedF16Rounding() const;
+    IrU32 flushF16Bits(IrU32 bits, std::uint32_t keepBit);
+    IrU32 flushF16Input(IrU32 bits);
+    IrU32 flushF16Result(IrU32 bits);
+    IrF32 flushF16InputValue(IrF32 value);
     IrU32 convertF32ToF16Bits(IrF32 value, std::initializer_list<IrValue*> sources);
     void writeF16Conversion(const RdnaOperand& operand, IrF32 value, std::initializer_list<IrValue*> sources);
     IrU32 readU32(const RdnaOperand& operand);
@@ -169,6 +173,7 @@ private:
     void emitInteger16Compare(const RdnaInstruction& inst, IrOpcode opcode, bool signedValue, bool cmpx);
     void emitFloatCompare(const RdnaInstruction& inst, IrOpcode opcode, bool half, bool cmpx, bool swap = false);
     IrU1 floatCompareWithConstant(IrOpcode opcode, IrU32 variableBits, std::uint32_t constant);
+    IrU1 floatCompareKeepingDenormals(IrOpcode opcode, IrU32 lhsBits, IrU32 rhsBits);
     void emitInteger64Order(const RdnaInstruction& inst, bool signedValue, bool swap, bool negate, bool cmpx);
     void emitFloatOrderedCompare(const RdnaInstruction& inst, bool ordered, bool half, bool cmpx);
     void emitFloatClassCompare(const RdnaInstruction& inst, bool cmpx);

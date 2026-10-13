@@ -181,7 +181,8 @@ std::set<Domain::VirtualAddress> CodeInstructionCollector::Collect(const std::ve
             const auto index = info >> 32;
             const auto addend = Io::ReadU64(bytes, offset + 16);
             if (type == 8) {
-                if (index != 0 || !pointers.Values.emplace(slot, addend).second) throw Domain::RelinkerException("Code analysis: invalid relative relocation", slot);
+                const auto zeroSectionSymbol = index != 0 && index < symbolCount && (bytes[symbols + index * 24 + 4] & 15) == 3 && Io::ReadU64(bytes, symbols + index * 24 + 8) == 0;
+                if ((index != 0 && !zeroSectionSymbol) || !pointers.Values.emplace(slot, addend).second) throw Domain::RelinkerException("Code analysis: invalid relative relocation", slot);
                 addRoot(addend);
             } else if (type == 1 || type == 6 || type == 7) {
                 if (index == 0 || index >= symbolCount) throw Domain::RelinkerException("Code analysis: invalid relocation symbol", slot);

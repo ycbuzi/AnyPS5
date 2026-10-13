@@ -59,7 +59,6 @@ static_assert(sizeof(long double) == 16 && std::numeric_limits<long double>::dig
 extern "C" {
 
 float APS5_VABI truncf_nid_postfix(float value) { return std::trunc(value); }
-double APS5_VABI nearbyint_nid_postfix(double value) { return std::nearbyint(value); }
 
 double APS5_VABI remquo_nid_postfix(double x, double y, int* quotient) { return std::remquo(x, y, quotient); }
 float APS5_VABI remquof_nid_postfix(float x, float y, int* quotient) { return std::remquo(x, y, quotient); }

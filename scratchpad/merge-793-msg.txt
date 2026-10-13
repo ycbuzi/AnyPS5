@@ -1,0 +1,55 @@
+Merge upstream 495bf91a0 (793 commits) into the harvested stack
+
+Builds clean. Progress rises to 3290/3680 (89.4%) from 3181/3578 (88.9%): +109 implemented on a
+board +102 larger. The suite gained 99 tests, 960 -> 1059.
+
+33 files conflicted, six build attempts. The decisive measurement was per-library export sets:
+for six of the seven conflicting Export.cpp files we export NOTHING upstream lacks, while upstream
+exports 18 more (libSceUsbd +10, libSceJson2 +6, libSceNet +1, libSceNpAuth +1). libSceUsbd is the
+clearest case -- upstream has adopted the libusb design we harvested and gone past it, 537 lines to
+our 315, same 65-odd libusb_ calls. So those libraries took upstream's implementation AND upstream's
+test together, keeping each pair coherent, and ours was kept only where it is genuinely richer:
+libSceContentSearch (same 11 exports, our test has 89 assertions to their 42) and
+GuestWebBrowserDialog.
+
+Two harvested test pairs were retired with their subject. Upstream registers only guest_usbd_tests;
+guest_usbd_control and guest_usbd_async covered our Export, and upstream's validates handles against
+a registry, so a fabricated handle now throws. The test files are removed rather than left orphaned,
+and are recoverable from pre-sync-793.
+
+A real defect found on the way, in upstream's RoundToInt64, reached by our harvested
+guest_extended_math:
+
+  if (!(rounded >= static_cast<TFloat>(INT64_MIN) && rounded < static_cast<TFloat>(INT64_MAX)))
+
+For float and double, (TFloat)INT64_MAX rounds up to 2^63, so the strict < is correct. For 80-bit
+long double INT64_MAX is representable exactly, so llroundl(9223372036854775807.0L) failed the
+bound, raised FE_INVALID and returned INT64_MIN. The upper bound is now -(TFloat)INT64_MIN, which
+is 2^63 exactly in all three types: unchanged for float and double, correct for long double.
+
+Also restored our four-argument sce::Json::MemAllocator::notifyError over upstream's
+zero-argument NotImplemented stub -- taking their Export wholesale had downgraded a working
+function -- and corrected our Ngs2Geometry null-output assertion, which expected a thrown
+std::invalid_argument where Geom.cpp returns SCE_NGS2_ERROR_INVALID_OUT_ADDRESS. Returning the
+error code is the right shape for a function whose ABI returns int, so the test moved, not the
+implementation.
+
+Submodules: upstream renamed 3rdparty/libusb to 3rdparty/libusb-cmake and hoisted the whole libusb
+setup to the root CMakeLists, so libSceUsbd's copy of the five LIBUSB_* cache variables, the
+add_subdirectory and the POSITION_INDEPENDENT_CODE line are gone, the stale gitlink is
+deregistered, and our mbedtls entry is kept since upstream has none.
+
+Guards paid for themselves. check-dupes-crossfile found four symbols where upstream's new Math.cpp
+had implemented what we harvested into ExtendedMath.cpp and NumericHelpers.cpp (asinl, llroundl,
+nearbyintl, nearbyint); each was compared before deletion this time, and all four of ours were
+one-line passthroughs, where upstream's asinl is a full bit-exact implementation that its own
+restored CheckAsinl test requires. A new guard, check-stub-shadow.py, lists every
+Unimplemented.cpp stub that collides with a real implementation in the same library; it found four
+in libSceAgc where BOTH sides' stubs were stale, saving four link-error cycles. The same-file
+duplicate reports were validated against a pristine upstream worktree first and proved to be
+#if/#else platform branches -- upstream has 10 and 8 of the very same ones.
+
+Three tests still fail and are not from this merge's decisions alone: guest_memory_pool_stats, which
+already failed with both its test and MemoryPoolExport.cpp byte-identical to upstream, so its
+divergence is in a dependency; guest_font_text at line 126; and guest_equeue_events, which aborts
+with no message. Six of the nine post-merge failures are fixed here.

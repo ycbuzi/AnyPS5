@@ -20,6 +20,7 @@ int APS5_VABI sceKernelAddHRTimerEvent(KernelEqueue eq, int id, const KernelTime
 int APS5_VABI sceKernelAddTimerEvent(KernelEqueue eq, int id, KernelUseconds usec, void* udata);
 int APS5_VABI sceKernelDeleteTimerEvent(KernelEqueue eq, int id);
 intptr_t APS5_VABI sceKernelGetEventData(const KernelEvent* ev);
+int APS5_VABI sceKernelGetEventError(const KernelEvent* ev);
 intptr_t APS5_VABI sceKernelGetEventFflags(const KernelEvent* ev);
 int APS5_VABI sceKernelGetEventError(const KernelEvent* ev);
 int APS5_VABI sceKernelGetEventFilter(const KernelEvent* ev);
@@ -79,6 +80,7 @@ static void VerifyPeriodicTimer() {
     Require(sceKernelGetEventFilter(&events[0]) == EVFILT_TIMER);
     Require(sceKernelGetEventData(&events[0]) >= 5);
     Require(sceKernelGetEventUserData(&events[0]) == &first);
+    Require(sceKernelGetEventError(&events[0]) == 0);
     Require(sceKernelWaitEqueue(eq, events, 2, &count, &wait) == SCE_OK);
     Require(count == 1 && sceKernelGetEventData(&events[0]) >= 1);
 
@@ -295,6 +297,12 @@ int main() {
     rawEvent.data = 0x12345678;
     Require(sceKernelGetEventError(&rawEvent) == 0x12345678);
     Require(sceKernelGetEventUserData(&rawEvent) == nullptr);
+    Require(sceKernelGetEventError(&rawEvent) == 0);
+    rawEvent.flags = static_cast<std::uint16_t>(~EV_ERROR);
+    Require(sceKernelGetEventError(&rawEvent) == 0);
+    rawEvent.flags = EV_ERROR;
+    rawEvent.data = 22;
+    Require(sceKernelGetEventError(&rawEvent) == 22);
 
     Require(RejectsNull(sceKernelGetEventData));
     Require(RejectsNull(sceKernelGetEventError));

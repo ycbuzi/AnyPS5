@@ -81,7 +81,7 @@ def source_aliases(text):
             continue
         if re.fullmatch(r'"[A-Za-z0-9+\-]{11}"', literal) is None:
             continue
-        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) and "unknown" in name.lower():
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
             yield literal[1:-1], name
 
 
@@ -97,7 +97,8 @@ def collect_unknowns():
     for path in source_files(PRX):
         text = path.read_text(encoding="utf-8")
         for nid, name in source_aliases(text):
-            found.setdefault(nid, "%s:%s" % (path.relative_to(ROOT).as_posix(), name))
+            if "unknown" in name.lower():
+                found.setdefault(nid, "%s:%s" % (path.relative_to(ROOT).as_posix(), name))
     return found
 
 
@@ -159,6 +160,9 @@ def main(argv=None):
     arguments = sys.argv[1:] if argv is None else argv
     args = parser.parse_args(nid_arguments(arguments, options))
     requested_nids = any(option_name(argument, options) == "--nid" for argument in arguments)
+    for nid in args.nid or []:
+        if re.fullmatch(r"[A-Za-z0-9+\-]{11}", nid) is None:
+            parser.error(f"invalid NID {nid!r}: expected 11 characters from A-Z, a-z, 0-9, + or -")
 
     db_path = Path(args.db) if args.db else DEFAULT_CACHE
     try:

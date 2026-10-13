@@ -49,6 +49,23 @@ static void CheckUserDefinedParams(const std::filesystem::path& path) {
     }
 }
 
+static void CheckNesting(const std::filesystem::path& path) {
+    const std::string prefix = R"({"titleId":"PPSA00000","localizedParameters":{"en-US":{"titleName":"Example"}},"extra":)";
+    const auto nested = [&](std::size_t arrays) {
+        return prefix + std::string(arrays, '[') + std::string(arrays, ']') + "}";
+    };
+    Require(ParseText(path, nested(511)).title == "Example", "Nesting within the limit rejected");
+    for (const std::size_t arrays : {std::size_t{512}, std::size_t{513}, std::size_t{100000}}) {
+        bool rejected = false;
+        try {
+            ParseText(path, nested(arrays));
+        } catch (const std::runtime_error& error) {
+            rejected = std::string(error.what()).find("nested too deeply") != std::string::npos;
+        }
+        Require(rejected, "Excessive nesting not rejected: " + std::to_string(arrays));
+    }
+}
+
 static void CheckLanguages(const std::filesystem::path& path) {
     const auto nested = ParseText(path, "{\r\n  \"localizedParameters\": {\r\n    \"defaultLanguage\": \"en-GB\",\r\n"
                                         "    \"en-GB\": { \"titleName\": \"British\" }\r\n  },\r\n  \"titleId\": \"PPSA00001\"\r\n}\r\n");
@@ -69,6 +86,19 @@ static void CheckLanguages(const std::filesystem::path& path) {
         rejected = true;
     }
     Require(rejected, "Accepted localizedParameters without a language entry");
+}
+
+static void CheckOutputPermission(const std::filesystem::path& path) {
+    const std::string prefix = R"({"titleId":"PPSA99007","localizedParameters":{"en-US":{"titleName":"Example"}})";
+    Require(ParseText(path, prefix + "}").attribute3 == 0, "Absent output permission is not zero");
+    for (const auto& [text, expected] : {std::pair{"0", 0u}, {"524352", 0x80040u}, {"4294967295", 0xFFFFFFFFu}}) {
+        Require(ParseText(path, prefix + ",\"attribute3\":" + text + "}").attribute3 == expected, "Incorrect output permission");
+    }
+    for (const auto* text : {"-1", "0.5", "1e3", "4294967296", "true", "null", "\"524352\""}) {
+        bool rejected = false;
+        try { ParseText(path, prefix + ",\"attribute3\":" + text + "}"); } catch (const std::exception&) { rejected = true; }
+        Require(rejected, "Accepted invalid attribute3");
+    }
 }
 
 static void CheckNumberSyntax(const std::filesystem::path& path) {
@@ -139,6 +169,8 @@ int main() {
         }
         CheckLanguages(path);
         CheckUserDefinedParams(path);
+        CheckOutputPermission(path);
+        CheckNesting(path);
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         result = 1;

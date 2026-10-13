@@ -11,9 +11,29 @@ constexpr std::int32_t SCE_HMD2_ERROR_UNSUPPORTED_FEATURE = static_cast<std::int
 
 extern "C" {
 
+int APS5_VABI sceHmd2ReprojectionQuerySeeThroughBufferSizeAlign() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
 std::int32_t APS5_VABI sceHmd2Initialize(const void* param) {
     (void)param;
     return SCE_HMD2_ERROR_UNSUPPORTED_FEATURE;
+}
+
+int APS5_VABI sceHmd2GetFieldOfView() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceHmd2GetDeviceInformationByHandle() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceHmd2Terminate() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
 }
 
 int APS5_VABI sceHmd2Close() {

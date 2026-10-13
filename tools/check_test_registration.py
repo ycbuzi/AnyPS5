@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 TEST_OUTPUT = r"tests[\\/]"
-COMMAND = re.compile(r"^\s*(add_test|set_tests_properties)\s*\(", re.M | re.I)
+COMMAND = re.compile(r"^\s*(add_test|set_tests_properties|subdirs)\s*\(", re.M | re.I)
 ARGUMENT = re.compile(r'"(?:\\.|[^"\\])*"|\[(?P<equals>=*)\[.*?\](?P=equals)\]|[^\s()]+', re.S)
 
 KNOWN_UNRUN = set()
@@ -63,10 +63,19 @@ def commands(content):
 
 def registered(build):
     names = set()
-    for file in Path(build).rglob("CTestTestfile.cmake"):
+    pending = [Path(build).resolve()]
+    visited = set()
+    while pending:
+        directory = pending.pop().resolve()
+        file = directory / "CTestTestfile.cmake"
+        if directory in visited or not file.is_file():
+            continue
+        visited.add(directory)
         tests, disabled = {}, {}
         for command, arguments in commands(file.read_text(encoding="utf-8", errors="replace")):
-            if command == "add_test" and arguments:
+            if command == "subdirs":
+                pending.extend(directory / argument for argument in arguments)
+            elif command == "add_test" and arguments:
                 tests[arguments[0]] = arguments[1:]
             elif command == "set_tests_properties" and "PROPERTIES" in arguments:
                 properties = arguments.index("PROPERTIES")

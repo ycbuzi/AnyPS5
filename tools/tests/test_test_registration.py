@@ -80,6 +80,45 @@ class RegistrationTests(unittest.TestCase):
         names = self.registered(r'add_test("bounds" "C:\\build\\tests\\buffer_bounds_tests.exe")' + '\n')
         self.assertIn("buffer_bounds_tests", names)
 
+    def test_unreferenced_registration_directory_does_not_count(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            (build / "CTestTestfile.cmake").write_text("", encoding="utf-8")
+            stale = build / "removed"
+            stale.mkdir()
+            (stale / "CTestTestfile.cmake").write_text(
+                'add_test("bounds" "/build/tests/buffer_bounds_tests")\n', encoding="utf-8")
+            self.assertNotIn("buffer_bounds_tests", check_test_registration.registered(build))
+            (build / "CTestTestfile.cmake").unlink()
+            self.assertNotIn("buffer_bounds_tests", check_test_registration.registered(build))
+
+    def test_only_reachable_nested_directories_are_registered(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            active = build / "active tests"
+            nested = active / "nested"
+            removed = active / "removed"
+            nested.mkdir(parents=True)
+            removed.mkdir()
+            (build / "CTestTestfile.cmake").write_text('subdirs("active tests")\n', encoding="utf-8")
+            (active / "CTestTestfile.cmake").write_text('subdirs([=[nested]=])\n', encoding="utf-8")
+            for path, name in ((nested, "active_tests"), (removed, "removed_tests")):
+                (path / "CTestTestfile.cmake").write_text(
+                    f'add_test("check" "/build/tests/{name}")\n', encoding="utf-8")
+            self.assertEqual(check_test_registration.registered(build), {"active_tests"})
+
+    def test_external_registration_directory_is_followed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build, external = root / "build", root / "external"
+            build.mkdir()
+            external.mkdir()
+            (build / "CTestTestfile.cmake").write_text(
+                f'subdirs("{external.as_posix()}")\n', encoding="utf-8")
+            (external / "CTestTestfile.cmake").write_text(
+                'add_test("bounds" "/build/tests/buffer_bounds_tests")\n', encoding="utf-8")
+            self.assertEqual(check_test_registration.registered(build), {"buffer_bounds_tests"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 #include "prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp"
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
 #include "prx/libSceAgcDriver/Execution/include/WorkerSampler.hpp"
+#include "prx/libSceAgcDriver/Execution/include/PerformanceTrace.hpp"
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/GuestBufferMemory.hpp"
 #include "prx/libc/include/GuestAllocations.hpp"
@@ -50,11 +51,13 @@ void Driver::stop() {
     device.Reset();
     replacedDevices.clear();
     Graphics::ShutdownGuestBufferWorkers();
+    PerformanceTrace::StopOutput();
     StopProfileOutput_nid_no_patch();
     stopped = true;
 }
 
 Driver::Driver() {
+    static_cast<void>(GuestMemory::TrackerGeneration());
     ShaderMemory::SetWaitedMsProvider(&Graphics::Recorder::ThreadWaitedMs);
     try {
         LibcRegisterShutdown_nid_postfix([] { Driver::Get().Shutdown(); });

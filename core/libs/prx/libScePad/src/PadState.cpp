@@ -111,15 +111,16 @@ void Pad::Initialize() {
 }
 
 namespace {
-PadData BuildData(const PadInputState& state, std::uint64_t changeTime, std::uint64_t now, std::uint32_t injected) {
+PadData BuildData(const PadInputState& state, std::uint64_t changeTime, std::uint64_t now, const Pad::InputCommandFile::Input& injected) {
     PadData data{};
-    data.buttons = state.buttons | injected;
-    data.left_stick_x = state.sticks[0];
-    data.left_stick_y = state.sticks[1];
-    data.right_stick_x = state.sticks[2];
-    data.right_stick_y = state.sticks[3];
+    data.buttons = state.buttons | injected.buttons;
+    const auto& sticks = injected.hasSticks ? injected.sticks : state.sticks;
+    data.left_stick_x = sticks[0];
+    data.left_stick_y = sticks[1];
+    data.right_stick_x = sticks[2];
+    data.right_stick_y = sticks[3];
     const auto trigger = [&](std::uint8_t analog, std::uint32_t bit) -> std::uint8_t {
-        return (injected & bit) != 0 || (analog == 0 && (state.buttons & bit) != 0) ? 255 : analog;
+        return (injected.buttons & bit) != 0 || (analog == 0 && (state.buttons & bit) != 0) ? 255 : analog;
     };
     data.analog_buttons_l2 = trigger(state.analogButtonsL2, 0x100);
     data.analog_buttons_r2 = trigger(state.analogButtonsR2, 0x200);
@@ -182,10 +183,10 @@ PadData BuildData(const PadInputState& state, std::uint64_t changeTime, std::uin
     return data;
 }
 
-std::uint32_t InjectedButtons(std::uint64_t now) {
+Pad::InputCommandFile::Input InjectedInput(std::uint64_t now) {
     static Pad::InputCommandFile commands(std::getenv("APS5_PAD_INPUT_FILE"));
-    static std::uint32_t lastInjected = 0;
-    const auto injected = commands.Buttons(now);
+    static Pad::InputCommandFile::Input lastInjected;
+    const auto injected = commands.Poll(now);
     if (injected != lastInjected) {
         lastInjected = injected;
         timestamp = now;
@@ -199,7 +200,7 @@ PadData Pad::ReadState() {
     if (failure) std::rethrow_exception(failure);
     if (!initialized) throw std::runtime_error("Pad: read before initialization");
     const std::uint64_t now = sceKernelGetProcessTime();
-    const std::uint32_t injected = InjectedButtons(now);
+    const auto injected = InjectedInput(now);
     return BuildData(state, timestamp, now, injected);
 }
 
@@ -209,7 +210,7 @@ int Pad::Read(PadData* data, int num) {
     if (failure) std::rethrow_exception(failure);
     if (!initialized) throw std::runtime_error("Pad: read before initialization");
     const std::uint64_t now = sceKernelGetProcessTime();
-    const std::uint32_t injected = InjectedButtons(now);
+    const auto injected = InjectedInput(now);
     if (queue.empty()) {
         data[0] = BuildData(state, timestamp, now, injected);
         return 1;

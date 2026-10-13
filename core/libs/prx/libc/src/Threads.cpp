@@ -1,5 +1,8 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include "prx/libc/include/General.hpp"
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
 #include <cstdint>
 #include <limits>
@@ -9,8 +12,35 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <time.h>
 
 namespace {
+
+struct Xtime {
+    std::int64_t sec;
+    std::int64_t nsec;
+};
+
+constexpr std::int64_t nanosPerSecond = 1000000000;
+constexpr std::int64_t longestSleepSeconds = 86400;
+
+timespec XtimeDeadline(const Xtime& time) {
+    constexpr auto largest = std::numeric_limits<std::int64_t>::max();
+    constexpr auto smallest = std::numeric_limits<std::int64_t>::min();
+    const auto carry = time.nsec / nanosPerSecond;
+    auto nanos = time.nsec % nanosPerSecond;
+    auto seconds = time.sec;
+    if ((carry > 0 && seconds > largest - carry) || (carry < 0 && seconds < smallest - carry))
+        throw std::overflow_error("_Thrd_sleep: xtime seconds overflow");
+    seconds += carry;
+    if (nanos < 0) {
+        if (seconds == smallest)
+            throw std::overflow_error("_Thrd_sleep: xtime seconds overflow");
+        nanos += nanosPerSecond;
+        --seconds;
+    }
+    return {static_cast<time_t>(seconds), static_cast<long>(nanos)};
+}
 
 constexpr int threadSuccess = 0;
 constexpr int threadNomem = 1;
@@ -111,6 +141,24 @@ int APS5_VABI _Mtx_lock_nid_postfix(void** handle) {
     return threadSuccess;
 }
 
+int APS5_VABI _Mtx_trylock_nid_postfix(void** handle) {
+    auto* mutex = ResolveMutex(handle, "_Mtx_trylock");
+    const auto self = std::this_thread::get_id();
+    if (mutex->owner.load(std::memory_order_acquire) == self) {
+        if ((mutex->type & mutexRecursive) == 0)
+            return threadBusy;
+        if (mutex->count == std::numeric_limits<int>::max())
+            throw std::overflow_error("_Mtx_trylock: recursive lock count overflow");
+        ++mutex->count;
+        return threadSuccess;
+    }
+    if (!mutex->native.try_lock())
+        return threadBusy;
+    mutex->owner.store(self, std::memory_order_release);
+    mutex->count = 1;
+    return threadSuccess;
+}
+
 int APS5_VABI _Mtx_unlock_nid_postfix(void** handle) {
     auto* mutex = ResolveMutex(handle, "_Mtx_unlock");
     if (!IsOwnedByCaller(mutex))
@@ -176,6 +224,30 @@ int APS5_VABI _Cnd_broadcast_nid_postfix(void** handle) {
 int SignalCondition_nid_no_patch(void** handle) {
     ResolveCondition(handle, "_Cnd_signal")->native.notify_one();
     return threadSuccess;
+}
+
+int APS5_VABI _Thrd_sleep_nid_postfix(const Xtime* target, Xtime*) {
+    if (!target)
+        APS5_INVALID_ARG_EX;
+    const auto deadline = XtimeDeadline(*target);
+    for (;;) {
+        timespec now{};
+        if (clock_gettime(CLOCK_REALTIME, &now) != 0)
+            throw std::runtime_error("_Thrd_sleep: reading the realtime clock failed");
+        if (now.tv_sec > deadline.tv_sec || (now.tv_sec == deadline.tv_sec && now.tv_nsec >= deadline.tv_nsec))
+            return threadSuccess;
+        timespec remaining{static_cast<time_t>(deadline.tv_sec - now.tv_sec), static_cast<long>(deadline.tv_nsec - now.tv_nsec)};
+        if (remaining.tv_nsec < 0) {
+            remaining.tv_nsec += nanosPerSecond;
+            --remaining.tv_sec;
+        }
+        remaining.tv_sec = std::min<time_t>(remaining.tv_sec, longestSleepSeconds);
+        if (nanosleep(&remaining, nullptr) != 0) {
+            if (errno == EINTR)
+                continue;
+            throw std::runtime_error("_Thrd_sleep: nanosleep failed");
+        }
+    }
 }
 
 }

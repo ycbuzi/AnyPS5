@@ -79,7 +79,12 @@ public:
                 const auto slot = read<std::uint64_t>(*rela + offset);
                 const auto info = read<std::uint64_t>(*rela + offset + 8);
                 if (static_cast<std::uint32_t>(info) != 8) continue;
-                if (info >> 32) throw RelinkerException("Strict filter: relative relocation has a symbol", slot);
+                if (const auto symbol = info >> 32; symbol != 0) {
+                    const auto symbols = table(6, 0x61000039);
+                    const auto size = tags.find(0x6100003F);
+                    if (!symbols || size == tags.end() || symbol >= size->second / 24 || (read<std::uint8_t>(*symbols + symbol * 24 + 4) & 15) != 3 || read<std::uint64_t>(*symbols + symbol * 24 + 8) != 0)
+                        throw RelinkerException("Strict filter: relative relocation has a symbol", slot);
+                }
                 const auto target = read<std::uint64_t>(*rela + offset + 16);
                 if (input.ImportSlots.contains(slot) || !input.Pointers.emplace(slot, target).second)
                     throw RelinkerException("Strict filter: overlapping pointer relocations", slot);

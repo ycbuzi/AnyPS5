@@ -98,6 +98,22 @@ void fallthroughAfterZeroPadding() {
     require(AnalyzeStrictReachability(input).ImportSlots.contains(0x2000), "Zero padding after a region's last jump dropped its fall-through edge");
 }
 
+void addressSizeOverrideImport() {
+    auto input = fixture();
+    input.Text.assign(32, 0);
+    input.TextVaddr = 0x100001000ull;
+    input.Entries = {input.TextVaddr};
+    input.ImportSlots = {0x2000, 0x100002000ull};
+    emit(input, 0, {0x67, 0xFF, 0x15, 0xF9, 0x0F, 0x00, 0x00, 0xC3});
+    require(AnalyzeStrictReachability(input).ImportSlots == std::set<std::uint64_t>{0x2000}, "EIP-relative import was not resolved with 32-bit address wrapping");
+    input.Text.assign(32, 0);
+    emit(input, 0, {0x67, 0x48, 0x8B, 0x05, 0xF8, 0x0F, 0x00, 0x00, 0xC3});
+    require(AnalyzeStrictReachability(input).ImportSlots == std::set<std::uint64_t>{0x2000}, "REX.W EIP-relative load did not resolve its import");
+    input.Text.assign(32, 0);
+    emit(input, 0, {0xFF, 0x15, 0xFA, 0x0F, 0x00, 0x00, 0xC3});
+    require(AnalyzeStrictReachability(input).ImportSlots == std::set<std::uint64_t>{0x100002000ull}, "RIP-relative import lost its full 64-bit address");
+}
+
 void callbackAndRelocationRoots() {
     auto input = fixture();
     ripOperand(input, 0, {0x48, 0x8D, 0x3D}, 0x1020);
@@ -294,8 +310,10 @@ std::vector<std::uint8_t> elfFixture(const StrictReachabilityInput& input) {
     bytes[6] = 1;
     write<std::uint16_t>(bytes, 16, 3);
     write<std::uint16_t>(bytes, 18, 62);
+    write<std::uint32_t>(bytes, 20, 1);
     write<std::uint64_t>(bytes, 24, input.Entries.at(0));
     write<std::uint64_t>(bytes, 32, 64);
+    write<std::uint16_t>(bytes, 52, 64);
     write<std::uint16_t>(bytes, 54, 56);
     write<std::uint16_t>(bytes, 56, 2);
     write<std::uint32_t>(bytes, 64, 1);
@@ -576,6 +594,32 @@ void sceDynlibDataOffsets() {
                    "Duplicate PT_SCE_DYNLIBDATA segments were accepted");
     requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, duplicate, input.Text, input.TextVaddr); },
                    "Strict filter accepted duplicate PT_SCE_DYNLIBDATA segments");
+
+    auto sectionRelative = bytes;
+    write<std::uint64_t>(sectionRelative, 208, 0x70);
+    write<std::uint64_t>(sectionRelative, 216, 0x70);
+    write<std::int64_t>(sectionRelative, 0x330, 0x61000039);
+    write<std::uint64_t>(sectionRelative, 0x338, 0x100);
+    write<std::int64_t>(sectionRelative, 0x340, 0x6100003B);
+    write<std::uint64_t>(sectionRelative, 0x348, 24);
+    write<std::int64_t>(sectionRelative, 0x350, 0x6100003F);
+    write<std::uint64_t>(sectionRelative, 0x358, 48);
+    write<std::uint8_t>(sectionRelative, 0x61C, 3);
+    write<std::uint64_t>(sectionRelative, 0x908, (std::uint64_t{1} << 32) | 8);
+    require(Relinker::MakeStrictUnusedNidFilter()->Filter(references, sectionRelative, input.Text, input.TextVaddr).size() == 1,
+            "Strict filter rejected a RELATIVE relocation against a zero-value section symbol");
+    auto valuedSection = sectionRelative;
+    write<std::uint64_t>(valuedSection, 0x620, 0x10);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, valuedSection, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation against a section symbol with a value");
+    auto untyped = sectionRelative;
+    write<std::uint8_t>(untyped, 0x61C, 0);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, untyped, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation against a non-section symbol");
+    auto outside = sectionRelative;
+    write<std::uint64_t>(outside, 0x908, (std::uint64_t{2} << 32) | 8);
+    requireFailure([&] { (void)Relinker::MakeStrictUnusedNidFilter()->Filter(references, outside, input.Text, input.TextVaddr); },
+                   "Strict filter accepted a RELATIVE relocation symbol outside the symbol table");
 }
 
 }
@@ -586,6 +630,7 @@ int main() {
         ud1DeadTail();
         conditionalTailCall();
         fallthroughAfterZeroPadding();
+        addressSizeOverrideImport();
         callbackAndRelocationRoots();
         registerImportCall();
         mergedJumpTable();

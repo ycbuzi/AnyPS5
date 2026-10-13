@@ -26,6 +26,13 @@ target_compile_features(nid_patcher PRIVATE cxx_std_20)
 
 if(MINGW)
     target_link_options(nid_patcher PRIVATE -static -static-libgcc -static-libstdc++)
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_FLAGS -fno-asynchronous-unwind-tables)
+    check_cxx_source_compiles("#ifdef __USING_SJLJ_EXCEPTIONS__\n#error\n#endif\nint main() { return 0; }" ANYPS5_MINGW_DWARF_EXCEPTIONS)
+    unset(CMAKE_REQUIRED_FLAGS)
+    if(NOT ANYPS5_MINGW_DWARF_EXCEPTIONS)
+        message(FATAL_ERROR "${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION} selects SjLj exceptions with -fno-asynchronous-unwind-tables; the libraries need DWARF unwinding. Use the MinGW-w64 toolchain listed in docs/dev/BUILD.md.")
+    endif()
     add_compile_options(-fno-asynchronous-unwind-tables)
 endif()
 
@@ -142,6 +149,24 @@ foreach(LIB_DIR ${LIBS_DIRS})
     endif()
 endforeach()
 
+if(APS5_ENABLE_TRACY)
+    set_target_properties(TracyClient PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${UNPATCHED_DIR}
+            LIBRARY_OUTPUT_DIRECTORY ${UNPATCHED_DIR}
+            ARCHIVE_OUTPUT_DIRECTORY ${IMPLIB_DIR}
+    )
+    set(TRACY_CLIENT_COPIED ${CMAKE_CURRENT_BINARY_DIR}/TracyClient.copied)
+    add_custom_command(
+            OUTPUT ${TRACY_CLIENT_COPIED}
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${PATCHED_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:TracyClient> ${PATCHED_DIR}
+            COMMAND ${CMAKE_COMMAND} -E touch ${TRACY_CLIENT_COPIED}
+            DEPENDS TracyClient
+            COMMENT "Copying the Tracy client next to the patched libraries"
+    )
+    list(APPEND PATCHED_OUTPUTS ${TRACY_CLIENT_COPIED})
+endif()
+
 add_custom_target(libs DEPENDS ${PATCHED_OUTPUTS})
 
 if(BUILD_TESTING)
@@ -197,6 +222,26 @@ if(BUILD_TESTING)
     if(WIN32)
         set_tests_properties(guest_signin_dialog PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceSigninDialog>")
+    endif()
+
+    add_test_executable(guest_netctl_ap_dialog_tests tests/GuestNetCtlApDialog.cpp)
+    target_include_directories(guest_netctl_ap_dialog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_netctl_ap_dialog_tests PRIVATE libSceNetCtlApDialog libc)
+    configure_windows_unwind(guest_netctl_ap_dialog_tests)
+    add_test(NAME guest_netctl_ap_dialog COMMAND guest_netctl_ap_dialog_tests)
+    if(WIN32)
+        set_tests_properties(guest_netctl_ap_dialog PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceNetCtlApDialog>")
+    endif()
+
+    add_test_executable(guest_np_auth_tests tests/GuestNpAuth.cpp)
+    target_include_directories(guest_np_auth_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_np_auth_tests PRIVATE libSceNpAuth libc)
+    configure_windows_unwind(guest_np_auth_tests)
+    add_test(NAME guest_np_auth COMMAND guest_np_auth_tests)
+    if(WIN32)
+        set_tests_properties(guest_np_auth PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceNpAuth>")
     endif()
 
     add_test_executable(guest_rudp_status_tests tests/GuestRudpStatus.cpp)
@@ -290,6 +335,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME host_thread_local COMMAND host_thread_local_tests)
     set_tests_properties(host_thread_local PROPERTIES TIMEOUT 15)
+    if(MINGW)
+        add_test(NAME prx_thread_local_destructors COMMAND ${CMAKE_COMMAND} -DNM=${CMAKE_NM} -DOBJDUMP=${CMAKE_OBJDUMP}
+            -DMODULES=$<TARGET_FILE_DIR:libc> -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/ThreadLocalDestructors.cmake)
+        set_tests_properties(prx_thread_local_destructors PROPERTIES TIMEOUT 300)
+    endif()
 
     add_test_executable(savedata_core_write_replacement_tests tests/SaveDataWriteReplacement.cpp)
     target_include_directories(savedata_core_write_replacement_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

@@ -14,6 +14,7 @@ int APS5_VABI sceRazorCpuPopMarker(void);
 int APS5_VABI sceRazorCpuFlushOccurred(std::uint64_t* timeSpentInFlush);
 int APS5_VABI sceRazorCpuPlotValue(const char* series, float value);
 int APS5_VABI sceRazorCpuWriteBookmark(const char* label, const char* description);
+int APS5_VABI sceRazorCpuSync(void);
 }
 
 namespace {
@@ -43,4 +44,7 @@ int main() {
     Require(sceRazorCpuPlotValue("read time (ms)", 1.5f) == 0);
     Require(sceRazorCpuWriteBookmark("read timeout", "lba=0x10") == 0);
     Require(sceRazorCpuWriteBookmark("read timeout", nullptr) == 0);
+    Require(sceRazorCpuSync() == 0);
+    Require(sceRazorCpuSync() == 0);
+    Require(sceRazorCpuIsCapturing() == 0);
 }

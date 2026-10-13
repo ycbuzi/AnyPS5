@@ -1,5 +1,7 @@
 # Project technical debt
 
+Entries about one library or component are in [debt](debt/), one file per library or component, under the same sections as this page. Entries that belong to none stay here.
+
 ### Build
 
 - Building on Windows requires a specific version of mingw - MinGW-w64 GCC 15.2.0 (`winlibs-gcc15`, `x86_64-ucrt-posix-seh`)
@@ -10,6 +12,10 @@
 - winpthreads initializes a statically initialized rwlock on its first lock and fails a concurrent first lock with `EINVAL`, which `std::shared_mutex` and `std::shared_timed_mutex` ignore, so that lock does not exclude. Guest rwlocks ([Pthread.hpp](../../core/libs/prx/libkernel/Pthread/include/Pthread.hpp)) are locked once when created. The host `std::shared_mutex` objects in [Recompiler.cpp](../../core/shader/recompiler/Recompiler.cpp) and [GuestWriteWatch.cpp](../../core/libs/prx/libc/src/GuestWriteWatch.cpp) are not, and can still race on their first contended use.
 - [libusb](../../3rdparty/libusb) is built with `LIBUSB_ENABLE_UDEV=OFF` ([libSceUsbd](../../core/libs/prx/libSceUsbd/CMakeLists.txt)): on Linux it enumerates through sysfs and watches hotplug through netlink itself, so the build needs no libudev development package and the libSceUsbd tests need no USB access.
 - [libSceSsl](../../core/libs/prx/libSceSsl/CMakeLists.txt) builds Mbed TLS 3.6.7 from the `3rdparty/mbedtls` submodule. Upstream AnyPS5 refused the dependency and [boykopovar/AnyPS5#1884](https://github.com/boykopovar/AnyPS5/pull/1884) was closed unmerged; this fork accepts it so that the certificate exports have real behaviour. Configuring needs Mbed TLS's nested `framework` submodule (`git submodule update --init --recursive 3rdparty/mbedtls`): its CMake refuses a git checkout without it, although that directory's CMake file is blank and nothing from it is compiled. The pre-generated sources that `GEN_FILES OFF` relies on are committed in the pinned checkout
+
+### Direct memory
+
+- Windows direct-memory backing reserves a paging-file section and commits each mapped guest page before setting its protection. Committed physical contents remain in the section across unmap/remap and are released when the backing and its remaining views are destroyed; commitment is not recovered merely by unmapping a page. Linux retains its existing backing. Peak gameplay memory and Windows versions other than the tested host remain unverified.
 
 ### Silent stubs
 
@@ -753,3 +759,15 @@ Throughout the project, every function at every stage either **does exactly what
 - [sceAgcCreatePrimState](../../core/libs/prx/libSceAgc/Shader/src/PrimState.cpp) (libSceAgc) - the `ge_user_vgpr_en` special is passed to the user configuration registers at whatever offset the shader header stores, as the SPRX does according to [OpenAGC](https://github.com/OpenAGC/OpenAGC/blob/3c7e8072f0d7684e930454794fd5c02056946d73/src/game_compat.c#L1181-L1252), which copies all four specials verbatim (KytyPS5 stops on any other offset). PPSA99039, PPSA99505, PPSA99515 and PPSA99997 build their headers by hand with it at 0x25c (`GE_USER_VGPR1`) instead of 0x262 (`GE_USER_VGPR_EN`), value 0, and run on the console; it is not moved to 0x262, and the driver reads neither register. `ge_cntl`, `vgt_shader_stages_en` and a used `vgt_gs_out_prim_type` must still be at their own offsets, since the driver reads those registers there, so a header that stores one elsewhere throws naming the offset, although by OpenAGC the SPRX would copy it as well
 - [pthread_spin_init, pthread_spin_destroy, pthread_spin_lock, pthread_spin_trylock, pthread_spin_unlock](../../core/libs/prx/libkernel/Pthread/Posix/Spinlock.cpp) (libkernel) follow FreeBSD 11.4 libthr [`thr_pspinlock.c`](https://github.com/freebsd/freebsd-src/blob/8c639945a44588f6cfdddfb057bb5aad88735da0/lib/libthr/thread/thr_pspinlock.c) and the owner checks of its [`thr_umtx.h`](https://github.com/freebsd/freebsd-src/blob/8c639945a44588f6cfdddfb057bb5aad88735da0/lib/libthr/thread/thr_umtx.h#L80-L175), unverified on the console: `EINVAL` for a null or destroyed lock and a `pshared` other than 0 or 1, `EBUSY` from `trylock` while any thread holds it, `EPERM` from `unlock` by a thread that does not hold it. `PTHREAD_PROCESS_SHARED` allocates a private lock, as guest code runs in one process. libthr spins forever when the holder locks again; here that call throws
 - [pthread_cond_reltimedwait_np](../../core/libs/prx/libkernel/Pthread/Posix/Cond.cpp) (libkernel) takes `(cond, mutex, usec)`, a relative timeout in microseconds, and is `scePthreadCondTimedwait` with POSIX error numbers. FreeBSD 11.4 has no such function; the signature comes only from shadPS4, which registers one function for this NID and for `scePthreadCondTimedwait` ([`condvar.cpp`](https://github.com/shadps4-emu/shadPS4/blob/3a9f57265d28975658f1ca941daa5c879c7a74bd/src/core/libraries/kernel/threads/condvar.cpp#L229-L234)). shadPS4 reads a 64-bit count; here it is the 32-bit `SceKernelUseconds` of the SCE twin, as for `sem_reltimedwait_np`. Unverified on the console
+
+### Unknown function info
+
+- AudioIn and NpSessionSignaling exports added without an implementation have assumed signatures
+- Font, Http2, Net, Ssl, SystemService and libkernel exports imported by PPSA12544 and added without an implementation have unknown signatures
+- The Share, NpTrophy2, NpEntitlementAccess and WebBrowserDialog exports imported by PPSA12544's Unity plugins and added without an implementation have unknown signatures
+- Acm, GameLiveStreaming, Net, NpEntitlementAccess, NpManager, NpWebApi2, VoiceQoS, WebBrowserDialog and libkernel exports imported by PPSA14632 and added without an implementation are declared without parameters
+
+### Functional
+
+- [Cancellation coverage](ARCHITECTURE.md#thread-cancellation) checks deferred request handling and recovery, not full asynchronous support or console ABI compatibility. Cancellation during file/socket I/O, sleep interruption, cancellation versus exit/detach, condition signal conservation under cancellation, and safe rejection of non-null invalid or reclaimed thread handles remain unverified. No console title or homebrew establishes the cleanup NIDs or buffer layout. Accepted asynchronous mode currently has no diagnostic for its deferred behavior.
+- `--to-intel` guest module trampolines are covered only by a synthetic relinker test; no game title has been verified with them on Linux or Windows.

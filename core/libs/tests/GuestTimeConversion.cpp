@@ -19,11 +19,14 @@ GuestTm* APS5_VABI libc_localtime_nid_postfix(const std::int64_t*);
 GuestTm* APS5_VABI localtime_nid_postfix(const std::int64_t*);
 GuestTm* APS5_VABI gmtime_s_nid_postfix(const std::int64_t*, GuestTm*);
 GuestTm* APS5_VABI localtime_s_nid_postfix(const std::int64_t*, GuestTm*);
+char* APS5_VABI asctime_nid_postfix(const GuestTm*);
 std::int64_t APS5_VABI mktime_nid_postfix(GuestTm*);
 std::size_t APS5_VABI strftime_nid_postfix(char*, std::size_t, const char*, const GuestTm*);
 void APS5_VABI tzset_nid_postfix(void);
 char* APS5_VABI ctime_nid_postfix(const std::int64_t*);
 int* APS5_VABI __error_nid_postfix();
+double APS5_VABI libc_difftime_nid_postfix(std::int64_t, std::int64_t);
+double APS5_VABI difftime_nid_postfix(std::int64_t, std::int64_t);
 }
 
 using Converter = GuestTm* (APS5_VABI *)(const std::int64_t*);
@@ -68,6 +71,17 @@ static void CheckConcurrent(Converter convert, BufferedConverter buffered, const
     Require(convert(&invalid) == nullptr, "Unrepresentable time was accepted");
 }
 
+static GuestTm UtcTime(std::int64_t timer) {
+    GuestTm utc{};
+    Require(gmtime_s_nid_postfix(&timer, &utc) == &utc, "UTC conversion failed");
+    return utc;
+}
+
+static void CheckAsctime(const GuestTm& brokenDown, const char* expected) {
+    const char* text = asctime_nid_postfix(&brokenDown);
+    Require(text != nullptr && std::strcmp(text, expected) == 0, "asctime did not format the broken-down time");
+}
+
 struct UtcCase {
     std::int64_t timer;
     int year;
@@ -90,6 +104,17 @@ static void CheckUtc(const UtcCase& expected) {
         "UTC calendar fields are wrong");
     Require(utc.tm_gmtoff == 0, "UTC conversion did not reset tm_gmtoff");
     Require(utc.tm_zone != nullptr && std::strcmp(utc.tm_zone, "UTC") == 0, "UTC conversion did not set tm_zone");
+}
+
+struct DifferenceCase {
+    std::int64_t time1;
+    std::int64_t time0;
+    double seconds;
+};
+
+static void CheckDifference(const DifferenceCase& expected) {
+    Require(libc_difftime_nid_postfix(expected.time1, expected.time0) == expected.seconds
+        && difftime_nid_postfix(expected.time1, expected.time0) == expected.seconds, "difftime did not return time1 - time0");
 }
 
 static void CheckFormat(const GuestTm& guest, const char* format, const char* expected) {
@@ -180,6 +205,53 @@ static void CheckFreeBsdConversions() {
     Require(strftime_nid_postfix(tooSmall, sizeof(tooSmall), "%k:%l", &guest) == 0, "strftime accepted an undersized buffer");
 }
 
+static void CheckLiteralConversions() {
+    const std::int64_t timer = 1700000000;
+    GuestTm guest{};
+    Require(gmtime_s_nid_postfix(&timer, &guest) == &guest, "UTC conversion failed");
+    struct FormatCase {
+        const char* format;
+        const char* expected;
+    };
+    constexpr FormatCase cases[]{
+        {"%Q", "Q"},
+        {"%P|%f|%N|%1|%#Y", "P|f|N|1|#Y"},
+        {"[%Q] %Y-%m-%d", "[Q] 2023-11-14"},
+        {"%EQ|%OQ|%_Q|%-Q|%0Q", "Q|Q|Q|Q|Q"},
+        {"%E_Q|%_EQ|%O0Q|%-OQ", "Q|Q|Q|Q"},
+        {"%EEY|%EOY|%OEY|%OOY", "EY|OY|EY|OY"},
+        {"%EE%Y|%OO%k", "E2023|O22"},
+        {"%--Y|%__Y|%00Y|%_0Y|%0-Y", "-Y|_Y|0Y|0Y|-Y"},
+        {"%E_EY|%_EOY|%O0OY", "EY|OY|OY"},
+        {"%", "%"},
+        {"text%", "text%"},
+        {"%E", "E"},
+        {"%O", "O"},
+        {"%_", "_"},
+        {"%-", "-"},
+        {"%0", "0"},
+        {"%E_", "_"},
+        {"%_E", "E"},
+        {"%Q%", "Q%"},
+        {"%k%", "22%"},
+        {"%%Q|%%%Q|%%%%Q", "%Q|%Q|%%Q"},
+        {"%E%Q|%O%Q|%_%Q|%0%Q|%-%Q", "%Q|%Q|%Q|%Q|%Q"},
+        {"%E%%Q|%O%%%Q", "%Q|%%Q"},
+        {"%Q|%Ek|%Ol|%Ev|%Y", "Q|22|10|14-Nov-2023|2023"},
+        {"%\xc3\xa5", "\xc3\xa5"},
+        {"%%", "%"},
+        {"literal text", "literal text"},
+    };
+    for (const auto& test : cases) {
+        CheckFormat(guest, test.format, test.expected);
+        CheckBufferSize(guest, test.format, std::strlen(test.expected));
+    }
+    CheckFormat(guest, "", "");
+    char buffer[2]{'x', 'y'};
+    Require(strftime_nid_postfix(buffer, 0, "%Q", &guest) == 0, "strftime accepted a zero-size buffer");
+    Require(buffer[0] == 'x' && buffer[1] == 'y', "strftime wrote to a zero-size buffer");
+}
+
 int main() {
 #ifdef _WIN32
     _putenv_s("TZ", "UTC-2");
@@ -201,6 +273,14 @@ int main() {
     const std::int64_t underflow = std::numeric_limits<std::int64_t>::min();
     GuestTm scratch{};
     Require(gmtime_s_nid_postfix(&underflow, &scratch) == nullptr, "Unrepresentable negative time was accepted");
+
+    CheckAsctime(UtcTime(0), "Thu Jan  1 00:00:00 1970\n");
+    CheckAsctime(UtcTime(-2208988801), "Sun Dec 31 23:59:59 1899\n");
+    CheckAsctime(UtcTime(-30610224000), "Wed Jan  1 00:00:00 1000\n");
+    GuestTm pastMonthEnd = UtcTime(983404800);
+    pastMonthEnd.tm_mon = 1;
+    pastMonthEnd.tm_mday = 29;
+    CheckAsctime(pastMonthEnd, "Thu Feb 29 00:00:00 2001\n");
 
     const std::int64_t epoch = 0;
     GuestTm local{};
@@ -226,6 +306,21 @@ int main() {
     Require(std::strcmp(ctime_nid_postfix(&underflow), "??? ??? ?? ??:??:?? ????\n") == 0 && *__error_nid_postfix() == 22,
         "ctime of an unrepresentable time did not report it");
 
+    constexpr std::int64_t latest = std::numeric_limits<std::int64_t>::max();
+    constexpr std::int64_t earliest = std::numeric_limits<std::int64_t>::min();
+    constexpr std::array<DifferenceCase, 9> differenceCases{{
+        {10, 3, 7.0},
+        {3, 10, -7.0},
+        {0, -1, 1.0},
+        {-1, 0, -1.0},
+        {-86400, -172800, 86400.0},
+        {latest, latest - 1, 1.0},
+        {earliest + 1, earliest, 1.0},
+        {latest, earliest, 0x1p64},
+        {earliest, latest, -0x1p64},
+    }};
+    for (const auto& differenceCase : differenceCases) CheckDifference(differenceCase);
+
     GuestTm utc{};
     Require(gmtime_s_nid_postfix(&epoch, &utc) == &utc, "UTC epoch conversion failed");
     char formatted[64]{};
@@ -233,6 +328,7 @@ int main() {
         && std::strcmp(formatted, "1970-01-01 00:00:00") == 0, "strftime did not read the guest tm");
 
     CheckFreeBsdConversions();
+    CheckLiteralConversions();
 
     CheckConcurrent(libc_gmtime_nid_postfix, gmtime_s_nid_postfix, "Concurrent libc_gmtime returned another thread's date");
     CheckConcurrent(gmtime_nid_postfix, gmtime_s_nid_postfix, "Concurrent gmtime returned another thread's date");

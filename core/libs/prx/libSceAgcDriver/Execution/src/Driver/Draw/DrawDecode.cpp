@@ -115,6 +115,7 @@ std::shared_ptr<DrawDecode> Driver::decodeDraw(const QueueState& queue, const Su
     product->pixel.targetExportPacking = Graphics::ExportPackings(product->state);
     product->pixel.dualSourceBlend = product->state.dualSourceBlend;
     product->pixel.alphaToCoverage = product->state.alphaToCoverage;
+    if (product->pixel.ancillary) product->pixel.rasterPrimitive = Graphics::RasterPrimitiveOf(product->state);
     return product;
 }
 

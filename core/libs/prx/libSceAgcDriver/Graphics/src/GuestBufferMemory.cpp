@@ -142,6 +142,12 @@ bool addressSpaceCacheEnabled() {
     return !disabled;
 }
 
+struct ImportFailure {
+    std::uint64_t base;
+    std::uint64_t bytes;
+    GuestAllocations::Mapped ranges;
+};
+
 // Imports persist across draws, keyed by allocation base, and are dropped when their allocation leaves
 // the registered set; a dropped import is destroyed once the recorded work that may read it completed.
 struct HostImports {
@@ -152,7 +158,7 @@ struct HostImports {
     std::map<std::uint64_t, HostImport> imports;
     std::map<VkDevice, std::vector<std::shared_ptr<RetiredImport>>> parked;
     std::uint64_t liveBytes = 0;
-    std::set<std::uint64_t> failed;
+    std::map<std::uint64_t, ImportFailure> failed;
     std::set<std::uint64_t> unaliasedSpans;
     // Registry generation the imports were last reconciled with.
     std::uint64_t refreshedGeneration = 0;
@@ -181,14 +187,17 @@ void destroyImport(const Context& context, const HostImport& entry) {
 #endif
 }
 
+using ImportNode = std::map<std::uint64_t, HostImport>::node_type;
+
 // Frees a dropped import's Vulkan objects when it is released. Never copied: a copy would destroy the
 // same handles twice (and a temporary would destroy them at once).
 struct RetiredImport {
-    RetiredImport(VkDevice device, PFN_vkDestroyBuffer destroyBuffer, PFN_vkFreeMemory freeMemory, const HostImport& entry)
-        : device(device), destroyBuffer(destroyBuffer), freeMemory(freeMemory), entry(entry) {}
+    RetiredImport(VkDevice device, PFN_vkDestroyBuffer destroyBuffer, PFN_vkFreeMemory freeMemory, ImportNode node)
+        : device(device), destroyBuffer(destroyBuffer), freeMemory(freeMemory), node(std::move(node)) {}
     RetiredImport(const RetiredImport&) = delete;
     RetiredImport& operator=(const RetiredImport&) = delete;
     ~RetiredImport() {
+        const auto& entry = node.mapped();
         destroyBuffer(device, entry.buffer, nullptr);
         freeMemory(device, entry.memory, nullptr);
 #ifdef _WIN32
@@ -198,25 +207,44 @@ struct RetiredImport {
     VkDevice device;
     PFN_vkDestroyBuffer destroyBuffer;
     PFN_vkFreeMemory freeMemory;
-    HostImport entry;
+    ImportNode node;
 };
 
-// Drops an import. Recorded batches (dispatches, recorded draws, GPU label writes) may still read it,
-// so the objects live until the batch open now completed; with no batches in flight all GPU work that
-// used it was synchronous and it is destroyed at once.
 const GuestAllocations::Range* containingRange(const GuestAllocations::Lease& lease, std::uint64_t begin, std::uint64_t end);
 bool runCovers(const GuestAllocations::Lease& lease, std::uint64_t begin, std::uint64_t end);
 
-void retireImport(VkDevice device, HostImports& state, std::map<std::uint64_t, HostImport>::iterator it, const GuestAllocations::Lease& lease) {
+void retireImport(VkDevice device, HostImports& state, std::map<std::uint64_t, HostImport>::iterator it, const GuestAllocations::Lease& lease, bool hold = true) {
     // Results shadowed for the import reach its (old) buffer first where the memory is still a
     // readable registered range (the import retires because its registration vanished or changed
     // size); the holder below outlives the batch that copies them.
     RetireShadow(device, it->second, [&lease](std::uint64_t begin, std::uint64_t end) { return runCovers(lease, begin, end); });
-    auto holder = std::make_shared<RetiredImport>(state.device, state.destroyBuffer, state.freeMemory, it->second);
-    if (auto* recorder = Recorder::Active(); recorder != nullptr && !recorder->Idle()) recorder->Keep(std::move(holder));
     ++state.epoch;
     state.liveBytes -= it->second.bytes;
-    state.imports.erase(it);
+    auto holder = std::make_shared<RetiredImport>(state.device, state.destroyBuffer, state.freeMemory, state.imports.extract(it));
+    auto* recorder = Recorder::Active();
+    if (recorder == nullptr) return;
+    if (hold) recorder->KeepThroughHold(std::move(holder));
+    else if (!recorder->Idle()) recorder->Keep(std::move(holder));
+}
+
+bool releaseParkedImports(HostImports& state, std::uint64_t begin, std::uint64_t end) {
+    std::vector<std::shared_ptr<RetiredImport>> released;
+    {
+        std::lock_guard lock(state.mutex);
+        for (auto device = state.parked.begin(); device != state.parked.end();) {
+            auto& list = device->second;
+            for (auto it = list.begin(); it != list.end();) {
+                if ((*it)->node.mapped().base < end && begin < (*it)->node.mapped().base + (*it)->node.mapped().bytes) {
+                    released.push_back(std::move(*it));
+                    it = list.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+            device = list.empty() ? state.parked.erase(device) : std::next(device);
+        }
+    }
+    return !released.empty();
 }
 
 const char* bindImport(const Context& context, HostImport& entry, VkExternalMemoryHandleTypeFlagBits handleType, const void* import, std::uint32_t importTypes, bool& allocated, VkResult& failure) {
@@ -595,7 +623,8 @@ bool runCovers(const GuestAllocations::Lease& lease, std::uint64_t begin, std::u
     return !run.ranges.empty() && end <= run.base + run.bytes;
 }
 
-bool sameRun(const HostImport& entry, const ImportRun& run) {
+template<typename Entry>
+bool sameRun(const Entry& entry, const ImportRun& run) {
     if (run.base != entry.base || run.bytes != entry.bytes || run.ranges.size() != entry.ranges.size()) return false;
     for (std::size_t index = 0; index < run.ranges.size(); ++index) {
         if (entry.ranges[index].owner_before(run.ranges[index]) || run.ranges[index].owner_before(entry.ranges[index])) return false;
@@ -629,7 +658,11 @@ const HostImport* importAllocation(const Context& context, HostImports& state, s
     }
     if (auto it = state.imports.lower_bound(base); it != state.imports.begin() && std::prev(it)->second.base + std::prev(it)->second.bytes > base) retireImport(context.device, state, std::prev(it), lease);
     const auto alignment = context.hostImportAlignment;
-    if (alignment == 0 || base % alignment != 0 || bytes % alignment != 0 || state.failed.contains(base)) return nullptr;
+    if (alignment == 0 || base % alignment != 0 || bytes % alignment != 0) return nullptr;
+    if (const auto failed = state.failed.find(base); failed != state.failed.end()) {
+        if (sameRun(failed->second, run)) return nullptr;
+        state.failed.erase(failed);
+    }
     // Pinned imports count against the driver's system memory budget; past it ordinary host
     // allocations fail, so imports stop at APS5_HOST_IMPORT_MIB (default 6 GiB, which covers the
     // registered memory of address-based shaders; past it they copy gigabytes per dispatch).
@@ -661,7 +694,7 @@ const HostImport* importAllocation(const Context& context, HostImports& state, s
     for (std::uint64_t cursor = base; cursor < base + bytes;) {
         MEMORY_BASIC_INFORMATION info{};
         if (VirtualQuery(reinterpret_cast<const void*>(cursor), &info, sizeof(info)) == 0 || info.State != MEM_COMMIT || (info.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0) {
-            state.failed.insert(base);
+            state.failed.insert_or_assign(base, ImportFailure{base, bytes, GuestAllocations::Mapped(entry.ranges.begin(), entry.ranges.end())});
             return nullptr;
         }
         const auto protection = info.Protect & 0xffu;
@@ -673,7 +706,7 @@ const HostImport* importAllocation(const Context& context, HostImports& state, s
         cursor = reinterpret_cast<std::uint64_t>(info.BaseAddress) + info.RegionSize;
     }
     if (!writable && readOnly) {
-        state.failed.insert(base);
+        state.failed.insert_or_assign(base, ImportFailure{base, bytes, GuestAllocations::Mapped(entry.ranges.begin(), entry.ranges.end())});
         return nullptr;
     }
     if (!writable) {
@@ -692,7 +725,7 @@ const HostImport* importAllocation(const Context& context, HostImports& state, s
     }
 #else
     if (!GuestMemory::Accessible(reinterpret_cast<const void*>(base), static_cast<std::size_t>(bytes), true)) {
-        state.failed.insert(base);
+        state.failed.insert_or_assign(base, ImportFailure{base, bytes, GuestAllocations::Mapped(entry.ranges.begin(), entry.ranges.end())});
         return nullptr;
     }
 #endif
@@ -712,7 +745,7 @@ const HostImport* importAllocation(const Context& context, HostImports& state, s
 #ifdef _WIN32
         GuestArena::GuestArenaUnmapAlias_nid_postfix(entry.alias);
 #endif
-        state.failed.insert(base);
+        state.failed.insert_or_assign(base, ImportFailure{base, bytes, GuestAllocations::Mapped(entry.ranges.begin(), entry.ranges.end())});
         std::fprintf(stderr, "[gpu] host import of 0x%llx+0x%llx failed at %s (%d); falling back to copies\n", static_cast<unsigned long long>(base), static_cast<unsigned long long>(bytes), step, static_cast<int>(result));
 #ifdef _WIN32
         static const bool trace = std::getenv("APS5_TRACE_HOST_IMPORT") != nullptr;
@@ -764,16 +797,16 @@ const GuestAllocations::Range* containingRange(const GuestAllocations::Lease& le
 // guest addresses. Walks the imports only when the registry changed since the last walk.
 void refreshImports(const Context& context, HostImports& state, const GuestAllocations::Lease& lease) {
     if (state.device != context.device) {
-        for (const auto& [address, entry] : state.imports) {
+        while (!state.imports.empty()) {
+            auto node = state.imports.extract(state.imports.begin());
             if (state.device != VK_NULL_HANDLE && state.destroyBuffer != nullptr && state.freeMemory != nullptr) {
-                state.parked[state.device].push_back(std::make_shared<RetiredImport>(state.device, state.destroyBuffer, state.freeMemory, entry));
+                state.parked[state.device].push_back(std::make_shared<RetiredImport>(state.device, state.destroyBuffer, state.freeMemory, std::move(node)));
                 continue;
             }
 #ifdef _WIN32
-            GuestArena::GuestArenaUnmapAlias_nid_postfix(entry.alias);
+            GuestArena::GuestArenaUnmapAlias_nid_postfix(node.mapped().alias);
 #endif
         }
-        state.imports.clear();
         state.liveBytes = 0;
         state.failed.clear();
         state.device = context.device;
@@ -800,7 +833,7 @@ void refreshImports(const Context& context, HostImports& state, const GuestAlloc
         retireImport(context.device, state, it, lease);
         it = next;
     }
-    for (auto it = state.failed.begin(); it != state.failed.end();) it = leasedRangeAt(lease, *it) != nullptr ? std::next(it) : state.failed.erase(it);
+    for (auto it = state.failed.begin(); it != state.failed.end();) it = sameRun(it->second, importRun(lease, it->first)) ? std::next(it) : state.failed.erase(it);
 }
 
 const HostImport* findImport(HostImports& state, std::uint64_t begin, std::uint64_t end) {
@@ -1534,6 +1567,7 @@ bool WaitForLeasesAndImports(std::uintptr_t address, std::size_t bytes) noexcept
             if (recorder != nullptr) recorder->FlushDeferredReleases();
             const auto end = static_cast<std::uint64_t>(address) + bytes;
             auto& imports = Imports();
+            if (releaseParkedImports(imports, address, end)) retiredImport = true;
             const auto lease = GuestAllocations::GuestAllocationsAcquire_nid_postfix();
             {
                 std::lock_guard importsLock(imports.mutex);
@@ -1544,7 +1578,7 @@ bool WaitForLeasesAndImports(std::uintptr_t address, std::size_t bytes) noexcept
                         continue;
                     }
                     const auto next = std::next(it);
-                    retireImport(imports.device, imports, it, lease);
+                    retireImport(imports.device, imports, it, lease, false);
                     it = next;
                     retiredImport = true;
                 }
@@ -1582,9 +1616,11 @@ bool WaitForLeasesAndImports(std::uintptr_t address, std::size_t bytes) noexcept
                 // yet to record (a test's, or a build whose worker gave up the lock); give it time.
                 std::this_thread::yield();
             }
+            if (recorder != nullptr) recorder->FlushDeferredReleases();
 
             const auto end = static_cast<std::uint64_t>(address) + bytes;
             auto& imports = Imports();
+            if (releaseParkedImports(imports, address, end)) retiredImport = true;
             bool overlapsImport = false;
             {
                 std::lock_guard importsLock(imports.mutex);
@@ -1612,7 +1648,7 @@ bool WaitForLeasesAndImports(std::uintptr_t address, std::size_t bytes) noexcept
                             continue;
                         }
                         const auto next = std::next(it);
-                        retireImport(imports.device, imports, it, lease);
+                        retireImport(imports.device, imports, it, lease, false);
                         it = next;
                         retiredImport = true;
                     }

@@ -77,7 +77,7 @@ bool _fileSize(const std::filesystem::path& path, std::uint64_t& bytes) {
             const HANDLE find = FindFirstFileExW((path.parent_path() / L"*").c_str(), FindExInfoBasic, &entry, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
             if (find != INVALID_HANDLE_VALUE) {
                 do {
-                    if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+                    if ((entry.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0) continue;
                     const auto size = (static_cast<std::uint64_t>(entry.nFileSizeHigh) << 32u) | entry.nFileSizeLow;
                     sizes.emplace(_foldCase(std::filesystem::path(entry.cFileName).string()), size);
                 } while (FindNextFileW(find, &entry));
@@ -101,8 +101,11 @@ bool _fileSize(const std::filesystem::path& path, std::uint64_t& bytes) {
     }
     // Not in the listing (created since, or an unusual name): ask the file system directly.
     std::error_code error;
-    bytes = std::filesystem::file_size(path, error);
-    return !error;
+    if (!std::filesystem::is_regular_file(path, error)) return false;
+    FileStat stat{};
+    File::FillFileStat(path, &stat);
+    bytes = static_cast<std::uint64_t>(stat.st_size);
+    return true;
 }
 
 int _fail(int guestErrno) {
@@ -880,6 +883,31 @@ int APS5_VABI sceKernelAprResolveFilepathsWithPrefixToIdsForEach(const char* pre
 int APS5_VABI sceKernelAprResolveFilepathsWithPrefixToIdsAndFileSizesForEach(const char* prefix, const char** paths, uint32_t count, uint32_t* ids, uint64_t* sizes, int* results) {
     if (!prefix || !sizes) return _fail(GUEST_EINVAL);
     return _resolveForEach(prefix, paths, count, ids, sizes, results);
+}
+
+bool _validWriteRange(std::uint64_t address, std::uint64_t size) {
+    constexpr std::uint64_t pageMask = 0x3FFFu;
+    return address != 0u && size != 0u && ((address | size) & pageMask) == 0u && address + size > address;
+}
+
+bool _validWriteProtection(std::uint64_t protection) {
+    return (protection & ~0x3F3ULL) == 0u;
+}
+
+int APS5_VABI sceKernelWriteModifyMtypeProtectCommand(void* dst, std::uint64_t address, std::uint64_t size, std::uint64_t type, std::uint64_t protection, std::uint64_t mask, std::uint64_t* outSize) {
+    if (!_validWriteRange(address, size) || !_validWriteProtection(protection) || !_validWriteProtection(mask)) return SCE_KERNEL_ERROR_EINVAL;
+    const Apr::AmmProtectCommand command{{Apr::Opcode::AmmModifyMtypeProtect, sizeof(command)}, address, size, static_cast<std::int32_t>(type), static_cast<std::int32_t>(protection), static_cast<std::int32_t>(mask), 0};
+    if (dst) std::memcpy(dst, &command, sizeof(command));
+    if (outSize) *outSize = sizeof(command);
+    return 0;
+}
+
+int APS5_VABI sceKernelWriteRemapIntoPrtCommand(std::uint32_t* dst, std::uint64_t address, std::uint64_t source, std::uint64_t size, int protection, int opcode, std::uint64_t* outSize) {
+    if (!_validWriteRange(address, size) || !_validWriteRange(source, size) || !_validWriteProtection(static_cast<std::uint32_t>(protection))) return SCE_KERNEL_ERROR_EINVAL;
+    const Apr::AmmRemapCommand command{{Apr::Opcode::AmmRemapIntoPrt, sizeof(command)}, address, source, size, protection, opcode ? opcode : 1011};
+    if (dst) std::memcpy(dst, &command, sizeof(command));
+    if (outSize) *outSize = sizeof(command);
+    return 0;
 }
 
 }
