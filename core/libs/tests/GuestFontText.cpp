@@ -130,6 +130,7 @@ int main() {
     const std::vector<std::uint32_t> mixed{'x', 'e', 0x0301, 'y', 'z', 0x0E01, 0x0E35};
     Text marks = CreateText(memory, mixed, font);
     Require(StateIs(&marks.characters[0], 0));
+    state = 7;
     Require(Throws([&] { sceFontCharacterGetSyllableStringState(&marks.characters[1], &state); }) && state == 7);
     Require(Throws([&] { sceFontCharacterGetSyllableStringState(&marks.characters[2], &state); }));
     Require(Throws([&] { sceFontCharacterGetSyllableStringState(&marks.characters[3], &state); }));
