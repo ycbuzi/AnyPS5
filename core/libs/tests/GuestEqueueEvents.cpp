@@ -296,6 +296,8 @@ int main() {
     Require(sceKernelGetEventError(&rawEvent) == -5);
     rawEvent.data = 0x12345678;
     Require(sceKernelGetEventError(&rawEvent) == 0x12345678);
+    rawEvent.flags = 0;
+    rawEvent.data = -5;
     Require(sceKernelGetEventUserData(&rawEvent) == nullptr);
     Require(sceKernelGetEventError(&rawEvent) == 0);
     rawEvent.flags = static_cast<std::uint16_t>(~EV_ERROR);
