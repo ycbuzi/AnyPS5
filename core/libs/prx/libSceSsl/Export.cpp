@@ -30,6 +30,8 @@ namespace {
 
 constexpr int ErrorNotFound = static_cast<int>(0x8095f004);
 constexpr int ErrorInvalidArg = static_cast<int>(0x8095177a);
+constexpr int ErrorInvalidId = static_cast<int>(0x8095f006);
+constexpr int ErrorInvalidValue = static_cast<int>(0x8095f007);
 constexpr int ERROR_NOT_FOUND = static_cast<int>(0x8095F004);
 constexpr int ERROR_INVALID_ARG = static_cast<int>(0x8095177A);
 constexpr int ERROR_INVALID_ID = static_cast<int>(0x8095F006);
@@ -319,10 +321,13 @@ int APS5_VABI sceSslTerm_nid_postfix(int sslCtxId) {
 }
 
 int APS5_VABI sceSslGetMemoryPoolStats(int sslCtxId, SceSsl::MemoryPoolStats* stats) {
-    if (!stats) return ErrorInvalidArg;
+    if (!stats) return ErrorInvalidValue;
+    *stats = {};
     auto& state = State();
     std::lock_guard lock(state.mutex);
-    const auto& pool = GetContext(sslCtxId).pool;
+    const auto found = state.contexts.find(sslCtxId);
+    if (found == state.contexts.end()) return ErrorInvalidId;
+    const auto& pool = found->second->pool;
     *stats = {pool.size, pool.peak, pool.current, 0};
     return 0;
 }
