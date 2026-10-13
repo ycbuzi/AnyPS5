@@ -123,7 +123,7 @@ int main() {
 
     for (std::uint32_t i = 0; i < text.count; ++i) Require(StateIs(&characters[i], 0));
     int state = 7;
-    Require(sceFontCharacterGetSyllableStringState(nullptr, &state) == SCE_FONT_ERROR_INVALID_PARAMETER && state == 7);
+    Require(sceFontCharacterGetSyllableStringState(nullptr, &state) == SCE_FONT_ERROR_INVALID_PARAMETER && state == 0);
     Require(sceFontCharacterGetSyllableStringState(&characters[0], nullptr) == SCE_FONT_ERROR_INVALID_PARAMETER);
     Require(sceFontDestroyString(&text.string) == SCE_FONT_OK && text.string == nullptr);
 

@@ -1,14 +1,79 @@
 # Handoff: AnyPS5 work between the PC session and the cloud session
 
-Last updated: 2026-10-11 ~04:30 UTC, by the PC session.
+Last updated: 2026-10-12, by the PC session.
 
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-12 (PC session) — SYNC DONE
+## START HERE — state at 2026-10-12 late — SECOND SYNC DONE, ZERO BEHIND
 
-`stack/open-prs` @ `0f84c534c` has **merged upstream `d146ec1b6` (1204 commits)** and is now
-**263 ahead / 332 behind** `origin/main`. Build clean, suite **956/960**.
+`stack/open-prs` @ `888981d48` has **merged upstream `495bf91a0` (793 commits)** and is
+**269 ahead / 0 behind** `origin/main` — fully current for the first time. Build clean.
+Progress **3290/3680 = 89.4%**, up from 88.9%: **+109 implemented** on a board **+102** larger.
+The suite gained 99 tests, 960 → 1059. Tag: `post-sync-495bf91a0`; previous state
+`pre-sync-793`.
+
+### The measurement that decides these merges
+
+Diff the **export-name sets** per conflicting `Export.cpp`:
+`git cat-file -p pre-sync-793:<file>` vs `origin/main:<file>`, regex `APS5_VABI\s+(\w+)\s*\(`.
+Six of seven had **ours-only = 0** while upstream had **18 more**. Upstream has adopted the libusb
+design we harvested for `libSceUsbd` and gone past it (537 lines to our 315). So take upstream's
+implementation **and** its test together per library; keep ours only where genuinely richer
+(`libSceContentSearch`, `GuestWebBrowserDialog`).
+**Caveat: equal export sets ≠ equal behaviour — compare signatures.** Taking upstream's
+`libSceJson2/Export.cpp` wholesale silently replaced our working 4-argument
+`MemAllocator::notifyError` with their 0-argument `NotImplemented` stub. The name matched, so the
+set-diff showed nothing.
+
+### Three tests still fail
+
+1. **`guest_memory_pool_stats`** — aborts with no message, and both `GuestMemoryPoolStats.cpp` and
+   `MemoryPoolExport.cpp` are byte-identical to upstream, so the divergence is in a dependency
+   (start with `DirectMemory.cpp` / `MemoryPool.cpp`).
+2. **`guest_equeue_events`** — aborts with no message. Related to taking upstream's
+   `EventAccessors.cpp` and de-duplicating `EV_ERROR`.
+3. **`guest_font_text`** — line 126 corrected to expect `state == 0` (upstream's `GuestFont.cpp:437`
+   contract) but **not yet rebuilt or re-run**; verify first.
+
+### Build and test gotchas that cost real time here
+
+- **`cmake --build build -- -k 0`** — ninja then reports every error in one pass instead of one per
+  20-minute cycle. Use it for every post-merge build.
+- **`AGC_BUILD_VISUAL_TEST=ON` poisons the guest tests.** `agc_driver_visual_runtime` copies
+  `$<TARGET_FILE:libc>` and `libkernel` into `build/tests/`, where every guest test executable
+  lives; Windows resolves a DLL from the exe's own directory before PATH, and **nothing in the
+  build graph refreshes those copies**. Delete `build/tests/libc.prx` and `libkernel.prx` before
+  any guest-test run. This masked a correct `expl` fix completely. Likely reportable upstream.
+- Guest tests load the **unpatched** prx (`build/core/libs/libs/unpatched/`); pointing PATH at the
+  patched directory gives `0xc0000139` STATUS_ENTRYPOINT_NOT_FOUND.
+- `cmake`/`ctest` are not on PATH in Bash — use
+  `D:\AnyPS5-tools\cmake-4.4.4-windows-x86_64\bin\`, or PowerShell after `env.ps1`.
+
+### A real upstream bug found here, not yet reported
+
+`libc/src/Math.cpp` `RoundToInt64` bounded with `rounded < static_cast<TFloat>(INT64_MAX)`. Correct
+for float/double (that cast rounds up to 2^63) but wrong for 80-bit **long double**, which holds
+`INT64_MAX` exactly — so `llroundl(9223372036854775807.0L)` raised `FE_INVALID` and returned
+`INT64_MIN`. Fixed here with `-static_cast<TFloat>(INT64_MIN)`, which is 2^63 exactly in all three
+types. **Do the novelty check before posting.** Our harvested `guest_extended_math` caught it:
+when a harvested test fails against upstream code, the test is sometimes the correct party.
+
+### Compatibility documentation moved — do not edit COMPATIBILITY.md
+
+Upstream merged **#4686 on 2026-10-12 19:02 UTC**, deleting `docs/user/COMPATIBILITY.md` and
+pointing at the community blocker map **https://github.com/AlxcBTW/anyps5-roadmap** (MIT, active,
+**not** behind the 1-PR intake cap; its `AGENTS.md` asks for "curated facts that text mining
+misses"). A scrape of all 71 discussions, 597 issues and ~2,200 comments found **30 distinct titles
+with credible gameplay reports**; the map has 198 titles and **25 of our 30**, missing
+**PPSA03647, PPSA06399, PPSA06699, PPSA19639, PPSA19728**. Draft table and notes are in
+`scratchpad/COMPATIBILITY.draft.md` and `.notes.md` (now aimed at the wrong target, but the
+evidence is good). Their schema needs `url` per evidence entry, `name_sources` for any name, and a
+fixed stage vocabulary; validate with `python roadmap.py --validate`.
+
+### Previous sync, for context
+
+`0f84c534c` merged `d146ec1b6` (1204 commits), build clean, suite **956/960**.
 
 | | implemented | total | % |
 |---|---|---|---|
