@@ -26,15 +26,35 @@ implementation **and** its test together per library; keep ours only where genui
 `MemAllocator::notifyError` with their 0-argument `NotImplemented` stub. The name matched, so the
 set-diff showed nothing.
 
-### Three tests still fail
+### All nine post-merge failures are closed
 
-1. **`guest_memory_pool_stats`** — aborts with no message, and both `GuestMemoryPoolStats.cpp` and
-   `MemoryPoolExport.cpp` are byte-identical to upstream, so the divergence is in a dependency
-   (start with `DirectMemory.cpp` / `MemoryPool.cpp`).
-2. **`guest_equeue_events`** — aborts with no message. Related to taking upstream's
-   `EventAccessors.cpp` and de-duplicating `EV_ERROR`.
-3. **`guest_font_text`** — line 126 corrected to expect `state == 0` (upstream's `GuestFont.cpp:437`
-   contract) but **not yet rebuilt or re-run**; verify first.
+`guest_extended_math`, `guest_wide_strings`, `guest_font`, `guest_font_text`, `guest_json`,
+`guest_equeue_events`, `guest_memory_pool_stats`, `ngs2_core_geometry`/`ngs2_geometry`, and
+`guest_usbd_control`/`guest_usbd_async` (the last two retired with the implementation they covered).
+
+**Eight of them were one shape:** a harvested test and an upstream test specifying the same function
+differently. Upstream's unmodified test is the contract and the harvested assertion moves. Establish
+ownership before touching anything:
+`git diff --numstat origin/main -- <test>` (empty = upstream's) and
+`git diff origin/main -- <test> | grep "^+" | grep -c <symbol>` (0 = that assertion is upstream's).
+
+**Harvested tests systematically assume exceptions where upstream returns error codes** — check that
+first. `Ngs2Geometry` expected a thrown `std::invalid_argument` where `Geom.cpp` returns
+`SCE_NGS2_ERROR_INVALID_OUT_ADDRESS`; `GuestSslCertificates` expected a throw from
+`sceSslGetMemoryPoolStats` where upstream wants `0x8095f006` plus a cleared buffer. Returning a code
+is the right shape for an int-returning ABI.
+
+**Two second-order traps worth knowing:**
+- `GuestFontText` reuses one `state` variable, so correcting an earlier assertion (which now
+  legitimately zeroes it) broke a later "a throw leaves the output untouched" check. Re-seed the
+  variable; do not weaken either check.
+- Our inserted `GuestEqueueEvents` block set `EV_ERROR` and left it set, breaking upstream's *later*
+  assertion. **An insertion into someone else's test must restore the state it found.**
+
+**Locating a silent `Require(bool)` abort:** temporarily swap `Require` for
+`RequireAt(value, __LINE__)` that prints the line, build only that target, run, then restore the file
+verbatim and confirm `git diff --numstat origin/main` is empty again. Minutes instead of an hour of
+bisection.
 
 ### Build and test gotchas that cost real time here
 
