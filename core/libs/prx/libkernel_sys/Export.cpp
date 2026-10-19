@@ -57,7 +57,6 @@ constexpr int GuestEperm = 1;
 constexpr int GuestEio = 5;
 constexpr int GuestEbadf = 9;
 constexpr int GuestEfault = 14;
-constexpr int GuestEbadf = 9;
 constexpr int GuestEnotdir = 20;
 constexpr int GuestEisdir = 21;
 constexpr int GuestEinval = 22;
