@@ -1719,28 +1719,42 @@ int APS5_VABI sceNetResolverStartNtoaMultipleRecordsEx(int rid, const char* host
     return lookup_records(rid, hostname, info, flags, __func__);
 }
 
-int APS5_VABI sceNetResolverStartAton(int rid, const void* addr, char* hostname, int len, int timeout, int retry, int flags) {
-    (void)timeout;
-    (void)retry;
-    (void)flags;
-    if (!addr || !hostname || len <= 0) return fail(NET_EINVAL);
+int reverse_lookup(int rid, const sockaddr* address, NativeLength addressLength, char* hostname, int len, const char* func) {
     if (!initialize_sockets()) return fail(5);
     std::uint64_t generation = 0;
     if (const int error = begin_lookup(rid, &Resolver::abort_aton, generation)) return error;
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    std::memcpy(&address.sin_addr, addr, sizeof(address.sin_addr));
     std::vector<char> name(static_cast<std::size_t>(len));
-    const int result = ::getnameinfo(reinterpret_cast<const sockaddr*>(&address), sizeof(address), name.data(),
-        static_cast<NativeLength>(len), nullptr, 0, NI_NAMEREQD);
+    const int result = ::getnameinfo(address, addressLength, name.data(), static_cast<NativeLength>(len), nullptr, 0, NI_NAMEREQD);
     if (result != 0) {
         set_errno(result == EAI_AGAIN ? NET_ETIMEDOUT : NET_ENOENT);
-        log_soft(__func__, "host reverse DNS lookup failed");
+        log_soft(func, "host reverse DNS lookup failed");
         return end_lookup(rid, generation, NET_ERROR_RESOLVER_ENODNS);
     }
     if (const int error = end_lookup(rid, generation, 0)) return error;
     std::memcpy(hostname, name.data(), std::strlen(name.data()) + 1);
     return 0;
+}
+
+int APS5_VABI sceNetResolverStartAton(int rid, const void* addr, char* hostname, int len, int timeout, int retry, int flags) {
+    (void)timeout;
+    (void)retry;
+    (void)flags;
+    if (!addr || !hostname || len <= 0) return fail(NET_EINVAL);
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    std::memcpy(&address.sin_addr, addr, sizeof(address.sin_addr));
+    return reverse_lookup(rid, reinterpret_cast<const sockaddr*>(&address), sizeof(address), hostname, len, __func__);
+}
+
+int APS5_VABI sceNetResolverStartAton6(int rid, const void* addr, char* hostname, int len, int timeout, int retry, int flags) {
+    (void)timeout;
+    (void)retry;
+    if (flags != 0) throw std::runtime_error("sceNetResolverStartAton6: flags " + std::to_string(flags) + " are not supported");
+    if (!addr || !hostname || len <= 0) return fail(NET_EINVAL);
+    sockaddr_in6 address{};
+    address.sin6_family = AF_INET6;
+    std::memcpy(&address.sin6_addr, addr, sizeof(address.sin6_addr));
+    return reverse_lookup(rid, reinterpret_cast<const sockaddr*>(&address), sizeof(address), hostname, len, __func__);
 }
 
 int APS5_VABI sceNetResolverGetError(int rid, int* status) {
@@ -1816,11 +1830,6 @@ int APS5_VABI sceNetShowRoute(void) {
 }
 
 int APS5_VABI sceNetShowRouteWithMemory(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNetResolverStartAton6(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }

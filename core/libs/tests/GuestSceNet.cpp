@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 #else
 #include <cerrno>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -64,6 +65,7 @@ int APS5_VABI sceNetResolverStartNtoa6(int, const char*, void*, int, int, int);
 int APS5_VABI sceNetResolverStartNtoaMultipleRecordsEx(int, const char*, void*, int, int, int);
 int APS5_VABI sceNetResolverStartNtoaMultipleRecords(int, const char*, void*, int, int, int);
 int APS5_VABI sceNetResolverStartAton(int, const void*, char*, int, int, int, int);
+int APS5_VABI sceNetResolverStartAton6(int, const void*, char*, int, int, int, int);
 int APS5_VABI sceNetResolverAbort(int, int);
 int APS5_VABI sceNetResolverDestroy(int);
 int APS5_VABI sceNetResolverGetError(int, int*);
@@ -1575,6 +1577,53 @@ int main() {
         Require(threw);
     }
     Require(sceNetResolverStartNtoa(resolver, "localhost", ipv4.data(), 5000000, 1, 0) == 0);
+
+    std::array<std::uint8_t, 16> loopback6{};
+    loopback6[15] = 1;
+    std::memset(reverse, 0x5A, sizeof(reverse));
+    const int reverse6_result = sceNetResolverStartAton6(resolver, loopback6.data(), reverse, sizeof(reverse), 5000000, 1, 0);
+    Require(reverse6_result == 0 || reverse6_result == static_cast<int>(0x804101E1));
+    Require(sceNetResolverGetError(resolver, &resolver_error) == 0 && resolver_error == reverse6_result);
+    char host_reverse6[256]{};
+    sockaddr_in6 host_loopback6{};
+    host_loopback6.sin6_family = AF_INET6;
+    std::memcpy(&host_loopback6.sin6_addr, loopback6.data(), loopback6.size());
+    const bool host_named6 = ::getnameinfo(reinterpret_cast<const sockaddr*>(&host_loopback6), sizeof(host_loopback6),
+        host_reverse6, sizeof(host_reverse6), nullptr, 0, NI_NAMEREQD) == 0;
+    Require(host_named6 == (reverse6_result == 0));
+    if (reverse6_result == 0) {
+        Require(std::strcmp(reverse, host_reverse6) == 0);
+        const auto name_length = static_cast<int>(std::strlen(host_reverse6));
+        char exact[256];
+        std::memset(exact, 0x5A, sizeof(exact));
+        Require(sceNetResolverStartAton6(resolver, loopback6.data(), exact, name_length + 1, 5000000, 1, 0) == 0 &&
+            std::strcmp(exact, host_reverse6) == 0 && static_cast<unsigned char>(exact[name_length + 1]) == 0x5A);
+        std::memset(exact, 0x5A, sizeof(exact));
+        Require(sceNetResolverStartAton6(resolver, loopback6.data(), exact, name_length, 5000000, 1, 0) ==
+            static_cast<int>(0x804101E1) && static_cast<unsigned char>(exact[0]) == 0x5A);
+    } else {
+        Require(static_cast<unsigned char>(reverse[0]) == 0x5A);
+    }
+    std::memset(reverse, 0x5A, sizeof(reverse));
+    Require(sceNetResolverAbort(resolver, 2) == 0);
+    Require(sceNetResolverStartAton6(resolver, loopback6.data(), reverse, sizeof(reverse), 5000000, 1, 0) ==
+        static_cast<int>(0x80410104) && *sceNetErrnoLoc() == 4 && static_cast<unsigned char>(reverse[0]) == 0x5A);
+    Require(sceNetResolverGetError(resolver, &resolver_error) == 0 && resolver_error == static_cast<int>(0x80410104));
+    Require(sceNetResolverAbort(resolver, 1) == 0);
+    Require(sceNetResolverStartAton6(resolver, loopback6.data(), reverse, sizeof(reverse), 5000000, 1, 0) == reverse6_result);
+    Require(sceNetResolverStartNtoa(resolver, "localhost", ipv4.data(), 5000000, 1, 0) == static_cast<int>(0x80410104));
+    Require(sceNetResolverStartAton6(resolver, nullptr, reverse, sizeof(reverse), 5000000, 1, 0) == static_cast<int>(0x80410116) &&
+        *sceNetErrnoLoc() == 22);
+    Require(sceNetResolverStartAton6(resolver, loopback6.data(), nullptr, sizeof(reverse), 5000000, 1, 0) == static_cast<int>(0x80410116));
+    Require(sceNetResolverStartAton6(resolver, loopback6.data(), reverse, 0, 5000000, 1, 0) == static_cast<int>(0x80410116));
+    Require(sceNetResolverStartAton6(resolver + 1000, loopback6.data(), reverse, sizeof(reverse), 5000000, 1, 0) ==
+        static_cast<int>(0x80410109) && *sceNetErrnoLoc() == 9);
+    for (const int flags : {0x1, 0x10000, -1}) {
+        bool threw = false;
+        try { sceNetResolverStartAton6(resolver, loopback6.data(), reverse, sizeof(reverse), 5000000, 1, flags); }
+        catch (const std::runtime_error&) { threw = true; }
+        Require(threw);
+    }
 
     const int other = sceNetResolverCreate("guest-sce-net-other", 0, 0);
     Require(other >= 0 && other != resolver);
