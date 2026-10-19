@@ -311,6 +311,42 @@ static void TestRelinkedModuleNameCase() {
 }
 
 #ifdef _WIN32
+static void TestCaseSensitiveHostDirectory() {
+    const auto root = std::filesystem::temp_directory_path() / ("anyps5-sensitive-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    Require(std::filesystem::create_directory(root));
+    const auto handle = CreateFileW(root.c_str(), FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    Require(handle != INVALID_HANDLE_VALUE);
+    struct { ULONG flags; } information{FILE_CS_FLAG_CASE_SENSITIVE_DIR};
+    constexpr auto caseSensitiveInfo = static_cast<FILE_INFO_BY_HANDLE_CLASS>(23);
+    const bool enabled = SetFileInformationByHandle(handle, caseSensitiveInfo, &information, sizeof(information));
+    const auto error = GetLastError();
+    CloseHandle(handle);
+    if (!enabled && (error == ERROR_NOT_SUPPORTED || error == ERROR_INVALID_PARAMETER || error == ERROR_ACCESS_DENIED)) {
+        std::printf("case-sensitive host directory unavailable: %lu\n", error);
+        std::filesystem::remove(root);
+        return;
+    }
+    Require(enabled);
+    { std::ofstream file(root / "File.txt"); file << "payload"; }
+    Require(std::filesystem::create_directory(root / "Sub"));
+    Require(std::filesystem::create_directory(root / "Both"));
+    Require(std::filesystem::create_directory(root / "both"));
+    { std::ofstream file(root / "libCase.prx.guest.prx"); file << "module"; }
+    const auto host = root.string();
+    AddPathAlias_nid_no_patch("/sensitive-host", host.c_str());
+    Require(ResolvePath_nid_no_patch("/sensitive-host/file.txt") == root / "File.txt");
+    Require(ResolvePath_nid_no_patch("/sensitive-host/sub") == root / "Sub");
+    Require(ResolvePathOrRelinkedModule_nid_no_patch("/sensitive-host/libcase.prx") == root / "libCase.prx.guest.prx");
+    bool ambiguous = false;
+    try { ResolvePath_nid_no_patch("/sensitive-host/BOTH/file.txt"); }
+    catch (const std::runtime_error& failure) { ambiguous = std::strstr(failure.what(), "Ambiguous case-insensitive guest path") != nullptr; }
+    Require(ambiguous);
+    RemovePathAlias_nid_no_patch("/sensitive-host");
+    std::filesystem::remove_all(root);
+}
+
 static std::filesystem::path ExtendedPath(const std::filesystem::path& path) {
     const auto& native = path.native();
     if (native.starts_with(L"\\\\?\\") || native.starts_with(L"\\\\.\\")) return path;
@@ -401,6 +437,7 @@ int main() {
     TestRelinkedModuleNames();
     TestRelinkedModuleNameCase();
 #ifdef _WIN32
+    TestCaseSensitiveHostDirectory();
     TestLongHostPathStat();
 #endif
 #ifdef __linux__
