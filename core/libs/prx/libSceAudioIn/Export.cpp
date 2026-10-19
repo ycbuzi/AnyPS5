@@ -191,9 +191,8 @@ int32_t APS5_VABI sceAudioInAsyncOpen(int32_t user_id, uint32_t type, uint32_t i
 }
 
 int32_t APS5_VABI sceAudioInIsPadEmbeddedMic(int32_t handle) {
- (void)handle;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    std::lock_guard lock(g_mutex);
+    return find(handle) ? 0 : AUDIO_IN_ERROR_INVALID_HANDLE;
 }
 
 int32_t APS5_VABI sceAudioInGetGain(int32_t handle, float* gain) {

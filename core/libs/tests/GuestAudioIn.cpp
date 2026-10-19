@@ -21,6 +21,7 @@ int32_t APS5_VABI sceAudioInGetGain(int32_t, float*);
 int32_t APS5_VABI sceAudioInGetRerouteCount(int32_t);
 int APS5_VABI sceAudioInInput(int, void*);
 int APS5_VABI sceAudioInGetSilentState(int);
+int APS5_VABI sceAudioInIsPadEmbeddedMic(int);
 int APS5_VABI sceAudioInClose(int);
 }
 
@@ -127,6 +128,7 @@ void TestCapture() {
     TestValidation();
     const int handle = sceAudioInOpen(user, 0, 0, 256, 48000, 2);
     Require(handle > 0 && sceAudioInGetSilentState(handle) == 0);
+    Require(sceAudioInIsPadEmbeddedMic(handle) == 0);
     std::vector<std::int16_t> block(256 * 2 + 1, 0x5555);
     std::vector<std::int16_t> captured;
     for (int i = 0; i < 4; ++i) {
@@ -156,6 +158,11 @@ void TestNoDevice() {
     Require(handle > 0 && sceAudioInGetSilentState(handle) == 1);
     Require(sceAudioInGetSilentState(handle + 1) == invalidHandle);
     Require(sceAudioInInput(handle + 1, nullptr) == invalidHandle);
+    Require(sceAudioInIsPadEmbeddedMic(handle) == 0);
+    Require(sceAudioInIsPadEmbeddedMic(handle + 1) == invalidHandle);
+    Require(sceAudioInIsPadEmbeddedMic(0) == invalidHandle);
+    Require(sceAudioInIsPadEmbeddedMic(-1) == invalidHandle);
+    Require(sceAudioInIsPadEmbeddedMic(9) == invalidHandle);
     std::vector<std::uint8_t> buffer(256 * 8 + 1, 0xCC);
     const auto start = std::chrono::steady_clock::now();
     for (int block = 0; block < 5; ++block) Require(sceAudioInInput(handle, buffer.data()) == 256);
@@ -184,6 +191,7 @@ void TestNoDevice() {
     Require(sceAudioInClose(hq) == 0);
     Require(sceAudioInClose(hq) == invalidHandle);
     Require(sceAudioInGetSilentState(hq) == invalidHandle);
+    Require(sceAudioInIsPadEmbeddedMic(hq) == invalidHandle);
     Require(sceAudioInAsyncOpen(user, 0, 0, 128, 48000, 2) == hq);
     Require(sceAudioInClose(async) == 0);
     Require(sceAudioInInput(async, buffer.data()) == invalidHandle);

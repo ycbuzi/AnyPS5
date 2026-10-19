@@ -6,7 +6,7 @@
 
 ### Unknown function info
 
-- [sceAudioInIsPadEmbeddedMic](../../../core/libs/prx/libSceAudioIn/Export.cpp) (libSceAudioIn) - name from its NID (`X+4jdIS75P0`); signature `int32_t(int32_t handle)` from the Ghost of Yotei (PPSA26344) call site in #2355; the result's meaning is unconfirmed, so it still throws rather than invent one
+- [sceAudioInIsPadEmbeddedMic](../../../core/libs/prx/libSceAudioIn/Export.cpp) (libSceAudioIn) - name from its NID (`X+4jdIS75P0`); signature `int32_t(int32_t handle)` from the Ghost of Yotei (PPSA26344) call site in #2355. The result is read from the name as whether the port captures from the controller's embedded microphone. Every port here captures from the host's default SDL capture device or from none, so an open handle returns 0, also when that host device is a DualSense microphone. An unopened handle returns `0x80260101`, as `sceAudioInGetSilentState` does here and in [KytyPS5](https://github.com/KytyPS5/KytyPS5/blob/c86c8b4d9333a766cc8c4495f89f893bf35e6199/src/libs/audio.cpp); for a closed port [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/fc5d2cc219c43c8c8f354153e7b3d0c04a5d506e/src/core/libraries/audio/audioin.cpp) returns `0x80260109` (NOT_OPENED) instead. Neither result, nor the console's value for an embedded microphone, is verified on a console
 
 ### Functional
 
