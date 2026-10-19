@@ -256,6 +256,20 @@ int APS5_VABI sceVoiceResetPort(uint32_t port_id) {
     return 0;
 }
 
+int APS5_VABI sceVoicePausePort(uint32_t port_id) {
+    auto& voice = State();
+    std::lock_guard lock(voice.mutex);
+    RequirePort(voice, port_id, __func__);
+    return 0;
+}
+
+int APS5_VABI sceVoiceResumePort(uint32_t port_id) {
+    auto& voice = State();
+    std::lock_guard lock(voice.mutex);
+    RequirePort(voice, port_id, __func__);
+    return 0;
+}
+
 int APS5_VABI sceVoiceDisableChat(void) {
     auto& voice = State();
     std::lock_guard lock(voice.mutex);
