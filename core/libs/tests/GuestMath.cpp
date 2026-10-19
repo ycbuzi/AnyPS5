@@ -141,6 +141,7 @@ std::int64_t APS5_VABI llabs_nid_postfix(std::int64_t);
 std::int64_t APS5_VABI imaxabs_nid_postfix(std::int64_t);
 long double APS5_VABI scalbnl_nid_postfix(long double, int);
 float APS5_VABI significandf_nid_postfix(float);
+double APS5_VABI significand_nid_postfix(double);
 long double APS5_VABI acoshl_nid_postfix(long double);
 long double APS5_VABI asinhl_nid_postfix(long double);
 long double APS5_VABI atanhl_nid_postfix(long double);
@@ -841,6 +842,11 @@ static void CheckScaling() {
     Require(std::signbit(significandf_nid_postfix(-0.0f)) && significandf_nid_postfix(-0.0f) == 0.0f);
     Require(significandf_nid_postfix(std::numeric_limits<float>::infinity()) == std::numeric_limits<float>::infinity());
     Require(std::isnan(significandf_nid_postfix(std::numeric_limits<float>::quiet_NaN())));
+    Require(significand_nid_postfix(12.0) == 1.5 && significand_nid_postfix(-0.375) == -1.5);
+    Require(significand_nid_postfix(0x1p-1074) == 1.0);
+    Require(std::signbit(significand_nid_postfix(-0.0)) && significand_nid_postfix(-0.0) == 0.0);
+    Require(significand_nid_postfix(std::numeric_limits<double>::infinity()) == std::numeric_limits<double>::infinity());
+    Require(std::isnan(significand_nid_postfix(std::numeric_limits<double>::quiet_NaN())));
 }
 
 static bool Near(long double actual, long double expected) {
