@@ -40,6 +40,51 @@ libxkbcommon-dev libegl-dev libdecor-0-dev` (the list in upstream's `release.yml
 
 Build and suite of this sync on Linux: **running at the time of writing** — see the update below.
 
+### Upstream contribution status (checked 2026-10-19)
+
+- **Intake rule changed** (`.github/workflows/pr-intake.yml`): an author with no merged PR may have
+  **1 open PR**; with at least 1 merged, 20; from 20, no limit. A maintainer reopening a closed PR
+  lifts the label. So the first merged PR is the unlock.
+- **PR 2468 landed.** Dean (`oneandonlydean`) carried it as boykopovar/AnyPS5#7342 ("rescue/2468",
+  merged 2026-10-18) with `blu <131330772+ycbuzi@users.noreply.github.com>` kept as author of
+  `39dd854c8` and `5e340fa54`. The PR is Dean's, so it does not count as a merged PR of ours.
+- **PR 2492 is superseded.** Upstream `efe54ad6c` (Eshaan Jaiswal) and `324a802fd` (fogydes) validate
+  the relocation table bounds. Our `RelocationTableBoundsTests.cpp` passes on upstream's code once
+  its fixture has a valid ELF header (`e_ident[5..6]`, `e_machine`, `e_version`, `e_ehsize`,
+  `p_memsz`) and `ElfReader.cpp` is linked. It could be offered as extra test coverage only.
+- Only these two PRs have commits by the user's identity that are not in upstream `main`
+  (searched across all 6,855 PR heads).
+
+### Windows
+
+- Per-platform count (scratchpad tool `platform_progress.py`: upstream's rules on the code each
+  platform compiles): Windows 4169, Linux 4168 of 5197 after harvesting boykopovar/AnyPS5#7299.
+  Upstream itself is Windows 4137, Linux 4138.
+- Done on Linux but not Windows: `sceLibcBacktraceGetBufferSize`, `sceLibcBacktraceSelf` (branch
+  `agent/windows-backtrace`, see below), `readlink`/`readlinkat` for Windows reparse points other
+  than symbolic links and junctions. Done on Windows but not Linux: the five scanf wide-conversion
+  calls (`fscanf`, `sscanf`, `sscanf_s`, `vsscanf`, `vsscanf_s`).
+- `agent/windows-backtrace` (based on upstream `252cbc29b`): Windows frames from libc's own
+  `_Unwind_Backtrace` (guest modules are DWARF-unwound there, so `RtlCaptureStackBackTrace` would
+  stop at them) and `GetModuleHandleExW`, with Aryan Sharma's merged record layout;
+  `GuestBacktrace` made portable and registered on Windows. boykopovar/AnyPS5#7083 (Porta) used the
+  same frame source but a different record layout, now in conflict with the merged one.
+  **Not yet built or run on Windows.**
+- `agent/windows-harvest-1` (on top of this branch at `fbcae91cb`): nine small Windows fixes from
+  unmerged upstream PRs, merged one by one: 7551, 5266, 5165, 5252, 4563, 7467, 7599, 7462, 5155
+  (all boykopovar/AnyPS5). 7530 was left out: it rewrites the same junction code as 7551 (same
+  author) and conflicts with it. Not built or tested yet on either platform.
+- Draft upstream PR text for `agent/windows-backtrace` is in the cloud scratchpad
+  (`pr-windows-backtrace.md`); its Tested section must be filled on the PC, and whether
+  boykopovar/AnyPS5#7083 is still open must be checked before posting.
+- 387 unmerged upstream PRs mention Windows in a commit subject or body (`win-candidates.tsv` in
+  the cloud scratchpad); 87 merge cleanly into this branch and 86 of those carry changes it lacks. They need Windows testing before they go into the stack, for example
+  boykopovar/AnyPS5#8061 makes `sched_yield` sleep 1 ms when no thread is ready, which can slow
+  spin loops.
+- **Actions is disabled on the fork** (a dispatch on 2026-10-19 returned "Actions has been
+  disabled for this repository"). With it on, `build.yml` dispatched with `pr: 1`, `linux: false`
+  runs upstream's full Windows build and suite on `windows-latest`.
+
 ### Open decisions for the user
 
 1. **ContentExport.** Our pre-sync `sceContentExportFromData`, `FromFile` and

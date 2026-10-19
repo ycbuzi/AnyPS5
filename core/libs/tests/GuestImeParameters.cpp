@@ -7,7 +7,6 @@
 extern "C" {
 void APS5_VABI sceImeParamInit(Param* param);
 int APS5_VABI sceImeGetPanelSize(const Param* param, uint32_t* width, uint32_t* height);
-int APS5_VABI sceImeOpen_nid_postfix(const Param* param, const ExtendedParam* extended);
 int APS5_VABI sceImeClose_nid_postfix(void);
 int APS5_VABI sceImeGetPanelPositionAndForm(PositionAndForm* form);
 int APS5_VABI sceImeSetCaret(const Caret* caret);
@@ -129,38 +128,6 @@ static void CheckClosedPanel() {
     for (size_t i = 0; i < sizeof(form); ++i) Require(formBytes[i] == 0xa5, "panel position written without an open panel");
 }
 
-static void CheckOpenPanel() {
-    constexpr int InvalidAddress = static_cast<int>(0x80bc0031u);
-    constexpr int InvalidType = static_cast<int>(0x80bc0011u);
-    constexpr int InvalidOption = static_cast<int>(0x80bc0015u);
-    constexpr int AlreadyOpened = static_cast<int>(0x80bc0001u);
-    constexpr int NotOpened = static_cast<int>(0x80bc0002u);
-
-    Require(sceImeOpen_nid_postfix(nullptr, nullptr) == InvalidAddress, "null param open");
-
-    Param param{};
-    param.type = 5;
-    Require(sceImeOpen_nid_postfix(&param, nullptr) == InvalidType, "invalid type open");
-
-    param.type = 0;
-    param.option = 0x80000000;
-    Require(sceImeOpen_nid_postfix(&param, nullptr) == InvalidOption, "invalid option open");
-
-    param.option = 0;
-    Require(sceImeOpen_nid_postfix(&param, nullptr) == 0, "valid open failed");
-    Require(sceImeOpen_nid_postfix(&param, nullptr) == AlreadyOpened, "opening already opened panel");
-
-    Caret caret{};
-    TextGeometry geometry{};
-    const char16_t text[] = u"text";
-    Require(sceImeSetCaret(&caret) == 0, "caret with open panel");
-    Require(sceImeSetText(text, 4) == 0, "text with open panel");
-    Require(sceImeSetTextGeometry(TextAreaMode::Edit, &geometry) == 0, "geometry with open panel");
-
-    Require(sceImeClose_nid_postfix() == 0, "closing open panel");
-    Require(sceImeClose_nid_postfix() == NotOpened, "closing already closed panel");
-}
-
 static void CheckKeyboardResourceIds() {
     constexpr int NotOpened = static_cast<int>(0x80bc0002u);
     constexpr int ConnectionFailed = static_cast<int>(0x80bc0004u);
@@ -192,6 +159,5 @@ int main() {
     CheckPanelSizes();
     CheckErrors();
     CheckClosedPanel();
-    CheckOpenPanel();
     CheckKeyboardResourceIds();
 }

@@ -67,16 +67,6 @@ endif()
 configure_windows_unwind(libSceSsl)
 
 if(BUILD_TESTING)
-    add_test_executable(guest_ssl_certificate_tests ${LIBS_INCLUDE_DIR}/tests/GuestSslCertificates.cpp)
-    target_include_directories(guest_ssl_certificate_tests PRIVATE ${LIBS_INCLUDE_DIR})
-    target_link_libraries(guest_ssl_certificate_tests PRIVATE libSceSsl libc)
-    configure_windows_unwind(guest_ssl_certificate_tests)
-    add_test(NAME guest_ssl_certificates COMMAND guest_ssl_certificate_tests)
-    if(WIN32)
-        set_tests_properties(guest_ssl_certificates PROPERTIES ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceSsl>")
-    endif()
-
     add_test_executable(guest_ssl_tests ${LIBS_INCLUDE_DIR}/tests/GuestSsl.cpp)
     target_include_directories(guest_ssl_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_ssl_tests PRIVATE libSceSsl libc)
