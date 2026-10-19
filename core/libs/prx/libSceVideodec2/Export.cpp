@@ -281,6 +281,18 @@ struct Picture {
     bool idr = false;
     Vp9PictureInfo vp9{};
     Crop crop{};
+    bool hevcIdr = false;
+};
+
+struct PictureHeader {
+    std::uint64_t pts;
+    std::uint64_t dts;
+    std::uint64_t attached;
+    bool keyFrame;
+    bool hevcIdr;
+    std::uint32_t profile;
+    std::uint32_t level;
+    Crop crop;
 };
 
 struct FrameDeleter {
@@ -404,6 +416,16 @@ bool CarriesAvcSlice(const std::vector<std::uint8_t>& unit) {
         if (unit[index] != 0 || unit[index + 1] != 0 || unit[index + 2] != 1) continue;
         const auto type = unit[index + 3] & 0x1fu;
         if (type >= 1 && type <= 5) return true;
+        index += 2;
+    }
+    return false;
+}
+
+bool StartsHevcIdr(const std::vector<std::uint8_t>& unit) {
+    for (std::size_t index = 0; index + 3 < unit.size(); ++index) {
+        if (unit[index] != 0 || unit[index + 1] != 0 || unit[index + 2] != 1) continue;
+        const auto type = (unit[index + 3] >> 1u) & 0x3fu;
+        if (type < 32) return type == 19 || type == 20;
         index += 2;
     }
     return false;
@@ -628,7 +650,9 @@ int APS5_VABI sceVideodec2Decode_nid_postfix(std::uint64_t handle, const InputDa
     std::memcpy(packet->data + decoder.parameterSets.size(), unit->data(), unit->size());
     decoder.parameterSets.clear();
     packet->pts = decoder.nextKey;
-    decoder.inputs.emplace(decoder.nextKey++, picture);
+    auto tagged = picture;
+    tagged.hevcIdr = decoder.codec == CodecHevc && StartsHevcIdr(*unit);
+    decoder.inputs.emplace(decoder.nextKey++, tagged);
     Send(decoder, packet);
     EmitDecoded(handle, decoder, frame, output);
     return 0;
@@ -732,15 +756,16 @@ int APS5_VABI sceVideodec2GetVp9PictureInfo_nid_postfix(const OutputInfo* output
     return 0;
 }
 
-void Videodec2PictureCrop_nid_no_patch(std::uint64_t handle, const void* frameBuffer, Crop* crop) {
-    if (!crop) throw std::runtime_error("Videodec2: invalid argument pointer");
+void Videodec2PictureHeader_nid_no_patch(std::uint64_t handle, const void* frameBuffer, PictureHeader* header) {
+    if (!header) throw std::runtime_error("Videodec2: invalid argument pointer");
     const auto found = FindDecoder(handle);
     if (!found) throw std::runtime_error("Videodec2: invalid decoder handle");
     auto& decoder = *found;
     std::lock_guard guard(decoder.mutex);
     const auto picture = decoder.pictures.find(frameBuffer);
     if (picture == decoder.pictures.end()) throw std::runtime_error("Videodec2: unknown frame buffer");
-    *crop = picture->second.crop;
+    const auto& stored = picture->second;
+    *header = {stored.pts, stored.dts, stored.attached, stored.idr, stored.hevcIdr, decoder.profile, decoder.level, stored.crop};
 }
 
 }
