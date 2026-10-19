@@ -79,6 +79,29 @@ Fixed on the way there:
 - Only these two PRs have commits by the user's identity that are not in upstream `main`
   (searched across all 6,855 PR heads).
 
+### Upstream-ready PR branches (one topic each, based on upstream `eaa5c9238`)
+
+The intake rule allows one open upstream PR until one is merged, so pick one of these to post
+first. Each was checked on Linux: the new test fails without the change and passes with it.
+
+- `agent/libc-rint-rounding-mode` (fork ycbuzi/AnyPS5#4): `rint`/`rintf` ignored a non-default
+  rounding mode because MathExact.cpp lacked `-frounding-math`. Two files, 28 lines.
+- `agent/libc-fmax-signaling-nan` (fork ycbuzi/AnyPS5#5): `fmin`/`fmax` raised FE_INVALID for a
+  signalling NaN; FreeBSD's `s_fmax.c`/`s_fmin.c` read the bits instead. Two files, 31 lines.
+- `agent/windows-backtrace` (fork ycbuzi/AnyPS5#2): needs a Windows run first.
+
+Both libc fixes credit Привалов Александр Владимирович, whose unmerged PR tests found the bugs.
+
+### Where the remaining stubs are (and are not) real work
+
+- libSceNpCppWebApi (164 todo): by its own design note it models an offline PSN where every
+  request fails with NOT_SIGNED_IN, so its response getters can never run, and its 27 IntrusivePtr
+  destructors already work but count as todo because the shared release helper throws when an
+  object has no deleter. Implementing these would raise the count without adding behaviour.
+- libScePad (165) and libSceNet (167) are mostly firmware-update and network-administration calls
+  with unknown signatures. libkernel's 36 (kevent, `_umtx_op`, cpuset affinity, exec*) matter most
+  to titles.
+
 ### Windows
 
 - Per-platform count (scratchpad tool `platform_progress.py`: upstream's rules on the code each
