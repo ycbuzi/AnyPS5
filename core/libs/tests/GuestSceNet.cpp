@@ -124,6 +124,10 @@ std::int64_t APS5_VABI sceNetRecvmsg(int, NetMsghdr*, int);
 int APS5_VABI sceNetPoolCreate(const char*, int, int);
 int APS5_VABI sceNetPoolDestroy(int);
 int APS5_VABI sceNetGetMemoryPoolStats(int, NetMemoryPoolStats*);
+const char* APS5_VABI sceNetGetIfName(std::uint32_t);
+int APS5_VABI sceNetGetRandom(std::uint32_t*);
+void* APS5_VABI sceNetMemoryAllocate(std::int64_t, int);
+void APS5_VABI sceNetMemoryFree(void*);
 }
 
 static void Require(bool condition) {
@@ -258,6 +262,50 @@ static void CheckPoolStats() {
     Require(Failed(sceNetGetMemoryPoolStats(pool, nullptr), 22));
     Require(sceNetPoolDestroy(pool) == 0);
     Require(Failed(sceNetGetMemoryPoolStats(pool, &stats), 9));
+}
+
+static void CheckIfName() {
+    constexpr std::array<const char*, 10> names = {
+        "lo0", "eth0", "eth1", "dbg0", "wlan0", "wlan1", "gbe0", "bt0", "phone0", "pppoe0"};
+    for (std::uint32_t index = 0; index < names.size(); ++index) {
+        Require(std::strcmp(sceNetGetIfName(index), names[index]) == 0);
+    }
+    *sceNetErrnoLoc() = 0;
+    const char* missing = sceNetGetIfName(10);
+    Require(missing != nullptr && missing[0] == '\0' && *sceNetErrnoLoc() == 22);
+    *sceNetErrnoLoc() = 0;
+    missing = sceNetGetIfName(0xffffffffu);
+    Require(missing != nullptr && missing[0] == '\0' && *sceNetErrnoLoc() == 22);
+}
+
+static void CheckRandom() {
+    Require(Failed(sceNetGetRandom(nullptr), 22));
+    std::array<std::uint32_t, 8> values{};
+    for (auto& value : values) Require(sceNetGetRandom(&value) == 0);
+    Require(std::any_of(values.begin() + 1, values.end(), [&](std::uint32_t value) { return value != values[0]; }));
+}
+
+static void CheckNetMemory() {
+    Require(sceNetMemoryAllocate(0, 0) == nullptr);
+    Require(sceNetMemoryAllocate(-1, 2) == nullptr);
+    auto* zeroed = static_cast<std::uint8_t*>(sceNetMemoryAllocate(4096, 2));
+    Require(zeroed != nullptr);
+    Require(std::all_of(zeroed, zeroed + 4096, [](std::uint8_t byte) { return byte == 0; }));
+    std::memset(zeroed, 0xa5, 4096);
+    auto* plain = static_cast<std::uint8_t*>(sceNetMemoryAllocate(64, 0));
+    Require(plain != nullptr && plain != zeroed);
+    std::memset(plain, 0x5a, 64);
+    Require(zeroed[4095] == 0xa5);
+    sceNetMemoryFree(plain);
+    sceNetMemoryFree(zeroed);
+    sceNetMemoryFree(nullptr);
+    bool threw = false;
+    try {
+        sceNetMemoryAllocate(16, 1);
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    Require(threw);
 }
 
 static void CheckUnboundSocketName() {
@@ -1209,6 +1257,9 @@ int main() {
     Require(sceNetInit_nid_postfix() == 0);
     CheckEpollWritable();
     CheckPoolStats();
+    CheckIfName();
+    CheckRandom();
+    CheckNetMemory();
     CheckNetstat();
     CheckEmptyEpoll();
     CheckDontWait();

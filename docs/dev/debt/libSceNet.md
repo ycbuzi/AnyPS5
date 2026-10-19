@@ -40,10 +40,10 @@
 - [sceNetGetIfList](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetIfListEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetIfListOnce](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetGetIfName](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetGetIfName](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(uint32_t index)` signature and the table of ten interface names (`lo0`, `eth0`, `eth1`, `dbg0`, `wlan0`, `wlan1`, `gbe0`, `bt0`, `phone0`, `pppoe0`) follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); an index past the table sets `EINVAL` and returns an empty string. Whether the console has more names, or returns null, is unverified on hardware
 - [sceNetGetIfnameNumList](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetNameToIndex](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetGetRandom](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetGetRandom](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(uint32_t* output)` signature and the `EINVAL` failure for a null output follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); the value comes from the host's `std::random_device`, as `kern.rng_pseudo` in libkernel does. Unverified on hardware
 - [sceNetGetRouteInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetsockoptEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetSystemTime](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unverified on PS5 hardware: the `void(uint64_t*)` signature, process-relative microseconds and ignored null output follow [shadPS4 net.cpp](https://github.com/shadps4-emu/shadPS4/blob/d615b3887ba29025a59242e1a26f5b68bb176158/src/core/libraries/net/net.cpp#L1654-L1659). The clock is the same as `sceKernelGetProcessTime`, including `APS5_TIME_SCALE`
@@ -51,8 +51,8 @@
 - [sceNetInitParam](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetInetPtonEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(int af, const char* src, void* dst, int flags)` signature follows [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/main/src/core/libraries/net/net.cpp), which forwards it to `sceNetInetPton` and does not know the flags either. Flags 0 converts as `sceNetInetPton` does; any other flags throw, since their meaning (an IPv6 scope or otherwise) is not known. Unverified on hardware
 - [sceNetIoctl](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetMemoryAllocate](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetMemoryFree](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetMemoryAllocate](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(int64_t size, int flags)` signature, flag 2 as zero fill and the null result for a size of 0 or less follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp). The block comes from the guest heap, and an allocation failure returns null without setting an errno. Any other flag bit throws, since its meaning is not known. Unverified on hardware
+- [sceNetMemoryFree](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(void* memory)` signature follows [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); the block returns to the guest heap and a null pointer is ignored. Unverified on hardware
 - [sceNetSetDnsInfoToKernel](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSetsockoptEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSocketInternal](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
