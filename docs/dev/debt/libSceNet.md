@@ -7,7 +7,7 @@
 ### Unknown function info
 
 - [sceHttp2GetMemoryPoolStats, sceSslGetMemoryPoolStats, sceNetGetMemoryPoolStats](../../../core/libs/prx/libSceNet/Export.cpp) (libSceHttp2, libSceSsl, libSceNet) - the signatures `(int id, stats*)`, the layouts (pool size, peak and current use, and for Http2 and Ssl a 32-bit reserved field) and the error codes were measured on a PS5 (firmware 13.60). The pool size is the one given at init or pool creation. Http2 and Net allocate nothing from these pools. Ssl counts its certificate backend allocations and returned data against its pool; C++ bookkeeping is outside that budget. All three initially report zero use, where the console already reports 0x15C0 bytes for Ssl, 0x1640 for Http2 and 4 for a Net pool. Ssl's allocation sizes and peak usage do not reproduce the console allocator
-- [sceNetClearDnsCache](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetClearDnsCache](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) returns 0 without doing anything: every `sceNetResolverStart*` lookup goes to the host resolver, so the library keeps no DNS cache to drop, and the host's own cache is left alone. The `(int flags)` signature and its meaning come from [SharpProspero](https://github.com/SvenGDK/SharpProspero/blob/5dfdb4b0b166e83dc9ae275001afb695f12c7174/src/SharpProspero/Interop/Net/Socket.cs#L928-L930); nonzero flags throw because their meaning is unknown
 - [sceNetGetStatisticsInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetInterfaceStats](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSetDnsInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature

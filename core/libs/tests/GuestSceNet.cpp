@@ -67,6 +67,7 @@ int APS5_VABI sceNetResolverStartAton(int, const void*, char*, int, int, int, in
 int APS5_VABI sceNetResolverAbort(int, int);
 int APS5_VABI sceNetResolverDestroy(int);
 int APS5_VABI sceNetResolverGetError(int, int*);
+int APS5_VABI sceNetClearDnsCache(int);
 int APS5_VABI sceNetCtlGetState(int*);
 int APS5_VABI sceNetCtlGetIfStat(NetCtlIfStat*);
 int APS5_VABI sceNetCtlRegisterCallback(NetCtlCallback, void*, int*);
@@ -1583,6 +1584,15 @@ int main() {
     Require(sceNetResolverAbort(other, 0) == static_cast<int>(0x80410109) && *sceNetErrnoLoc() == 9);
     Require(sceNetResolverAbort(-1, 1) == static_cast<int>(0x80410109) && *sceNetErrnoLoc() == 9);
     Require(sceNetResolverGetError(resolver, nullptr) == static_cast<int>(0x80410116) && *sceNetErrnoLoc() == 22);
+    Require(sceNetClearDnsCache(0) == 0);
+    ipv4.fill(0xA5);
+    Require(sceNetResolverStartNtoa(resolver, "localhost", ipv4.data(), 5000000, 1, 0) == 0 && ipv4[0] == 127);
+    Require(sceNetResolverGetError(resolver, &resolver_error) == 0 && resolver_error == 0);
+    for (const int flags : {0x1, -1}) {
+        bool threw = false;
+        try { sceNetClearDnsCache(flags); } catch (const std::runtime_error&) { threw = true; }
+        Require(threw);
+    }
     Require(sceNetResolverDestroy(resolver) == 0);
     resolver_error = -1;
     Require(sceNetResolverGetError(resolver, &resolver_error) == static_cast<int>(0x80410109) &&

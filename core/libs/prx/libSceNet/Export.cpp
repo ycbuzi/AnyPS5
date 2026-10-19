@@ -1775,8 +1775,8 @@ int APS5_VABI sceNetShowIfconfig() {
 extern const std::uint8_t in6addr_any_nid_postfix[16] = {};
 extern const std::uint8_t in6addr_loopback_nid_postfix[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
 
-int APS5_VABI sceNetClearDnsCache(void) {
-    NotImplemented_nid_no_patch(__func__);
+int APS5_VABI sceNetClearDnsCache(int flags) {
+    if (flags != 0) throw std::runtime_error("sceNetClearDnsCache: flags " + std::to_string(flags) + " are not supported");
     return 0;
 }
 
