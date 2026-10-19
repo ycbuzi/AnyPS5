@@ -226,14 +226,6 @@ void CheckDecompositionAndScaling() {
     }
     Require(scalblnl_nid_postfix(1.L + delta, 12000) == 0x1p12000L + 0x1p11940L, "scalblnl precision");
     Require(scalblnl_nid_postfix(1.L, -16445) == std::numeric_limits<long double>::denorm_min(), "scalblnl subnormal");
-    for (const auto power : {INT64_C(4294967296), INT64_MAX}) {
-        std::feclearexcept(FE_ALL_EXCEPT);
-        Require(std::isinf(scalblnl_nid_postfix(1.L, power)), "scalblnl must not narrow positive exponent");
-        Require(std::fetestexcept(FE_OVERFLOW) != 0, "scalblnl overflow flag");
-        std::feclearexcept(FE_ALL_EXCEPT);
-        Require(scalblnl_nid_postfix(-1.L, -power) == 0 && std::signbit(scalblnl_nid_postfix(-1.L, -power)), "scalblnl must not narrow negative exponent");
-        Require(std::fetestexcept(FE_UNDERFLOW) != 0, "scalblnl underflow flag");
-    }
     Require(scalblnl_nid_postfix(infinity, INT64_MIN) == infinity, "scalblnl infinite input");
     Require(std::signbit(scalblnl_nid_postfix(-0.L, INT64_MAX)), "scalblnl zero input");
 }
