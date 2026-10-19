@@ -1,6 +1,6 @@
 # Handoff: AnyPS5 work between the PC session and the cloud session
 
-Last updated: 2026-10-19, by the cloud session (upstream sync). The section below supersedes the
+Last updated: 2026-10-19, by the cloud session (upstream sync, then the harvest round). The section below supersedes the
 2026-10-10 PC section further down, which is kept as history.
 
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
@@ -64,6 +64,52 @@ Fixed on the way there:
   unrun.
 - `agent/windows-harvest-1` builds on Linux and passes the same 1658/1661.
 
+### Harvest round of 2026-10-19 (`agent/harvest-1019`, now fast-forwarded into this branch)
+
+43 unmerged upstream PRs. The scratchpad tools `harvest_scan.py` and `harvest_quality.py` picked
+PRs that gain functions, merge cleanly and are not constant-return bodies. Each PR is one
+`Merge PR #N` commit; every number is boykopovar/AnyPS5. Kept: 4191 4333 4713 5942 6084 6085 6086
+6101 6128 6525 6680 6797 7259 7327 7463 7477 7517 7525 7563 7574 7611 7658 7727 7738 7797 7839
+7841 7848 7851 7852 7940 7949 7990 7991 7998 8009 8013 8035 8037 8038 8053 8054 8094.
+
+- **Result at `91e487554`:** build 0 failures, `libs` 0, ctest **1676/1679**. The 3 failures are
+  the same environmental ones as above.
+- **Completion:**
+  - upstream's `progress.py`: **4323/5329 (81.12%)**;
+  - `platform_progress.py`: Windows 4322, Linux 4325;
+  - upstream main `567c5fd63` for comparison: 4155/5196 (79.97%), Windows 4155.
+- **Fixed after the merges:**
+  - `cdd966617`: removed duplicate `flsl` (from 4333) and `GuestEbadf` (from 6525 and fchown).
+  - `01e66e927`: 7517 replaced `Videodec2PictureCrop_nid_no_patch` with
+    `Videodec2PictureHeader_nid_no_patch`, but 8094's libSceVideodec still calls the crop helper,
+    so upstream's version is restored beside the new one.
+  - `d9c818de7`: 6525's fpathconf calls `DescriptorIsOpen_nid_no_patch` from libkernel_sys. The
+    NID patcher keeps only C-linkage helpers, so the patched `libkernel_sys.prx` failed to load.
+    The helper is `extern "C"` now.
+  - `9ed614d18`: 7990's test expected `sceAudioInIsPadEmbeddedMic` to throw, but a harvested PR
+    implements it.
+  - `59bc0ec10`: 7839's test set the host TZ, which conversions ignore since `b49644c83`; it now
+    sets the guest TZ.
+- **Left out:**
+  - 5952: its NID `BKSCW2bCACA` is `__cxa_thread_atexit`, already exported here.
+  - 6581: its handle attributes conflict with the tarfouss3 model already here, and it changes
+    the glyph define signature upstream uses.
+  - 7268 (reverted, `91e487554`): `sceVideoOutGetCurrentOutputMode_`'s layout and resolution codes
+    and `sceVideoOutGetHdmiRawEdid_`'s success with no EDID have no source, and its test needs an
+    SDL video device.
+- Linux now leads Windows by 3: 7525 finished the sscanf family on Linux, so only `fscanf` is
+  Windows-only done. Windows-only todo: the backtrace pair (fork ycbuzi/AnyPS5#2, unrun on
+  Windows) and `readlink`/`readlinkat` (next item).
+- `agent/windows-reparse-non-link` (fork ycbuzi/AnyPS5#6, based on upstream `567c5fd63`):
+  - `lstat`/`readlink` on a Windows reparse point without the name surrogate bit (WOF
+    compression, dedup, cloud files) now act as on the file itself (`stat` /
+    `EINVAL`), following Microsoft's reparse tag docs, CPython's `os.lstat` and FreeBSD
+    readlink(2).
+  - Name surrogates other than links and junctions still throw, so the count does not move.
+  - **Not run on Windows**; whether `compact /exe` sets the reparse attribute is unverified, and
+    its tests `Require` it.
+  - Not merged into this branch until it runs on the PC.
+
 ### Upstream contribution status (checked 2026-10-19)
 
 - **Intake rule changed** (`.github/workflows/pr-intake.yml`): an author with no merged PR may have
@@ -105,8 +151,9 @@ Both libc fixes credit Привалов Александр Владимиров�
 ### Windows
 
 - Per-platform count (scratchpad tool `platform_progress.py`: upstream's rules on the code each
-  platform compiles): Windows 4169, Linux 4168 of 5197 after harvesting boykopovar/AnyPS5#7299.
-  Upstream itself is Windows 4137, Linux 4138.
+  platform compiles): Windows 4169, Linux 4168 of 5197 after harvesting boykopovar/AnyPS5#7299;
+  Windows 4322, Linux 4325 of 5329 after the harvest round above. Upstream `567c5fd63` is
+  Windows 4155, Linux 4156 of 5196.
 - Done on Linux but not Windows: `sceLibcBacktraceGetBufferSize`, `sceLibcBacktraceSelf` (branch
   `agent/windows-backtrace`, see below), `readlink`/`readlinkat` for Windows reparse points other
   than symbolic links and junctions. Done on Windows but not Linux: the five scanf wide-conversion
