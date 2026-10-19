@@ -7,9 +7,19 @@
 
 #include "prx/libc/include/General.hpp"
 
+#if defined(__linux__) || defined(_WIN32)
 #ifdef __linux__
 #include <dlfcn.h>
 #include <execinfo.h>
+#else
+#include <filesystem>
+#include <string_view>
+#include <windows.h>
+#include "prx/libc/include/specifics/itanium/UnwindAbi.hpp"
+
+extern "C" _Unwind_Reason_Code APS5_VABI _Unwind_Backtrace_nid_postfix(_Unwind_Trace_Fn trace, void* argument);
+extern "C" _Unwind_Ptr APS5_VABI _Unwind_GetIP_nid_postfix(_Unwind_Context* context);
+#endif
 
 namespace {
 
@@ -29,6 +39,14 @@ struct FrameRecord {
 };
 static_assert(sizeof(FrameRecord) == NameOffset);
 
+std::string ModuleName(std::string module) {
+    if (const auto slash = module.find_last_of("/\\"); slash != std::string::npos) module.erase(0, slash + 1);
+    if (module.size() > sizeof(GuestSuffix) - 1 && module.compare(module.size() - (sizeof(GuestSuffix) - 1), std::string::npos, GuestSuffix) == 0)
+        module.resize(module.size() - (sizeof(GuestSuffix) - 1));
+    return module;
+}
+
+#ifdef __linux__
 [[gnu::noinline]] std::vector<Frame> CaptureFrames(int limit) {
     void* addresses[MaxFrames];
     const int captured = backtrace(addresses, MaxFrames);
@@ -38,14 +56,58 @@ static_assert(sizeof(FrameRecord) == NameOffset);
         if (dladdr(addresses[index], &info) == 0 || info.dli_fbase == nullptr || info.dli_fname == nullptr) continue;
         const auto offset = reinterpret_cast<std::uintptr_t>(addresses[index]) - reinterpret_cast<std::uintptr_t>(info.dli_fbase);
         if (offset > UINT32_MAX) continue;
-        std::string module = info.dli_fname;
-        if (const auto slash = module.find_last_of('/'); slash != std::string::npos) module.erase(0, slash + 1);
-        if (module.size() > sizeof(GuestSuffix) - 1 && module.compare(module.size() - (sizeof(GuestSuffix) - 1), std::string::npos, GuestSuffix) == 0)
-            module.resize(module.size() - (sizeof(GuestSuffix) - 1));
-        frames.push_back({static_cast<std::uint32_t>(offset), std::move(module)});
+        frames.push_back({static_cast<std::uint32_t>(offset), ModuleName(info.dli_fname)});
     }
     return frames;
 }
+#else
+std::string ModuleFileName(HMODULE module) {
+    std::wstring path(MAX_PATH, L'\0');
+    for (;;) {
+        const DWORD length = GetModuleFileNameW(module, path.data(), static_cast<DWORD>(path.size()));
+        if (length == 0) return {};
+        if (length < path.size()) {
+            path.resize(length);
+            break;
+        }
+        if (path.size() >= 32768) return {};
+        path.resize(path.size() * 2);
+    }
+    const auto name = std::filesystem::path(std::wstring_view(path)).filename().u8string();
+    return std::string(name.begin(), name.end());
+}
+
+struct Trace {
+    void* addresses[MaxFrames];
+    int count = 0;
+};
+
+_Unwind_Reason_Code APS5_VABI CollectFrame(_Unwind_Context* context, void* argument) {
+    auto& trace = *static_cast<Trace*>(argument);
+    if (trace.count == MaxFrames) return _URC_NORMAL_STOP;
+    trace.addresses[trace.count++] = reinterpret_cast<void*>(_Unwind_GetIP_nid_postfix(context));
+    return _URC_NO_REASON;
+}
+
+[[gnu::noinline]] std::vector<Frame> CaptureFrames(int limit) {
+    Trace trace;
+    _Unwind_Backtrace_nid_postfix(CollectFrame, &trace);
+    const int captured = trace.count;
+    void* const* addresses = trace.addresses;
+    std::vector<Frame> frames;
+    for (int index = 2; index < captured && (limit < 0 || static_cast<int>(frames.size()) < limit); ++index) {
+        HMODULE module = nullptr;
+        if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                static_cast<LPCWSTR>(addresses[index]), &module) || module == nullptr) continue;
+        const auto offset = reinterpret_cast<std::uintptr_t>(addresses[index]) - reinterpret_cast<std::uintptr_t>(module);
+        if (offset > UINT32_MAX) continue;
+        auto name = ModuleFileName(module);
+        if (name.empty()) continue;
+        frames.push_back({static_cast<std::uint32_t>(offset), ModuleName(std::move(name))});
+    }
+    return frames;
+}
+#endif
 
 std::size_t RecordSize(const Frame& frame) {
     return (NameOffset + frame.module.size() + 1 + 7) & ~std::size_t{7};

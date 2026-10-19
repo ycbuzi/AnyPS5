@@ -4,9 +4,17 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <dlfcn.h>
+#include <iterator>
 #include <string>
 #include <vector>
+
+#ifdef _WIN32
+#include <filesystem>
+#include <string_view>
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 extern "C" {
 int APS5_VABI sceLibcBacktraceGetBufferSize_nid_postfix(int, int*, std::size_t*);
@@ -57,6 +65,34 @@ std::vector<Record> Parse(const std::vector<unsigned char>& buffer, std::size_t 
     return records;
 }
 
+struct Location {
+    std::string module;
+    std::uintptr_t base;
+    std::uintptr_t function;
+};
+
+Location Locate(const void* address) {
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    Require(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               static_cast<LPCWSTR>(address), &module) && module != nullptr, "GetModuleHandleExW of the address failed");
+    wchar_t path[32768];
+    const DWORD length = GetModuleFileNameW(module, path, static_cast<DWORD>(std::size(path)));
+    Require(length != 0 && length < std::size(path), "GetModuleFileNameW of the module failed");
+    const auto name = std::filesystem::path(std::wstring_view(path, length)).filename().u8string();
+    DWORD64 imageBase = 0;
+    const auto* entry = RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(address), &imageBase, nullptr);
+    Require(entry != nullptr, "the address has no function table entry");
+    return {std::string(name.begin(), name.end()), reinterpret_cast<std::uintptr_t>(module), static_cast<std::uintptr_t>(imageBase + entry->BeginAddress)};
+#else
+    Dl_info info{};
+    Require(dladdr(address, &info) != 0 && info.dli_fname != nullptr && info.dli_saddr != nullptr, "dladdr of the address failed");
+    std::string module = info.dli_fname;
+    module.erase(0, module.find_last_of('/') + 1);
+    return {module, reinterpret_cast<std::uintptr_t>(info.dli_fbase), reinterpret_cast<std::uintptr_t>(info.dli_saddr)};
+#endif
+}
+
 std::size_t Used(const std::vector<Record>& records) {
     std::size_t total = 0;
     for (const auto& record : records) total += record.bytes;
@@ -66,10 +102,7 @@ std::size_t Used(const std::vector<Record>& records) {
 }
 
 [[gnu::noinline]] void CheckBacktrace() {
-    Dl_info self{};
-    Require(dladdr(reinterpret_cast<void*>(&CheckBacktrace), &self) != 0 && self.dli_fname != nullptr && self.dli_saddr != nullptr, "dladdr of the test failed");
-    std::string executable = self.dli_fname;
-    executable.erase(0, executable.find_last_of('/') + 1);
+    const auto self = Locate(reinterpret_cast<const void*>(&CheckBacktrace));
 
     int count = -1;
     std::size_t size = 0;
@@ -84,10 +117,9 @@ std::size_t Used(const std::vector<Record>& records) {
     Require(Used(records) == size, "Self used a different size than GetBufferSize reported");
     for (std::size_t index = size; index < buffer.size(); ++index) Require(buffer[index] == Fill, "Self wrote past the buffer size");
     for (const auto& record : records) Require(record.reserved == 0 && !record.module.empty(), "record has a nonzero reserved word or no module");
-    Require(records.front().module == executable, "first frame is not in the calling module");
-    Dl_info caller{};
-    const auto address = reinterpret_cast<std::uintptr_t>(self.dli_fbase) + records.front().offset;
-    Require(dladdr(reinterpret_cast<void*>(address), &caller) != 0 && caller.dli_saddr == self.dli_saddr, "first frame is not the caller");
+    Require(records.front().module == self.module, "first frame is not in the calling module");
+    const auto caller = Locate(reinterpret_cast<const void*>(self.base + records.front().offset));
+    Require(caller.function == self.function, "first frame is not the caller");
 
     for (const int limit : {0, 1, 2}) {
         Require(sceLibcBacktraceGetBufferSize_nid_postfix(limit, &count, &size) == 0 && count == limit, "GetBufferSize ignored the frame limit");
