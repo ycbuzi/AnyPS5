@@ -83,6 +83,10 @@ std::uint32_t possibleU32Bits(const IrValue* value) {
             const IrValue* shift = value->Argument(1)->Resolve();
             return shift->HasImmediate() && shift->Type() == IrType::U32 ? possibleU32Bits(value->Argument(0)) << (shift->ImmediateU32() & 31u) : std::numeric_limits<std::uint32_t>::max();
         }
+        case IrOpcode::ReadFirstLane:
+            return value->ArgumentCount() >= 1u ? possibleU32Bits(value->Argument(0)) : std::numeric_limits<std::uint32_t>::max();
+        case IrOpcode::SelectU32:
+            return value->ArgumentCount() == 3u ? (possibleU32Bits(value->Argument(1)) | possibleU32Bits(value->Argument(2))) : std::numeric_limits<std::uint32_t>::max();
         default:
             return std::numeric_limits<std::uint32_t>::max();
     }

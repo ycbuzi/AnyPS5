@@ -197,7 +197,7 @@ public:
     void WriteBack();
     // Deferred write-back (APS5_EAGER_WRITEBACK=1 stores at once instead).
     void MarkDirty();
-    void MarkSliceDirty(std::uint32_t slice);
+    void MarkSliceDirty(std::uint32_t slice, std::uint32_t count = 1);
     void Flush();
     bool Dirty() const;
     // Stores every pending image overlapping the range, except `except`; returns whether any was.
