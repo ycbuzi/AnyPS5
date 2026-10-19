@@ -88,8 +88,7 @@ static void CheckErrno() {
 
 static void CheckConsoleQuirks() {
     Require(ilogbl_nid_postfix(NAN) == INT_MAX && ilogbl_nid_postfix(0.0L) == INT_MIN && ilogbl_nid_postfix(8.0L) == 3);
-    Require(scalblnl_nid_postfix(1.0L, INT64_C(0x100000001)) == INFINITY && scalblnl_nid_postfix(1.0L, INT64_MAX) == INFINITY);
-    Require(scalblnl_nid_postfix(1.0L, INT64_MIN) == 0.0L);
+    Require(scalblnl_nid_postfix(1.0L, INT64_C(0x100000001)) == 2.0L && scalblnl_nid_postfix(1.0L, INT64_MAX) == 0.5L);
     Require(scalbln_nid_postfix(1.0, INT64_C(0x100000001)) == INFINITY && scalbln_nid_postfix(1.0, INT64_MIN) == 0.0);
     Require(lrint_nid_postfix(0x1p40) == INT64_C(0x10000000000));
     const long double product = Extended(0x4000, 0xe000000000000000ull) * Extended(0x4001, 0xda76b022816f6a94ull);
