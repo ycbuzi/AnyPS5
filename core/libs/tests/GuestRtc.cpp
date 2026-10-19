@@ -17,6 +17,7 @@ int APS5_VABI sceRtcGetTickResolution(void);
 int APS5_VABI sceRtcGetTick(const RtcDateTime*, RtcTick*);
 int APS5_VABI sceRtcSetTick(RtcDateTime*, const RtcTick*);
 int APS5_VABI sceRtcGetCurrentTick(RtcTick*);
+int APS5_VABI sceRtcGetCurrentNetworkTick(RtcTick*);
 int APS5_VABI sceRtcGetCurrentClock(RtcDateTime*, int);
 int APS5_VABI sceRtcGetCurrentClockLocalTime(RtcDateTime*);
 int APS5_VABI sceRtcConvertUtcToLocalTime(const RtcTick*, RtcTick*);
@@ -60,7 +61,12 @@ int APS5_VABI sceRtcFormatRFC3339Precise(char*, const RtcTick*, int, int);
 int APS5_VABI sceRtcFormatRFC3339PreciseLocalTime(char*, const RtcTick*, int);
 int APS5_VABI sceRtcCompareTick(const RtcTick*, const RtcTick*);
 int APS5_VABI sceRtcGetCurrentAdNetworkTick(RtcTick*);
+int APS5_VABI sceRtcGetCurrentRawNetworkTick(RtcTick*);
+int APS5_VABI sceRtcGetCurrentDebugNetworkTick(RtcTick*);
 int APS5_VABI sceRtcSetCurrentTick(const RtcTick*);
+int APS5_VABI sceRtcSetCurrentNetworkTick(const RtcTick*);
+int APS5_VABI sceRtcSetCurrentAdNetworkTick(const RtcTick*);
+int APS5_VABI sceRtcSetCurrentDebugNetworkTick(const RtcTick*);
 }
 
 static void Require(bool value) { if (!value) std::abort(); }
@@ -613,5 +619,23 @@ int main() {
         Require(sceRtcGetCurrentAdNetworkTick(nullptr) == invalidPointer);
         RtcTick tooEarly{unixEpochTick - 1};
         Require(sceRtcSetCurrentTick(&tooEarly) == invalidValue && sceRtcSetCurrentTick(nullptr) == invalidPointer);
+        const RtcTick systemClock{leapDayTick};
+        const RtcTick networkClock{leapDayTick + 10000000};
+        const RtcTick adClock{leapDayTick + 20000000};
+        const RtcTick debugClock{leapDayTick + 30000000};
+        Require(sceRtcSetCurrentTick(&systemClock) == 0);
+        Require(sceRtcSetCurrentNetworkTick(&networkClock) == 0);
+        Require(sceRtcGetCurrentAdNetworkTick(&current) == 0 && current.tick >= networkClock.tick && current.tick < networkClock.tick + 1000000);
+        Require(sceRtcGetCurrentDebugNetworkTick(&current) == 0 && current.tick >= networkClock.tick && current.tick < networkClock.tick + 1000000);
+        Require(sceRtcSetCurrentAdNetworkTick(&adClock) == 0);
+        Require(sceRtcSetCurrentDebugNetworkTick(&debugClock) == 0);
+        Require(sceRtcSetCurrentNetworkTick(&tooEarly) == invalidValue && sceRtcSetCurrentNetworkTick(nullptr) == invalidPointer);
+        Require(sceRtcSetCurrentAdNetworkTick(&tooEarly) == invalidValue && sceRtcSetCurrentAdNetworkTick(nullptr) == invalidPointer);
+        Require(sceRtcSetCurrentDebugNetworkTick(&tooEarly) == invalidValue && sceRtcSetCurrentDebugNetworkTick(nullptr) == invalidPointer);
+        Require(sceRtcGetCurrentTick(&current) == 0 && current.tick >= systemClock.tick && current.tick < systemClock.tick + 1000000);
+        Require(sceRtcGetCurrentNetworkTick(&current) == 0 && current.tick >= networkClock.tick && current.tick < networkClock.tick + 1000000);
+        Require(sceRtcGetCurrentAdNetworkTick(&current) == 0 && current.tick >= adClock.tick && current.tick < adClock.tick + 1000000);
+        Require(sceRtcGetCurrentDebugNetworkTick(&current) == 0 && current.tick >= debugClock.tick && current.tick < debugClock.tick + 1000000);
+        Require(sceRtcGetCurrentRawNetworkTick(&current) == 0 && current.tick > unixEpochTick);
     }
 }

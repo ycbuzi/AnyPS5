@@ -5,6 +5,7 @@
 #include <cstring>
 #include <ctime>
 #include <limits>
+#include <mutex>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 
@@ -30,6 +31,15 @@ constexpr std::int64_t WIN32_EPOCH_DAYS = 584388;
 constexpr std::uint64_t UNIX_EPOCH_TICK = UNIX_EPOCH_DAYS * TICKS_PER_DAY;
 constexpr std::uint64_t WIN32_EPOCH_TICK = WIN32_EPOCH_DAYS * TICKS_PER_DAY;
 constexpr std::uint64_t MAX_TICK = 3652059ull * TICKS_PER_DAY - 1;
+
+struct ClockState {
+    std::uint64_t tick = 0;
+    std::chrono::steady_clock::time_point setAt{};
+    bool isSet = false;
+};
+
+std::mutex clockMutex;
+ClockState clocks[5];
 
 bool isLeapYear(std::int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
@@ -90,9 +100,29 @@ RtcDateTime fromTick(std::uint64_t tick) {
         static_cast<std::uint16_t>(timeOfDay % TICKS_PER_MINUTE / TICKS_PER_SECOND), static_cast<std::uint32_t>(timeOfDay % TICKS_PER_SECOND)};
 }
 
-std::uint64_t currentTick() {
+std::uint64_t currentTick(std::size_t clock = 0) {
+    ClockState state;
+    {
+        std::lock_guard lock(clockMutex);
+        state = clocks[clock];
+    }
+    if (state.isSet) {
+        const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - state.setAt).count();
+        const auto elapsedTicks = static_cast<std::uint64_t>(elapsed);
+        return elapsedTicks > std::numeric_limits<std::uint64_t>::max() - state.tick
+            ? std::numeric_limits<std::uint64_t>::max() : state.tick + elapsedTicks;
+    }
+    if (clock == 2 || clock == 3) return currentTick(1);
     const auto now = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     return UNIX_EPOCH_TICK + static_cast<std::uint64_t>(now);
+}
+
+int setCurrentTick(std::size_t clock, const RtcTick* tick) {
+    if (!tick) return SCE_RTC_ERROR_INVALID_POINTER;
+    if (tick->tick < UNIX_EPOCH_TICK) return SCE_RTC_ERROR_INVALID_VALUE;
+    std::lock_guard lock(clockMutex);
+    clocks[clock] = ClockState{tick->tick, std::chrono::steady_clock::now(), true};
+    return 0;
 }
 
 std::int64_t localOffsetSeconds(std::uint64_t utcTick) {
@@ -359,7 +389,9 @@ int APS5_VABI sceRtcGetCurrentTick(RtcTick* tick) {
 }
 
 int APS5_VABI sceRtcGetCurrentNetworkTick(RtcTick* tick) {
-    return sceRtcGetCurrentTick(tick);
+    if (!tick) return SCE_RTC_ERROR_INVALID_POINTER;
+    tick->tick = currentTick(1);
+    return 0;
 }
 
 int APS5_VABI sceRtcGetCurrentClock(RtcDateTime* time, int time_zone_minutes) {
@@ -645,44 +677,37 @@ int APS5_VABI sceRtcCompareTick(const RtcTick* first, const RtcTick* second) {
 }
 
 int APS5_VABI sceRtcGetCurrentRawNetworkTick(RtcTick* tick) {
-    return sceRtcGetCurrentTick(tick);
+    if (!tick) return SCE_RTC_ERROR_INVALID_POINTER;
+    tick->tick = currentTick(4);
+    return 0;
 }
 
 int APS5_VABI sceRtcGetCurrentAdNetworkTick(RtcTick* tick) {
-    return sceRtcGetCurrentTick(tick);
+    if (!tick) return SCE_RTC_ERROR_INVALID_POINTER;
+    tick->tick = currentTick(2);
+    return 0;
 }
 
 int APS5_VABI sceRtcGetCurrentDebugNetworkTick(RtcTick* tick) {
-    return sceRtcGetCurrentTick(tick);
-}
-
-static int checkSettableTick(const RtcTick* tick) {
     if (!tick) return SCE_RTC_ERROR_INVALID_POINTER;
-    return tick->tick < UNIX_EPOCH_TICK ? SCE_RTC_ERROR_INVALID_VALUE : 0;
+    tick->tick = currentTick(3);
+    return 0;
 }
 
 int APS5_VABI sceRtcSetCurrentTick(const RtcTick* tick) {
-    if (const int result = checkSettableTick(tick); result != 0) return result;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    return setCurrentTick(0, tick);
 }
 
 int APS5_VABI sceRtcSetCurrentNetworkTick(const RtcTick* tick) {
-    if (const int result = checkSettableTick(tick); result != 0) return result;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    return setCurrentTick(1, tick);
 }
 
 int APS5_VABI sceRtcSetCurrentAdNetworkTick(const RtcTick* tick) {
-    if (const int result = checkSettableTick(tick); result != 0) return result;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    return setCurrentTick(2, tick);
 }
 
 int APS5_VABI sceRtcSetCurrentDebugNetworkTick(const RtcTick* tick) {
-    if (const int result = checkSettableTick(tick); result != 0) return result;
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    return setCurrentTick(3, tick);
 }
 
 int APS5_VABI sceRtcSetConf(int first, int second, int third, int fourth) {
