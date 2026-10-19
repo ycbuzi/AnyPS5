@@ -239,13 +239,6 @@ struct FontTextCharacter {
     std::uint8_t reserved_0x40[136];
 };
 
-struct FontTextCodes {
-    void* textOrder;
-    std::uint32_t textCode;
-    std::uint32_t reserved;
-    void* systemUse[6];
-};
-
 struct FontRenderSurface {
     void* buffer;
     std::int32_t widthByte;
@@ -443,8 +436,6 @@ static_assert(sizeof(FontSurfaceImage) == 0x10);
 static_assert(sizeof(FontRenderOutput) == 0x40);
 static_assert(sizeof(FontTextCharacter) == 0xC8);
 static_assert(offsetof(FontTextCharacter, flags) == 0x38);
-static_assert(sizeof(FontTextCodes) == 0x40);
-static_assert(offsetof(FontTextCodes, textCode) == 0x08);
 static_assert(sizeof(FontRenderSurface) == 0x80);
 static_assert(sizeof(FontStyleFrame) == 0x60);
 static_assert(offsetof(FontStyleFrame, scalePixelW) == 0x14);
