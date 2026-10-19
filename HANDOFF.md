@@ -38,7 +38,31 @@ libxkbcommon-dev libegl-dev libdecor-0-dev` (the list in upstream's `release.yml
 `git submodule update --init` (upstream now uses `3rdparty/libusb-cmake`, plus `zstd`,
 `ZArchive`, `tracy`, `mimalloc`; every `3rdparty/libusb` command further down is obsolete).
 
-Build and suite of this sync on Linux: **running at the time of writing** — see the update below.
+**Linux build and suite (cloud container, 2026-10-19, at `66919c525`): build 0 failures, `libs`
+target 0 failures, ctest 1658/1661.** The 3 failures are the container's, not the code's:
+`guest_named_shm_concurrency` runs as uid 0, so unlinking a read-only object succeeds (it passes
+under `setpriv --bounding-set=-all --inh-caps=-all`); `guest_socket_stream_options` and
+`guest_tcp` open an IPv6 socket and the container has no IPv6 (`/proc/net/if_inet6` is empty).
+Fixed on the way there:
+
+- `7218a4d46`: the merge kept our `struct FontTextCodes` beside upstream's union, breaking all of
+  libSceFont; upstream's header is restored and our stale GuestFontText removed.
+- `b06d3829c`: `UserData.cpp` (sceAgcDriverUserDataGetPacketSize) had dropped out of
+  `agcDriverSources` in an earlier stack merge, so it was never compiled; debt notes the sync
+  dropped for our AGC, AgcDriver, Font and VideoRecordingP functions are restored.
+- `c333b96be`: restored tests from Привалов Александр Владимирович's unmerged PRs
+  (boykopovar/AnyPS5#2235, #2271, #2280) found two upstream libc bugs, now fixed here: `rint` and
+  `rintf` ignored a non-default rounding mode (MathExact.cpp lacked `-frounding-math`, so GCC
+  inlined an add-and-subtract of 2^52), and `fmin`/`fmax` raised FE_INVALID for a signalling NaN
+  (FreeBSD's `s_fmax.c` checks the bits instead). Stale harvested tests were aligned or removed.
+- `scalblnl` was changed and then **reverted** (`66919c525`): upstream lists its narrowing of the
+  exponent under `CheckConsoleQuirks`, beside other console results, so it models the console,
+  not FreeBSD (which clamps). Do not propose that one upstream without a console measurement.
+- Windows backtrace (`agent/windows-backtrace`): the libc `_Unwind_Backtrace` capture it uses on
+  Windows was compiled in on Linux in place of `backtrace()` and passed the portable
+  `guest_backtrace` test (frame skip and module offsets); the Windows module lookups are still
+  unrun.
+- `agent/windows-harvest-1` builds on Linux and passes the same 1658/1661.
 
 ### Upstream contribution status (checked 2026-10-19)
 
