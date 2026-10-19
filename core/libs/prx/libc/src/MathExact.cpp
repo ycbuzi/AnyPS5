@@ -158,7 +158,7 @@ long double APS5_VABI nanl_nid_postfix(const char*) { return std::numeric_limits
 
 long double APS5_VABI scalblnl_nid_postfix(long double x, std::int64_t exponent) {
     ErrnoGuard guard;
-    return std::scalbn(x, static_cast<int>(exponent));
+    return std::scalbn(x, Exponent(exponent));
 }
 
 long double APS5_VABI fmal_nid_postfix(long double x, long double y, long double z) {

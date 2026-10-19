@@ -37,13 +37,7 @@ static void TestReset(TReset reset, const std::array<std::uint32_t, N>& expected
         Check(reset(&storage.param) == SCE_NGS2_OK, "repeated reset failed");
         Check(std::memcmp(&storage.param, expected.data(), sizeof(TParam)) == 0, "repeated reset changed the defaults");
     }
-    bool rejected = false;
-    try {
-        reset(nullptr);
-    } catch (const std::invalid_argument&) {
-        rejected = true;
-    }
-    Check(rejected, "null output was not rejected");
+    Check(reset(nullptr) == SCE_NGS2_ERROR_INVALID_OUT_ADDRESS, "null output was not rejected");
 }
 
 int main() {
