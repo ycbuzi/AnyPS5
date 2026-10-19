@@ -1,11 +1,62 @@
 # Handoff: AnyPS5 work between the PC session and the cloud session
 
-Last updated: 2026-10-10 ~19:20 UTC, by the PC session.
+Last updated: 2026-10-19, by the cloud session (upstream sync). The section below supersedes the
+2026-10-10 PC section further down, which is kept as history.
 
 All issue and PR numbers in this file are on **boykopovar/AnyPS5** (upstream) unless marked
 otherwise. Bare `#1234` links in this repo point at the fork, where those numbers don't exist.
 
-## START HERE — state at 2026-10-10 19:20 UTC (PC session)
+## START HERE — upstream sync of 2026-10-19 (cloud session)
+
+`claude/stoic-turing-wc7bje` now contains upstream `252cbc29b` (2026-10-19 22:05 +0200):
+
+- `5a6f600b1` merges `8075b6af1`. All 104 conflicted files took upstream's side; our additions
+  were then restored only where upstream has nothing equivalent. The commit message lists what
+  was restored, dropped and not restored, and why.
+- `f62acf0c0` drops per-library CMake files the sync made redundant (SigninDialog defined its
+  test target twice; Share.native and SystemGesture).
+- `e6ceb0338` merges the 30 later upstream commits (`252cbc29b`); it merged without conflicts.
+- The pre-sync tip is `3a9c670db` (first parent of `5a6f600b1`), tagged `pre-sync-1019` in the
+  cloud container only.
+
+Completion, all measured with **upstream's current** `tools/progress.py`:
+
+| tree | library functions done / total | % |
+|---|---|---|
+| our pre-sync tip `3a9c670db` | 3003 / 3362 | 89.32 |
+| upstream `252cbc29b` | 4137 / 5182 | 79.83 |
+| this branch after the sync | 4167 / 5197 | 80.18 |
+
+The drop from 89% is not lost work: upstream declared about 1,820 more exports (mostly stubs),
+which grows the total, and its script now follows chains of stub helpers (`6c90102e5`), so a
+function that calls a helper that can reach `NotImplemented` counts as not done. The old 89.56%
+in the PC section below was measured with the older script.
+
+Linux build needs these packages now (configure stops without XRandR and without an audio
+backend): `libxrandr-dev libpipewire-0.3-dev libpulse-dev libasound2-dev libwayland-dev
+libxkbcommon-dev libegl-dev libdecor-0-dev` (the list in upstream's `release.yml`). Submodules:
+`git submodule update --init` (upstream now uses `3rdparty/libusb-cmake`, plus `zstd`,
+`ZArchive`, `tracy`, `mimalloc`; every `3rdparty/libusb` command further down is obsolete).
+
+Build and suite of this sync on Linux: **running at the time of writing** — see the update below.
+
+### Open decisions for the user
+
+1. **ContentExport.** Our pre-sync `sceContentExportFromData`, `FromFile` and
+   `FromFileWithThumbnail` (erick-dsnk's catalog export, `88e5bdeeb`) exported images into a host
+   folder. Upstream's later session code (`6ce1240ab`) throws on purpose: its debt note says the
+   host has no media library. Both versions count as not done under the current script.
+   Porting ours means adapting it to upstream's sessions against that stated design. Not done.
+2. **2631 remainder.** Upstream `f22b9fa02` now rounds `v_fma_mix*_f16` in every f16 mode, so our
+   `c7d132bec` was dropped. Packed f16 instructions in a directed rounding mode still throw at
+   `FloatInstructions.cpp:15`, and scalar `v_add_f16`/`v_mul_f16` in such a mode use the native
+   nearest-even conversion without throwing. A numeric test needs a Vulkan device (none in the
+   cloud container), so this is for the PC.
+3. **Not restored, unsourced:** `scePlayerSelectionDialogParamInitialize` (cleared 0x80 bytes, no
+   reference for the size or that it is an export) and the NpSessionSignaling `GetMemoryInfo` /
+   `GetConnectionStatistics` bodies (0x28- and 0x10-byte layouts, no reference).
+
+## History: state at 2026-10-10 19:20 UTC (PC session, superseded by the 2026-10-19 section)
 
 `claude/stoic-turing-wc7bje` is **248 commits ahead of upstream and 0 behind** `4a747c48`.
 Working tree clean.
