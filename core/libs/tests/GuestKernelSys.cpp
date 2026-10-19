@@ -300,6 +300,14 @@ int main() {
     Require(readlink_nid_postfix(nullptr, buffer, sizeof(buffer)) == -1 && Error() == 14);
 #ifndef _WIN32
     Require(readlink_nid_postfix((root / std::string(300, 'n')).string().c_str(), buffer, sizeof(buffer)) == -1 && Error() == 63);
+#else
+    const auto compressed = root / "compressed.bin";
+    { std::ofstream stream(compressed, std::ios::binary); stream << std::string(1u << 18, 'a'); }
+    const auto compactCommand = L"compact /c /exe:xpress4k \"" + compressed.wstring() + L"\" >nul";
+    Require(_wsystem(compactCommand.c_str()) == 0);
+    Require((GetFileAttributesW(compressed.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+    Require(readlink_nid_postfix(compressed.string().c_str(), buffer, sizeof(buffer)) == -1 && Error() == 22);
+    Require(std::filesystem::remove(compressed));
 #endif
     std::error_code error;
     const auto link = (root / "link").string();

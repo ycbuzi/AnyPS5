@@ -143,9 +143,10 @@ std::int64_t ReadNativeLink(const std::filesystem::path& native, char* buffer, s
 #ifdef _WIN32
     const DWORD attributes = GetFileAttributesW(native.wstring().c_str());
     if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+        if (!File::WindowsSymbolicLink::IsNameSurrogate(native, "readlink")) return Fail(GuestEinval);
         std::string target;
         if (!File::WindowsSymbolicLink::Read(native, target, "readlink") && !File::WindowsSymbolicLink::ReadJunction(native, target, "readlink")) {
-            NotImplemented_nid_no_patch("readlink of a Windows reparse point other than a symbolic link");
+            NotImplemented_nid_no_patch("readlink of a Windows name surrogate other than a symbolic link or a junction");
             return -1;
         }
         return CopyLinkTarget(target, buffer, size);

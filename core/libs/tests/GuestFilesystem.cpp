@@ -930,6 +930,18 @@ int main() {
     FileStat junctionFollowed{};
     Require(stat_nid_postfix(junction.string().c_str(), &junctionFollowed) == 0 && (junctionFollowed.st_mode & 0170000) == 0040000);
     Require(std::filesystem::remove(junction) && std::filesystem::remove(junctionTarget));
+    const auto compressed = root / "compressed.bin";
+    { std::ofstream stream(compressed, std::ios::binary); stream << std::string(1u << 18, 'a'); }
+    const auto compactCommand = L"compact /c /exe:xpress4k \"" + compressed.wstring() + L"\" >nul";
+    Require(_wsystem(compactCommand.c_str()) == 0);
+    Require((GetFileAttributesW(compressed.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+    FileStat compressedStatus{};
+    FileStat compressedFollowed{};
+    Require(lstat_nid_postfix(compressed.string().c_str(), &compressedStatus) == 0);
+    Require(stat_nid_postfix(compressed.string().c_str(), &compressedFollowed) == 0);
+    Require((compressedStatus.st_mode & 0170000) == 0100000 && compressedStatus.st_size == (1 << 18));
+    Require(compressedStatus.st_ino == compressedFollowed.st_ino && compressedStatus.st_mode == compressedFollowed.st_mode);
+    Require(std::filesystem::remove(compressed));
 #endif
     FileStat identity{};
     FileStat byDescriptor{};
