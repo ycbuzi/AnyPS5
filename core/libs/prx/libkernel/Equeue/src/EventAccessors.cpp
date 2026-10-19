@@ -20,11 +20,8 @@ intptr_t APS5_VABI sceKernelGetEventData(const KernelEvent* ev) {
 }
 
 int APS5_VABI sceKernelGetEventError(const KernelEvent* ev) {
-    const auto& event = requireEvent(ev, __func__);
-    if ((event.flags & EV_ERROR) != 0) {
-        return static_cast<int>(event.data);
-    }
-    return 0;
+    const KernelEvent& event = requireEvent(ev, __func__);
+    return (event.flags & EV_ERROR) != 0 ? static_cast<int>(event.data) : 0;
 }
 
 intptr_t APS5_VABI sceKernelGetEventFflags(const KernelEvent* ev) {

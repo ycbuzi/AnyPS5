@@ -1,6 +1,7 @@
 #ifndef CORE_LIBS_PRX_LIBC_INCLUDE_FILESTREAM_HPP
 #define CORE_LIBS_PRX_LIBC_INCLUDE_FILESTREAM_HPP
 
+#include <cerrno>
 #include <cstdio>
 #include <filesystem>
 #include <stdexcept>
@@ -12,7 +13,13 @@
 #include <type_traits>
 #ifdef _WIN32
 #include <io.h>
+#include "prx/libc/include/FileLock.hpp"
+extern "C" void* HostStandardHandle_nid_no_patch(int descriptor);
+extern "C" void KeepStandardHandle_nid_no_patch(int descriptor, void* handle);
+#else
+#include <unistd.h>
 #endif
+extern "C" int DuplicateHostDescriptor_nid_no_patch(int descriptor);
 
 struct GuestFilePrefix {
     unsigned char* position = nullptr;
@@ -35,6 +42,10 @@ static constexpr const char* FOPEN_MSG_NULL_ARG = "null argument";
 static constexpr const char* FOPEN_MSG_NOT_FOUND = "file not found";
 static constexpr const char* FOPEN_MSG_OPEN_FAILED = "open failed";
 
+#ifndef _WIN32
+extern "C" int KeepHostStandardError_nid_no_patch();
+#endif
+
 class FileStream {
     // Only the macro-accessed FreeBSD prefix is exposed. The remaining guest
     // FILE area is reserved; host state lives beyond it and is never a guest FILE*.
@@ -42,7 +53,8 @@ class FileStream {
     std::byte _reserved[256 - sizeof(GuestFilePrefix)]{};
     std::FILE* _handle;
     bool _dynamic;
-    bool encodingError = false;
+    bool guestError = false;
+    bool randomDevice = false;
 
 public:
     explicit FileStream(std::FILE* handle, bool dynamic = false) : _handle(handle), _dynamic(dynamic) {
@@ -64,21 +76,71 @@ public:
         return _handle;
     }
 
+    bool IsOpen() const {
+        return _handle != nullptr;
+    }
+
     bool IsDynamic() const {
         return _dynamic;
     }
 
     GuestFilePrefix& GuestState() { return _guest; }
+    bool IsHostStandard() const {
+        return _handle == stdin || _handle == stdout || _handle == stderr;
+    }
+
+    void Detach() {
+        _handle = nullptr;
+        _guest.flags = 0;
+        _guest.descriptor = -1;
+    }
+
+    void RestoreHostStandard(std::FILE* stream, int kept) {
+        const int error = errno;
+#ifdef _WIN32
+        const bool restored = _handle || (::_wfreopen(L"NUL", stream == stdin ? L"r" : L"w", stream) && ::_dup2(kept, ::_fileno(stream)) == 0);
+        ::_unlock_file(stream);
+        ::_close(kept);
+#else
+        const bool restored = _handle || (std::freopen("/dev/null", stream == stdin ? "r" : "w", stream) && ::dup2(kept, ::fileno(stream)) >= 0);
+        ::funlockfile(stream);
+        ::close(kept);
+#endif
+        if (!restored) throw std::runtime_error("FileStream: cannot restore the host standard stream");
+        errno = error;
+    }
+
+    void MarkRandomDevice() {
+        randomDevice = true;
+        _guest.descriptor = -1;
+    }
+
+    bool IsRandomDevice() const {
+        return randomDevice;
+    }
+
     bool Reopen(const std::filesystem::path& filename, const char* mode) {
         auto* previous = GetHandle();
         _guest = {};
-        encodingError = false;
+        guestError = false;
+        randomDevice = false;
 #ifdef _WIN32
         std::wstring wideMode;
         for (const char character : std::string_view(mode)) wideMode.push_back(static_cast<unsigned char>(character));
+        const int replaced = previous ? _fileno(previous) : -1;
+        auto* const standard = HostStandardHandle_nid_no_patch(replaced);
+        GuestFileLockForget_nid_no_patch(replaced);
+        const int kept = IsHostStandard() ? DuplicateHostDescriptor_nid_no_patch(replaced) : -1;
+        if (kept >= 0) ::_lock_file(previous);
         _handle = ::_wfreopen(filename.c_str(), wideMode.c_str(), previous);
+        if (kept >= 0) RestoreHostStandard(previous, kept);
+        KeepStandardHandle_nid_no_patch(replaced, standard);
 #else
+        if (::fileno(previous) == 2) KeepHostStandardError_nid_no_patch();
+        const int kept = IsHostStandard() ? DuplicateHostDescriptor_nid_no_patch(::fileno(previous)) : -1;
+        if (kept >= 0) ::flockfile(previous);
         _handle = std::freopen(filename.c_str(), mode, previous);
+        if (kept >= 0) RestoreHostStandard(previous, kept);
 #endif
         if (!_handle) return false;
         _guest.flags = 0x10;
@@ -91,35 +153,62 @@ public:
         return true;
     }
     void SyncStatus() {
+        if (!_handle) return;
         _guest.readRemaining = 0;
         _guest.writeRemaining = 0;
         _guest.flags = static_cast<std::int16_t>((_guest.flags & ~0x60) |
-            (std::feof(GetHandle()) ? 0x20 : 0) | (std::ferror(GetHandle()) || encodingError ? 0x40 : 0));
+            (std::feof(GetHandle()) ? 0x20 : 0) | (std::ferror(GetHandle()) || guestError ? 0x40 : 0));
     }
 
-    void SetEncodingError() {
-        encodingError = true;
+    void SyncUnlockedStatus() {
+        if (!_handle) return;
+        _guest.readRemaining = 0;
+        _guest.writeRemaining = 0;
+#ifdef _WIN32
+        const bool endOfFile = std::feof(GetHandle()) != 0;
+        const bool error = std::ferror(GetHandle()) != 0;
+#else
+        const bool endOfFile = ::feof_unlocked(GetHandle()) != 0;
+        const bool error = ::ferror_unlocked(GetHandle()) != 0;
+#endif
+        _guest.flags = static_cast<std::int16_t>((_guest.flags & ~0x60) |
+            (endOfFile ? 0x20 : 0) | (error || guestError ? 0x40 : 0));
+    }
+
+    void SetError() {
+        guestError = true;
         SyncStatus();
     }
 
     void ClearError() {
+        if (!_handle) return;
         std::clearerr(GetHandle());
-        encodingError = false;
+        guestError = false;
         SyncStatus();
     }
 
-    void Close() {
+    int Close() {
         GetHandle();
-        if (std::fclose(std::exchange(_handle, nullptr)) != 0) throw std::runtime_error("FileStream: close failed");
+#ifdef _WIN32
+        GuestFileLockForget_nid_no_patch(::_fileno(_handle));
+#endif
+        const int result = std::fclose(std::exchange(_handle, nullptr));
         _guest.flags = 0;
         _guest.descriptor = -1;
+        return result;
     }
 };
 static_assert(std::is_standard_layout_v<FileStream>);
 
-inline std::FILE* GetNativeStream(FileStream* stream) {
+inline std::FILE* GetStreamHandle(FileStream* stream) {
     if (!stream) throw std::runtime_error("FileStream: null stream");
     return stream->GetHandle();
+}
+
+inline std::FILE* GetNativeStream(FileStream* stream) {
+    auto* handle = GetStreamHandle(stream);
+    if (stream->IsRandomDevice()) throw std::runtime_error("FileStream: this function is not implemented on a /dev/random or /dev/urandom stream");
+    return handle;
 }
 
 extern "C" {

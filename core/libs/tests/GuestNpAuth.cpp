@@ -1,47 +1,115 @@
-#include "prx/libc/include/general/VabiMacros.hpp"
+#include "SceTypes.hpp"
+
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 
 extern "C" {
-int APS5_VABI sceNpAuthCreateRequest(void);
+int APS5_VABI sceNpAuthAbortRequest(int req_id);
 int APS5_VABI sceNpAuthCreateAsyncRequest(const void* param);
-int APS5_VABI sceNpAuthGetIdTokenV3(int req_id, const void* param, void* id_token);
-int APS5_VABI sceNpAuthWaitAsync(int req_id, int* result);
+int APS5_VABI sceNpAuthCreateRequest(void);
 int APS5_VABI sceNpAuthDeleteRequest(int req_id);
+int APS5_VABI sceNpAuthGetAuthorizationCodeV3(int req_id, const void* param, void* auth_code, int* issuer_id);
+int APS5_VABI sceNpAuthGetIdTokenV3(int req_id, const void* param, void* id_token);
+int APS5_VABI sceNpAuthPollAsync(int req_id, int* result);
+int APS5_VABI sceNpAuthSetTimeout(int req_id, int resolve_retry, uint32_t resolve_timeout, uint32_t connect_timeout, uint32_t send_timeout, uint32_t receive_timeout);
+int APS5_VABI sceNpAuthWaitAsync(int req_id, int* result);
 }
 
-namespace {
-
-constexpr int InvalidArgument = static_cast<int>(0x80550003u);
-constexpr int SignedOut = static_cast<int>(0x80550006u);
-
-void Require(bool condition, const char* message) {
+static void Require(bool condition) {
     if (!condition) {
-        std::fprintf(stderr, "NpAuth: %s\n", message);
         std::abort();
     }
 }
 
-}
-
 int main() {
-    const int first = sceNpAuthCreateRequest();
-    const int second = sceNpAuthCreateRequest();
-    Require(first > 0 && second > 0 && first != second, "sceNpAuthCreateRequest must return distinct positive ids");
-    Require(sceNpAuthCreateAsyncRequest(nullptr) > 0, "sceNpAuthCreateAsyncRequest must keep returning an id");
+    constexpr int invalidArgument = static_cast<int>(0x80550301);
+    constexpr int signedOut = static_cast<int>(0x80550006);
+    constexpr int aborted = static_cast<int>(0x80550304);
+    constexpr int requestNotFound = static_cast<int>(0x80550306);
+    constexpr int invalidId = static_cast<int>(0x80550307);
+    constexpr int pollRunning = 1;
 
-    unsigned char param[64] = {};
-    unsigned char token[4096] = {};
-    Require(sceNpAuthGetIdTokenV3(first, param, token) == SignedOut, "sceNpAuthGetIdTokenV3 must report the user as signed out");
-    for (unsigned char byte : token) Require(byte == 0, "sceNpAuthGetIdTokenV3 must leave the token untouched");
-    Require(sceNpAuthGetIdTokenV3(first, nullptr, token) == InvalidArgument, "sceNpAuthGetIdTokenV3 must reject a null parameter");
-    Require(sceNpAuthGetIdTokenV3(first, param, nullptr) == InvalidArgument, "sceNpAuthGetIdTokenV3 must reject a null token");
+    const int syncReq = sceNpAuthCreateRequest();
+    const int syncReq2 = sceNpAuthCreateRequest();
+    Require(syncReq > 0);
+    Require(syncReq2 > syncReq);
 
-    int result = 0;
-    Require(sceNpAuthWaitAsync(first, &result) == 0 && result == SignedOut, "sceNpAuthWaitAsync must finish with the signed-out result");
-    Require(sceNpAuthWaitAsync(first, nullptr) == 0, "sceNpAuthWaitAsync must accept a null result like sceNpAuthPollAsync");
+    const int asyncReq = sceNpAuthCreateAsyncRequest(nullptr);
+    const int asyncReq2 = sceNpAuthCreateAsyncRequest(nullptr);
+    Require(asyncReq > syncReq2);
+    Require(asyncReq2 > asyncReq);
 
-    Require(sceNpAuthDeleteRequest(first) == 0 && sceNpAuthDeleteRequest(second) == 0, "sceNpAuthDeleteRequest must succeed");
+    alignas(8) char param[16] = {};
+    alignas(8) char token[16] = {};
+    alignas(8) char authCode[16] = {};
+    int issuerId = 0;
+
+    Require(sceNpAuthSetTimeout(syncReq, 2, 5000000, 10000000, 10000000, 10000000) == 0);
+    Require(sceNpAuthSetTimeout(asyncReq, 0, 0, 0, 0, 0) == 0);
+
+    int pollUnprocessed = 0;
+    Require(sceNpAuthPollAsync(asyncReq, &pollUnprocessed) == invalidId);
+    int waitUnprocessed = 0;
+    Require(sceNpAuthWaitAsync(asyncReq, &waitUnprocessed) == invalidId);
+
+    Require(sceNpAuthGetIdTokenV3(syncReq, nullptr, token) == invalidArgument);
+    Require(sceNpAuthGetIdTokenV3(syncReq, param, nullptr) == invalidArgument);
+    Require(sceNpAuthGetIdTokenV3(syncReq, nullptr, nullptr) == invalidArgument);
+    Require(sceNpAuthGetIdTokenV3(syncReq, param, token) == signedOut);
+    Require(sceNpAuthGetIdTokenV3(syncReq, param, token) == invalidArgument);
+    Require(sceNpAuthGetAuthorizationCodeV3(syncReq, nullptr, authCode, &issuerId) == invalidArgument);
+    Require(sceNpAuthGetAuthorizationCodeV3(syncReq, param, nullptr, &issuerId) == invalidArgument);
+    Require(sceNpAuthGetAuthorizationCodeV3(syncReq2, param, authCode, &issuerId) == signedOut);
+    Require(sceNpAuthGetAuthorizationCodeV3(syncReq2, param, authCode, &issuerId) == invalidArgument);
+
+    Require(sceNpAuthGetIdTokenV3(asyncReq, param, token) == 0);
+    Require(sceNpAuthGetIdTokenV3(asyncReq, param, token) == invalidArgument);
+    int asyncPoll = 0;
+    Require(sceNpAuthPollAsync(asyncReq, &asyncPoll) == pollRunning);
+    Require(asyncPoll == 0);
+    Require(sceNpAuthPollAsync(asyncReq, &asyncPoll) == 0);
+    Require(asyncPoll == signedOut);
+    Require(sceNpAuthPollAsync(asyncReq, &asyncPoll) == 0);
+    Require(asyncPoll == signedOut);
+    int asyncWait = 0;
+    Require(sceNpAuthWaitAsync(asyncReq, &asyncWait) == 0);
+    Require(asyncWait == signedOut);
+
+    Require(sceNpAuthGetAuthorizationCodeV3(asyncReq2, param, authCode, &issuerId) == 0);
+    Require(sceNpAuthGetAuthorizationCodeV3(asyncReq2, param, authCode, &issuerId) == invalidArgument);
+    int asyncWait2 = 0;
+    Require(sceNpAuthWaitAsync(asyncReq2, &asyncWait2) == 0);
+    Require(asyncWait2 == signedOut);
+
+    constexpr int unknownReq = 999999;
+    Require(sceNpAuthGetIdTokenV3(unknownReq, param, token) == requestNotFound);
+    Require(sceNpAuthGetAuthorizationCodeV3(unknownReq, param, authCode, &issuerId) == requestNotFound);
+    int pollResult = 0;
+    Require(sceNpAuthPollAsync(unknownReq, &pollResult) == requestNotFound);
+    int waitResult = 0;
+    Require(sceNpAuthWaitAsync(unknownReq, &waitResult) == requestNotFound);
+    Require(sceNpAuthSetTimeout(unknownReq, 2, 5000000, 10000000, 10000000, 10000000) == requestNotFound);
+
+    Require(sceNpAuthWaitAsync(syncReq, nullptr) == invalidArgument);
+    Require(sceNpAuthWaitAsync(syncReq, &waitResult) == invalidId);
+    Require(sceNpAuthPollAsync(syncReq, &pollResult) == invalidId);
+
+    Require(sceNpAuthAbortRequest(asyncReq) == 0);
+    Require(sceNpAuthGetIdTokenV3(asyncReq, param, token) == invalidArgument);
+    Require(sceNpAuthAbortRequest(unknownReq) == requestNotFound);
+
+    const int abortedReq = sceNpAuthCreateAsyncRequest(nullptr);
+    Require(sceNpAuthAbortRequest(abortedReq) == 0);
+    Require(sceNpAuthGetIdTokenV3(abortedReq, param, token) == aborted);
+    Require(sceNpAuthGetAuthorizationCodeV3(abortedReq, param, authCode, &issuerId) == aborted);
+    int abortedWait = 0;
+    Require(sceNpAuthWaitAsync(abortedReq, &abortedWait) == 0);
+    Require(abortedWait == aborted);
+
+    Require(sceNpAuthDeleteRequest(syncReq) == 0);
+    Require(sceNpAuthGetIdTokenV3(syncReq, param, token) == requestNotFound);
+    Require(sceNpAuthWaitAsync(syncReq, &waitResult) == requestNotFound);
+    Require(sceNpAuthSetTimeout(syncReq, 2, 5000000, 10000000, 10000000, 10000000) == requestNotFound);
+
     return 0;
 }

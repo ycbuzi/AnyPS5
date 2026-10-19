@@ -3,11 +3,10 @@
 
 #include "SDL_events.h"
 #include "SDL_gamecontroller.h"
-#include "prx/libScePad/include/InputMapping.hpp"
+#include "prx/libScePad/include/KeyboardMouse.hpp"
 #include "prx/libScePad/include/PadState.hpp"
-#include <array>
 #include <chrono>
-#include <vector>
+#include "prx/libSceVideoOut/include/Telemetry.hpp"
 
 class DisplayWindow;
 
@@ -16,10 +15,12 @@ public:
     PadInput();
     ~PadInput();
     void HandleEvent(const SDL_Event& event, DisplayWindow& window);
-    void Update();
+    void Update(const DisplayWindow& window);
+    bool MouseModeEnabled() const { return keyboardMouse.MouseMode(); }
 
 private:
-    void publish();
+    explicit PadInput(Pad::InputConfiguration configuration);
+    void publish(std::uint64_t frame);
     void setMouseMode(bool enabled);
     void openFirstAvailableController();
     void openController(int deviceIndex);
@@ -28,17 +29,13 @@ private:
     void applyOutput();
     void enableSensors();
 
-    std::vector<Pad::InputBinding> bindings;
-    std::vector<bool> pressed;
-    std::vector<std::chrono::steady_clock::time_point> wheelReleaseTimes;
-    std::array<std::uint8_t, 2> mouseStick{128, 128};
-    std::chrono::steady_clock::time_point nextMousePoll{};
-    bool mouseEnabled = false;
+    Pad::KeyboardMouse keyboardMouse;
     SDL_GameController* controller = nullptr;
     PadInputState controllerState{};
     std::uint32_t outputSequence = 0;
     PadOutputState outputState{};
     bool outputPending = false;
+    VideoOutTelemetry::PadChangeFilter telemetryFilter;
     std::chrono::steady_clock::time_point nextRumbleRefresh{};
 };
 

@@ -118,7 +118,7 @@ std::uint32_t SpirvValueEmitContext::Ballot(const IrValue* predicate) {
     const auto ballotType = TypeU32Vector(state, 4u);
     const auto scope = ConstantU32(state, spv::ScopeSubgroup);
     const auto low = state.module.AllocateId();
-    state.module.AddFunction(spv::OpGroupNonUniformBallot, ballotType, low, scope, otherHalf == nullptr || half == 0u ? Def(predicate) : otherHalf->Def(predicate));
+    EmitSubgroupBallot(state, low, otherHalf == nullptr || half == 0u ? Def(predicate) : otherHalf->Def(predicate));
     if (otherHalf == nullptr) {
         return EmitWaveBallot(state, low);
     }
@@ -126,7 +126,7 @@ std::uint32_t SpirvValueEmitContext::Ballot(const IrValue* predicate) {
     const auto lowWord = state.module.AllocateId();
     const auto highWord = state.module.AllocateId();
     const auto ballot = state.module.AllocateId();
-    state.module.AddFunction(spv::OpGroupNonUniformBallot, ballotType, high, scope, half == 1u ? Def(predicate) : otherHalf->Def(predicate));
+    state.module.AddSubgroupBallot(ballotType, high, scope, half == 1u ? Def(predicate) : otherHalf->Def(predicate));
     state.module.AddFunction(spv::OpCompositeExtract, TypeU32(state), lowWord, low, 0u);
     state.module.AddFunction(spv::OpCompositeExtract, TypeU32(state), highWord, high, 0u);
     state.module.AddFunction(spv::OpCompositeConstruct, ballotType, ballot, lowWord, highWord, ConstantU32(state, 0u), ConstantU32(state, 0u));
@@ -136,7 +136,7 @@ std::uint32_t SpirvValueEmitContext::Ballot(const IrValue* predicate) {
 std::uint32_t SpirvValueEmitContext::FirstLane(std::uint32_t ballot) {
     if (otherHalf == nullptr) {
         const auto result = state.module.AllocateId();
-        state.module.AddFunction(spv::OpGroupNonUniformBallotFindLSB, TypeU32(state), result, ConstantU32(state, spv::ScopeSubgroup), ballot);
+        EmitSubgroupBallotFindLsb(state, result, ballot);
         return result;
     }
     const auto low = state.module.AllocateId();
@@ -159,7 +159,7 @@ std::uint32_t SpirvValueEmitContext::Shuffle(const IrValue& inst, std::size_t in
     const auto scope = ConstantU32(state, spv::ScopeSubgroup);
     const auto low = state.module.AllocateId();
     if (otherHalf == nullptr) {
-        state.module.AddFunction(spv::OpGroupNonUniformShuffle, type, low, scope, Arg(inst, index), EmitHostSubgroupLane(state, lane));
+        EmitSubgroupShuffle(state, type, low, Arg(inst, index), EmitHostSubgroupLane(state, lane));
         return low;
     }
     const auto physicalLane = EmitBinaryU32(state, spv::OpBitwiseAnd, lane, ConstantU32(state, 31u));
@@ -171,6 +171,13 @@ std::uint32_t SpirvValueEmitContext::Shuffle(const IrValue& inst, std::size_t in
     state.module.AddFunction(spv::OpINotEqual, TypeBool(state), inHigh, EmitBinaryU32(state, spv::OpBitwiseAnd, lane, ConstantU32(state, 32u)), ConstantU32(state, 0u));
     state.module.AddFunction(spv::OpSelect, type, value, inHigh, high, low);
     return value;
+}
+
+std::uint32_t SpirvValueEmitContext::ShuffleInHalf(const IrValue& inst, std::size_t index, std::uint32_t lane) {
+    if (!state.spannedWave) return Shuffle(inst, index, lane);
+    const auto result = state.module.AllocateId();
+    EmitSubgroupShuffleInHalf(state, TypeId(state, inst.Argument(index)->Type()), result, Arg(inst, index), lane);
+    return result;
 }
 
 std::uint32_t SpirvValueEmitContext::Result(const IrValue& inst) {
@@ -233,7 +240,7 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Co
     return Emit(program, ShaderStageInputInfo {}, bindings, target);
 }
 
-std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const ShaderStageInputInfo& inputInfo, const CompiledBindingLayout& bindings, const SpirvTargetOptions& target) const {
+std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const ShaderStageInputInfo& inputInfo, const CompiledBindingLayout& bindings, const SpirvTargetOptions& target, SpirvEmitInfo* info) const {
     if (program.Resources().stage != IrShaderStage::Compute && program.Resources().stage != IrShaderStage::Vertex && program.Resources().stage != IrShaderStage::Pixel && program.Resources().stage != IrShaderStage::Mesh && program.Resources().stage != IrShaderStage::Local && program.Resources().stage != IrShaderStage::TessellationControl && program.Resources().stage != IrShaderStage::TessellationEvaluation) {
         FailProgram(program, "binary SPIR-V emitter received an unsupported shader stage");
     }
@@ -249,27 +256,51 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Sh
     state.supportedExtensions = target.supportedExtensions;
     state.nonConstantImageOffsets = target.nonConstantImageOffsets;
     state.narrowSubgroupClock = target.narrowSubgroupClock;
+    state.float64DenormPreserve = target.float64DenormPreserve;
+    state.depthRangeRemap = target.depthRangeRemap;
+    state.registrationModules = target.registrationModules;
+    state.fragmentDescriptorSet = target.fragmentDescriptorSet;
+    state.float16DenormPreserve = target.float16DenormPreserve;
+    state.robustBufferAccess2 = target.robustBufferAccess2;
+    state.float32FlushToZero = target.float32FlushToZero;
     state.hostSubgroupSize = target.subgroupSize;
+    if (state.requirements.ldsLock && LdsInDeviceMemory(state) && std::find(target.supportedCapabilities.begin(), target.supportedCapabilities.end(), static_cast<std::uint32_t>(spv::CapabilityInt64Atomics)) != target.supportedCapabilities.end()) {
+        state.requirements.ldsLock = false;
+        state.requirements.ldsBufferInt64Atomics = true;
+    }
+    if (HostSubgroupSingleLane(state)) {
+        state.requirements.subgroupBallot = false;
+        state.requirements.subgroupShuffle = false;
+        state.requirements.subgroupLocalInvocationId = false;
+    }
     state.splitSubgroup = program.WaveSize() == 32u && target.subgroupSize > 32u;
     if (state.splitSubgroup && (state.requirements.subgroupBallot || state.requirements.subgroupShuffle)) state.requirements.subgroupLocalInvocationId = true;
     const auto* workgroup = ShaderWorkgroupInputFor(state);
-    state.laneCount = workgroup != nullptr && program.WaveSize() == 64u && workgroup->hostSubgroupSize == 32u ? 2u : 1u;
+    const bool halfHost = workgroup != nullptr && program.WaveSize() == 64u && workgroup->hostSubgroupSize == 32u;
+    state.spannedWave = halfHost && target.spannedWaves && program.Resources().stage == IrShaderStage::Compute && !state.requirements.computeDerivatives && std::max(workgroup->threadsNum[0], 1u) * std::max(workgroup->threadsNum[1], 1u) * std::max(workgroup->threadsNum[2], 1u) == 64u;
+    state.laneCount = halfHost && !state.spannedWave ? 2u : 1u;
+    if (state.spannedWave) {
+        state.requirements.subgroupLocalInvocationId = true;
+        state.requirements.subgroupBallot = true;
+        state.requirements.subgroupShuffle = true;
+    }
     if (state.laneCount == 2u) state.sharedLaneValues = WaveUniformValues(program);
     if (program.Resources().stage == IrShaderStage::Compute && workgroup != nullptr) {
         // The key comes from a subgroup ballot (ReadFirstLane), so the slot is uniform over the
         // workgroup only when the workgroup is one wave held by one host subgroup; a wave64 program
         // kept at one lane per invocation spans two subgroups (see WaveLdsScope).
         const auto threads = std::max(workgroup->threadsNum[0], 1u) * std::max(workgroup->threadsNum[1], 1u) * std::max(workgroup->threadsNum[2], 1u);
-        const bool oneSubgroup = state.laneCount == 2u || (program.WaveSize() == workgroup->hostSubgroupSize && workgroup->hostSubgroupSize <= 32u);
+        const bool oneSubgroup = state.laneCount == 2u || state.spannedWave || (program.WaveSize() == workgroup->hostSubgroupSize && workgroup->hostSubgroupSize <= 32u);
         state.tableIndexNonUniform = threads > program.WaveSize() || !oneSubgroup;
     }
     state.waveLdsScope = WaveLdsScope(program, workgroup, state.laneCount);
     if (const char* guard = std::getenv("APS5_LOOP_GUARD")) state.loopGuardLimit = static_cast<std::uint32_t>(std::strtoul(guard, nullptr, 0));
     // Stopped invocations would leave the wave LDS barriers incomplete.
-    state.bdaStopsInvocations = state.waveLdsScope == 0 && BdaInvocationsMayStop(program) && program.Resources().stage != IrShaderStage::Mesh;
+    state.bdaStopsInvocations = state.waveLdsScope == 0 && !state.spannedWave && BdaInvocationsMayStop(program) && program.Resources().stage != IrShaderStage::Mesh;
     EmitModuleHeader(state, bindings);
     EmitProgram(state);
     state.module.EmitEntryPoint(ExecutionModelForStage(state.program.Resources().stage), state.mainFunc, "main", state.interfaceVariables);
+    if (info != nullptr) info->fullSubgroups = state.spannedWave;
     return state.module.Finalize();
 }
 

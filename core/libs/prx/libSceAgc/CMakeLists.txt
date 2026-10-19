@@ -29,6 +29,7 @@ add_library(libSceAgc SHARED EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/DcbState/src/Predication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/DcbState/src/Registers.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/DcbState/src/Workload.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Misc/src/Debug.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Misc/src/PacketInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Misc/src/Platform.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Misc/src/RegisterDefaults.cpp
@@ -47,6 +48,7 @@ add_library(libSceAgc SHARED EXCLUDE_FROM_ALL
         ${CMAKE_CURRENT_SOURCE_DIR}/Predication/src/Predication.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/CreateShader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/GsOversubscription.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/GsPrimPayload.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/InterpolantMapping.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/LinkShaders.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Shader/src/PrimState.cpp
@@ -68,7 +70,7 @@ endforeach()
 
 add_test_executable(agc_command_tests EXCLUDE_FROM_ALL tests/Commands.cpp)
 target_include_directories(agc_command_tests PRIVATE ${LIBS_INCLUDE_DIR})
-target_link_libraries(agc_command_tests PRIVATE libSceAgc libc)
+target_link_libraries(agc_command_tests PRIVATE libSceAgc libSceAgcDriver libc)
 configure_windows_unwind(agc_command_tests)
 if(BUILD_TESTING)
     set_target_properties(agc_command_tests PROPERTIES EXCLUDE_FROM_ALL OFF)
@@ -76,6 +78,19 @@ if(BUILD_TESTING)
     add_test(NAME agc_commands COMMAND agc_command_tests)
     if(WIN32)
         set_tests_properties(agc_initialization agc_commands PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+endif()
+
+add_test_executable(agc_atomic_gds_size_tests EXCLUDE_FROM_ALL tests/AtomicGdsSize.cpp)
+target_include_directories(agc_atomic_gds_size_tests PRIVATE ${LIBS_INCLUDE_DIR})
+target_link_libraries(agc_atomic_gds_size_tests PRIVATE libSceAgc libc)
+configure_windows_unwind(agc_atomic_gds_size_tests)
+if(BUILD_TESTING)
+    set_target_properties(agc_atomic_gds_size_tests PROPERTIES EXCLUDE_FROM_ALL OFF)
+    add_test(NAME agc_atomic_gds_size COMMAND agc_atomic_gds_size_tests)
+    if(WIN32)
+        set_tests_properties(agc_atomic_gds_size PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 endif()
@@ -94,19 +109,6 @@ if(BUILD_TESTING)
     endif()
 endif()
 
-add_test_executable(agc_packet_info_tests EXCLUDE_FROM_ALL tests/PacketInfo.cpp)
-target_include_directories(agc_packet_info_tests PRIVATE ${LIBS_INCLUDE_DIR})
-target_link_libraries(agc_packet_info_tests PRIVATE libSceAgc libc)
-configure_windows_unwind(agc_packet_info_tests)
-if(BUILD_TESTING)
-    set_target_properties(agc_packet_info_tests PROPERTIES EXCLUDE_FROM_ALL FALSE)
-    add_test(NAME agc_packet_info_tests COMMAND agc_packet_info_tests)
-    if(WIN32)
-        set_tests_properties(agc_packet_info_tests PROPERTIES ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
-    endif()
-endif()
-
 add_test_executable(agc_semaphore_tests EXCLUDE_FROM_ALL tests/Semaphore.cpp)
 target_include_directories(agc_semaphore_tests PRIVATE ${LIBS_INCLUDE_DIR})
 target_link_libraries(agc_semaphore_tests PRIVATE libSceAgc libc)
@@ -116,6 +118,19 @@ if(BUILD_TESTING)
     add_test(NAME agc_semaphore_tests COMMAND agc_semaphore_tests)
     if(WIN32)
         set_tests_properties(agc_semaphore_tests PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+endif()
+
+add_test_executable(agc_packet_info_tests EXCLUDE_FROM_ALL tests/PacketInfo.cpp)
+target_include_directories(agc_packet_info_tests PRIVATE ${LIBS_INCLUDE_DIR})
+target_link_libraries(agc_packet_info_tests PRIVATE libSceAgc libc)
+configure_windows_unwind(agc_packet_info_tests)
+if(BUILD_TESTING)
+    set_target_properties(agc_packet_info_tests PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME agc_packet_info_tests COMMAND agc_packet_info_tests)
+    if(WIN32)
+        set_tests_properties(agc_packet_info_tests PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 endif()
@@ -236,7 +251,7 @@ if(BUILD_TESTING)
 endif()
 
 add_test_executable(agc_shader_fusion_tests EXCLUDE_FROM_ALL tests/ShaderFusion.cpp)
-target_include_directories(agc_shader_fusion_tests PRIVATE ${LIBS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/core/shader/recompiler ${CMAKE_SOURCE_DIR}/3rdparty/Vulkan-Headers/include ${CMAKE_SOURCE_DIR}/3rdparty/SPIRV-Headers/include)
+target_include_directories(agc_shader_fusion_tests PRIVATE ${LIBS_INCLUDE_DIR} ${CMAKE_SOURCE_DIR}/core/shader/recompiler ${ANYPS5_VULKAN_HEADERS_INCLUDE_DIR} ${ANYPS5_SPIRV_HEADERS_INCLUDE_DIR})
 target_link_libraries(agc_shader_fusion_tests PRIVATE libSceAgc libSceAgcDriver libc)
 set_target_properties(agc_shader_fusion_tests PROPERTIES CXX_EXTENSIONS OFF)
 configure_windows_unwind(agc_shader_fusion_tests)
@@ -313,6 +328,22 @@ if(BUILD_TESTING)
     add_test(NAME agc_gs_oversubscription_tests COMMAND agc_gs_oversubscription_tests)
     if(WIN32)
         set_tests_properties(agc_gs_oversubscription_tests PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+endif()
+
+add_test_executable(agc_gs_prim_payload_tests EXCLUDE_FROM_ALL
+        tests/GsPrimPayload.cpp
+        Shader/src/GsPrimPayload.cpp
+)
+target_include_directories(agc_gs_prim_payload_tests PRIVATE ${LIBS_INCLUDE_DIR})
+target_link_libraries(agc_gs_prim_payload_tests PRIVATE libc)
+configure_windows_unwind(agc_gs_prim_payload_tests)
+if(BUILD_TESTING)
+    set_target_properties(agc_gs_prim_payload_tests PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    add_test(NAME agc_gs_prim_payload_tests COMMAND agc_gs_prim_payload_tests)
+    if(WIN32)
+        set_tests_properties(agc_gs_prim_payload_tests PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
 endif()

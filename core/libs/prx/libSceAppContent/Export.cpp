@@ -2,11 +2,11 @@
 #include <cstddef>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/RemoveTree.hpp"
 #include "prx/libkernel/AppMetadata/include/AppMetadata.hpp"
 #include <algorithm>
 #include <cstring>
 #include <filesystem>
-#include <iterator>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -50,7 +50,7 @@ bool IsTemporaryMountPoint(const AppContentMountPoint* mountPoint) {
 }
 
 static void ClearDirectory(const std::filesystem::path& directory) {
-    for (const auto& entry : std::filesystem::directory_iterator(directory)) std::filesystem::remove_all(entry.path());
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) RemoveTree(entry.path());
     RecordWrittenPath_nid_no_patch(directory);
 }
 
@@ -92,6 +92,15 @@ int APS5_VABI sceAppContentAppParamGetInt(uint32_t param_id, int32_t* value) {
     default:
         return SCE_APP_CONTENT_ERROR_PARAMETER;
     }
+}
+
+int APS5_VABI sceAppContentDownloadDataFormat(const AppContentMountPoint* mount_point) {
+    if (!mount_point) return SCE_APP_CONTENT_ERROR_PARAMETER;
+    if (std::strncmp(mount_point->data, DOWNLOAD_MOUNT_POINT, sizeof(mount_point->data)) != 0) APS5_INVALID_ARG_EX;
+    const auto directory = ResolvePath_nid_no_patch(DOWNLOAD_MOUNT_POINT);
+    if (std::filesystem::create_directories(directory)) RecordWrittenPath_nid_no_patch(directory);
+    ClearDirectory(directory);
+    return 0;
 }
 
 int APS5_VABI sceAppContentDownloadDataGetAvailableSpaceKb(const AppContentMountPoint* mount_point, size_t* available_space_kb) {
@@ -166,7 +175,19 @@ int APS5_VABI sceAppContentTemporaryDataUnmount(const AppContentMountPoint* moun
 
 int APS5_VABI sceAppContentAddcontEnqueueDownload(uint32_t service_label, const NpUnifiedEntitlementLabel* entitlement_label) {
     (void)service_label;
-    if (!entitlement_label || std::any_of(std::begin(entitlement_label->padding), std::end(entitlement_label->padding), [](char value) { return value != 0; })) return SCE_APP_CONTENT_ERROR_PARAMETER;
+    if (!entitlement_label) return SCE_APP_CONTENT_ERROR_PARAMETER;
+    return SCE_APP_CONTENT_ERROR_NOT_FOUND;
+}
+
+int APS5_VABI sceAppContentAddcontDelete(uint32_t service_label, const NpUnifiedEntitlementLabel* entitlement_label) {
+    (void)service_label;
+    if (!entitlement_label) return SCE_APP_CONTENT_ERROR_PARAMETER;
+    return SCE_APP_CONTENT_ERROR_NOT_FOUND;
+}
+
+int APS5_VABI sceAppContentGetAddcontDownloadProgress(uint32_t service_label, const NpUnifiedEntitlementLabel* entitlement_label, void* progress) {
+    (void)service_label;
+    if (!entitlement_label || !progress) return SCE_APP_CONTENT_ERROR_PARAMETER;
     return SCE_APP_CONTENT_ERROR_NOT_FOUND;
 }
 }

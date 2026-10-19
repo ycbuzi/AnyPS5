@@ -1,10 +1,13 @@
 #include "prx/libc/include/GuestDirectory.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/FilesystemError.hpp"
+#include "prx/libc/include/AppArchive.hpp"
 #include <dirent.h>
 #include <cerrno>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 
 namespace {
 int DirectoryError(int error) {
@@ -28,6 +31,8 @@ using NativeDirectory = _WDIR;
 NativeDirectory* OpenNative(const std::filesystem::path& path) { return ::_wopendir(path.c_str()); }
 int CloseNative(NativeDirectory* native) { return ::_wclosedir(native); }
 void RewindNative(NativeDirectory* native) { ::_wrewinddir(native); }
+long TellNative(NativeDirectory* native) { return ::_wtelldir(native); }
+void SeekNative(NativeDirectory* native, long location) { ::_wseekdir(native, location); }
 bool ReadNative(NativeDirectory* native, std::filesystem::path& component, std::string& name, std::uint64_t& inode) {
     auto* entry = ::_wreaddir(native);
     if (!entry) return false;
@@ -42,6 +47,8 @@ using NativeDirectory = DIR;
 NativeDirectory* OpenNative(const std::filesystem::path& path) { return ::opendir(path.c_str()); }
 int CloseNative(NativeDirectory* native) { return ::closedir(native); }
 void RewindNative(NativeDirectory* native) { ::rewinddir(native); }
+long TellNative(NativeDirectory* native) { return ::telldir(native); }
+void SeekNative(NativeDirectory* native, long location) { ::seekdir(native, location); }
 bool ReadNative(NativeDirectory* native, std::filesystem::path& component, std::string& name, std::uint64_t& inode) {
     auto* entry = ::readdir(native);
     if (!entry) return false;
@@ -56,6 +63,8 @@ struct Directory {
     std::filesystem::path path;
     GuestDirectoryEntry entry{};
     std::mutex mutex;
+    int descriptor = -1;
+    int (APS5_VABI* closeDescriptor)(int) = nullptr;
     ~Directory() { if (native) CloseNative(native); }
 };
 std::uint8_t DirectoryType(const std::filesystem::path& path) {
@@ -71,26 +80,7 @@ std::uint8_t DirectoryType(const std::filesystem::path& path) {
     default: return 0;
     }
 }
-}
-
-extern "C" {
-void* APS5_VABI opendir_nid_postfix(const char* path) {
-    if (!path) { errno = 14; return nullptr; }
-    if (!*path) { errno = 2; return nullptr; }
-    try {
-        auto directory = std::make_unique<Directory>();
-        directory->path = ResolvePath_nid_no_patch(path);
-        directory->native = OpenNative(directory->path);
-        if (!directory->native) { errno = DirectoryError(errno); return nullptr; }
-        return directory.release();
-    } catch (const std::bad_alloc&) { errno = 12; return nullptr; }
-      catch (const std::filesystem::filesystem_error&) { errno = 5; return nullptr; }
-}
-
-GuestDirectoryEntry* APS5_VABI readdir_nid_postfix(void* handle) {
-    if (!handle) { errno = 9; return nullptr; }
-    auto& directory = *static_cast<Directory*>(handle);
-    std::lock_guard lock(directory.mutex);
+GuestDirectoryEntry* ReadEntry(Directory& directory) {
     const int savedError = errno;
     errno = 0;
     std::filesystem::path component;
@@ -115,13 +105,55 @@ GuestDirectoryEntry* APS5_VABI readdir_nid_postfix(void* handle) {
     } catch (const std::bad_alloc&) { errno = 12; return nullptr; }
       catch (const std::filesystem::filesystem_error&) { errno = 5; return nullptr; }
 }
+}
+
+extern "C" {
+void* APS5_VABI opendir_nid_postfix(const char* path) {
+    if (!path) { errno = 14; return nullptr; }
+    if (!*path) { errno = 2; return nullptr; }
+    try {
+        auto directory = std::make_unique<Directory>();
+        if (const int error = ResolvePathError_nid_no_patch(path, directory->path)) { errno = error; return nullptr; }
+        AppArchiveRefuseMergedListing_nid_no_patch(directory->path, path);
+        directory->native = OpenNative(directory->path);
+        if (!directory->native) { errno = DirectoryError(errno); return nullptr; }
+        return directory.release();
+    } catch (const std::bad_alloc&) { errno = 12; return nullptr; }
+      catch (const std::filesystem::filesystem_error&) { errno = 5; return nullptr; }
+}
+
+GuestDirectoryEntry* APS5_VABI readdir_nid_postfix(void* handle) {
+    if (!handle) { errno = 9; return nullptr; }
+    auto& directory = *static_cast<Directory*>(handle);
+    std::lock_guard lock(directory.mutex);
+    return ReadEntry(directory);
+}
+
+int APS5_VABI readdir_r_nid_postfix(void* handle, GuestDirectoryEntry* entry, GuestDirectoryEntry** result) {
+    if (!handle) return 9;
+    if (!entry || !result) throw std::invalid_argument("readdir_r: null entry or result");
+    auto& directory = *static_cast<Directory*>(handle);
+    const int savedError = errno;
+    errno = 0;
+    GuestDirectoryEntry* next = nullptr;
+    {
+        std::lock_guard lock(directory.mutex);
+        next = ReadEntry(directory);
+        if (next) std::memcpy(entry, next, next->recordLength);
+    }
+    if (!next && errno) return errno;
+    errno = savedError;
+    *result = next ? entry : nullptr;
+    return 0;
+}
 
 int APS5_VABI closedir_nid_postfix(void* handle) {
     if (!handle) { errno = 9; return -1; }
     std::unique_ptr<Directory> directory(static_cast<Directory*>(handle));
-    const int result = CloseNative(directory->native);
+    int result = CloseNative(directory->native);
     directory->native = nullptr;
     if (result) errno = DirectoryError(errno);
+    if (directory->closeDescriptor && directory->closeDescriptor(directory->descriptor) != 0) result = -1;
     return result;
 }
 
@@ -130,5 +162,32 @@ void APS5_VABI rewinddir_nid_postfix(void* handle) {
     auto& directory = *static_cast<Directory*>(handle);
     std::lock_guard lock(directory.mutex);
     RewindNative(directory.native);
+}
+
+std::int64_t APS5_VABI telldir_nid_postfix(void* handle) {
+    if (!handle) { errno = 9; return -1; }
+    auto& directory = *static_cast<Directory*>(handle);
+    std::lock_guard lock(directory.mutex);
+    return TellNative(directory.native);
+}
+
+void APS5_VABI seekdir_nid_postfix(void* handle, std::int64_t location) {
+    if (!handle) { errno = 9; return; }
+    auto& directory = *static_cast<Directory*>(handle);
+    std::lock_guard lock(directory.mutex);
+    SeekNative(directory.native, static_cast<long>(location));
+}
+
+void* APS5_VABI OpenDescriptorDirectory_nid_no_patch(const char* hostPath, int descriptor, int (APS5_VABI* closeDescriptor)(int)) {
+    try {
+        auto directory = std::make_unique<Directory>();
+        directory->path = std::filesystem::path(reinterpret_cast<const char8_t*>(hostPath));
+        directory->native = OpenNative(directory->path);
+        if (!directory->native) { errno = DirectoryError(errno); return nullptr; }
+        directory->descriptor = descriptor;
+        directory->closeDescriptor = closeDescriptor;
+        return directory.release();
+    } catch (const std::bad_alloc&) { errno = 12; return nullptr; }
+      catch (const std::filesystem::filesystem_error&) { errno = 5; return nullptr; }
 }
 }

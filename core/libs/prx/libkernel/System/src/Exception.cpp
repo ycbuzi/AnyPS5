@@ -5,8 +5,8 @@
 #include "prx/libkernel/KernelErrors.hpp"
 #include "prx/libkernel/Pthread/include/Pthread.hpp"
 #include <array>
-#include <atomic>
 #include <chrono>
+#include <atomic>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -16,8 +16,11 @@
 #else
 #include <cerrno>
 #include <csignal>
+#include <cstdlib>
 #include <system_error>
+#include <pthread.h>
 #include <ucontext.h>
+#include <unistd.h>
 #endif
 
 extern "C" Pthread APS5_VABI scePthreadSelf();
@@ -71,7 +74,7 @@ struct GuestMcontext {
     std::uint64_t spare[6];
 };
 
-struct GuestUcontext {
+struct alignas(16) GuestUcontext {
     std::uint32_t sigmask[4];
     std::int32_t reserved[12];
     GuestMcontext mcontext;
@@ -93,7 +96,6 @@ using GuestExceptionHandler = void (APS5_VABI *)(int, void*);
 constexpr std::array<int, 6> AllowedSignals{1, 4, 8, 10, 11, 30};
 constexpr int RaisedSignal = 30;
 
-std::mutex handlersLock;
 std::array<std::atomic<void*>, 32> handlers{};
 static_assert(std::atomic<void*>::is_always_lock_free);
 
@@ -105,6 +107,28 @@ bool Allowed(int signum) {
 
 GuestExceptionHandler Handler(int signum) {
     return reinterpret_cast<GuestExceptionHandler>(handlers[signum].load(std::memory_order_acquire));
+}
+
+constexpr std::size_t MxcsrOffset = 24;
+constexpr std::size_t MxcsrMaskOffset = 28;
+constexpr std::uint32_t DefaultMxcsrMask = 0xffbf;
+
+std::uint32_t FpWord(const GuestMcontext& m, std::size_t offset) {
+    std::uint32_t value = 0;
+    std::memcpy(&value, reinterpret_cast<const unsigned char*>(m.fpstate) + offset, sizeof(value));
+    return value;
+}
+
+void SetFpWord(GuestMcontext& m, std::size_t offset, std::uint32_t value) {
+    std::memcpy(reinterpret_cast<unsigned char*>(m.fpstate) + offset, &value, sizeof(value));
+}
+
+void CallHandler(GuestExceptionHandler handler, int signum, GuestUcontext& ucontext) {
+    auto& m = ucontext.mcontext;
+    const std::uint32_t mxcsrMask = FpWord(m, MxcsrMaskOffset);
+    handler(signum, &ucontext);
+    SetFpWord(m, MxcsrOffset, FpWord(m, MxcsrOffset) & (mxcsrMask != 0 ? mxcsrMask : DefaultMxcsrMask));
+    SetFpWord(m, MxcsrMaskOffset, mxcsrMask);
 }
 
 #ifdef _WIN32
@@ -152,7 +176,7 @@ void Deliver(GuestExceptionHandler handler, int signum, CONTEXT& context) {
     m.len = sizeof(GuestMcontext);
     static_assert(sizeof(context.FltSave) <= sizeof(m.fpstate));
     std::memcpy(m.fpstate, &context.FltSave, sizeof(context.FltSave));
-    handler(signum, &ucontext);
+    CallHandler(handler, signum, ucontext);
     context.Rdi = m.rdi;
     context.Rsi = m.rsi;
     context.Rdx = m.rdx;
@@ -172,6 +196,7 @@ void Deliver(GuestExceptionHandler handler, int signum, CONTEXT& context) {
     context.Rsp = m.rsp;
     context.EFlags = static_cast<DWORD>(m.rflags);
     std::memcpy(&context.FltSave, m.fpstate, sizeof(context.FltSave));
+    context.MxCsr = context.FltSave.MxCsr;
 }
 
 [[noreturn]] void RedirectedEntry(Delivery* delivery) {
@@ -279,105 +304,116 @@ bool RaiseOn(Pthread thread, GuestExceptionHandler handler, int signum) {
 }
 #else
 constexpr int HostSignal = SIGUSR1;
+constexpr std::size_t FxsaveRegisterBytes = 416;
 
-void FillGuest(GuestUcontext& guest, const ucontext_t& host) {
-    const auto& regs = host.uc_mcontext.gregs;
-    auto& m = guest.mcontext;
-    m.rdi = static_cast<std::uint64_t>(regs[REG_RDI]);
-    m.rsi = static_cast<std::uint64_t>(regs[REG_RSI]);
-    m.rdx = static_cast<std::uint64_t>(regs[REG_RDX]);
-    m.rcx = static_cast<std::uint64_t>(regs[REG_RCX]);
-    m.r8 = static_cast<std::uint64_t>(regs[REG_R8]);
-    m.r9 = static_cast<std::uint64_t>(regs[REG_R9]);
-    m.rax = static_cast<std::uint64_t>(regs[REG_RAX]);
-    m.rbx = static_cast<std::uint64_t>(regs[REG_RBX]);
-    m.rbp = static_cast<std::uint64_t>(regs[REG_RBP]);
-    m.r10 = static_cast<std::uint64_t>(regs[REG_R10]);
-    m.r11 = static_cast<std::uint64_t>(regs[REG_R11]);
-    m.r12 = static_cast<std::uint64_t>(regs[REG_R12]);
-    m.r13 = static_cast<std::uint64_t>(regs[REG_R13]);
-    m.r14 = static_cast<std::uint64_t>(regs[REG_R14]);
-    m.r15 = static_cast<std::uint64_t>(regs[REG_R15]);
-    m.rip = static_cast<std::uint64_t>(regs[REG_RIP]);
-    m.rsp = static_cast<std::uint64_t>(regs[REG_RSP]);
-    m.rflags = static_cast<std::uint64_t>(regs[REG_EFL]);
-#ifdef REG_CSGSFS
-    m.cs = static_cast<std::uint64_t>(regs[REG_CSGSFS]) & 0xffffu;
-    m.ss = (static_cast<std::uint64_t>(regs[REG_CSGSFS]) >> 48) & 0xffffu;
-#endif
+void FromHost(const mcontext_t& host, GuestMcontext& m) {
+    const auto* g = host.gregs;
+    m.rdi = g[REG_RDI];
+    m.rsi = g[REG_RSI];
+    m.rdx = g[REG_RDX];
+    m.rcx = g[REG_RCX];
+    m.r8 = g[REG_R8];
+    m.r9 = g[REG_R9];
+    m.rax = g[REG_RAX];
+    m.rbx = g[REG_RBX];
+    m.rbp = g[REG_RBP];
+    m.r10 = g[REG_R10];
+    m.r11 = g[REG_R11];
+    m.r12 = g[REG_R12];
+    m.r13 = g[REG_R13];
+    m.r14 = g[REG_R14];
+    m.r15 = g[REG_R15];
+    m.rip = g[REG_RIP];
+    m.rsp = g[REG_RSP];
+    m.rflags = g[REG_EFL];
+    m.cs = static_cast<std::uint64_t>(g[REG_CSGSFS]) & 0xffffu;
+    m.ss = static_cast<std::uint64_t>(g[REG_CSGSFS]) >> 48;
     m.len = sizeof(GuestMcontext);
-    if (host.uc_mcontext.fpregs != nullptr) {
-        static_assert(sizeof(*host.uc_mcontext.fpregs) <= sizeof(m.fpstate));
-        std::memcpy(m.fpstate, host.uc_mcontext.fpregs, sizeof(*host.uc_mcontext.fpregs));
+    static_assert(sizeof(*host.fpregs) <= sizeof(m.fpstate) && FxsaveRegisterBytes <= sizeof(*host.fpregs));
+    if (host.fpregs != nullptr) std::memcpy(m.fpstate, host.fpregs, sizeof(*host.fpregs));
+}
+
+void ToHost(const GuestMcontext& m, mcontext_t& host) {
+    auto* g = host.gregs;
+    g[REG_RDI] = static_cast<greg_t>(m.rdi);
+    g[REG_RSI] = static_cast<greg_t>(m.rsi);
+    g[REG_RDX] = static_cast<greg_t>(m.rdx);
+    g[REG_RCX] = static_cast<greg_t>(m.rcx);
+    g[REG_R8] = static_cast<greg_t>(m.r8);
+    g[REG_R9] = static_cast<greg_t>(m.r9);
+    g[REG_RAX] = static_cast<greg_t>(m.rax);
+    g[REG_RBX] = static_cast<greg_t>(m.rbx);
+    g[REG_RBP] = static_cast<greg_t>(m.rbp);
+    g[REG_R10] = static_cast<greg_t>(m.r10);
+    g[REG_R11] = static_cast<greg_t>(m.r11);
+    g[REG_R12] = static_cast<greg_t>(m.r12);
+    g[REG_R13] = static_cast<greg_t>(m.r13);
+    g[REG_R14] = static_cast<greg_t>(m.r14);
+    g[REG_R15] = static_cast<greg_t>(m.r15);
+    g[REG_RIP] = static_cast<greg_t>(m.rip);
+    g[REG_RSP] = static_cast<greg_t>(m.rsp);
+    g[REG_EFL] = static_cast<greg_t>(m.rflags);
+    if (host.fpregs != nullptr) std::memcpy(host.fpregs, m.fpstate, FxsaveRegisterBytes);
+}
+
+void Deliver(int, siginfo_t*, void* context) {
+    const auto handler = Handler(RaisedSignal);
+    if (handler == nullptr) {
+        static constexpr char message[] = "sceKernelRaiseException: the handler was removed before the signal was delivered\n";
+        const auto written = write(STDERR_FILENO, message, sizeof(message) - 1);
+        (void)written;
+        std::abort();
     }
+    auto& host = static_cast<ucontext_t*>(context)->uc_mcontext;
+    GuestUcontext ucontext{};
+    FromHost(host, ucontext.mcontext);
+    CallHandler(handler, RaisedSignal, ucontext);
+    ToHost(ucontext.mcontext, host);
 }
 
-void WriteGuest(ucontext_t& host, const GuestUcontext& guest) {
-    auto& regs = host.uc_mcontext.gregs;
-    const auto& m = guest.mcontext;
-    regs[REG_RDI] = static_cast<greg_t>(m.rdi);
-    regs[REG_RSI] = static_cast<greg_t>(m.rsi);
-    regs[REG_RDX] = static_cast<greg_t>(m.rdx);
-    regs[REG_RCX] = static_cast<greg_t>(m.rcx);
-    regs[REG_R8] = static_cast<greg_t>(m.r8);
-    regs[REG_R9] = static_cast<greg_t>(m.r9);
-    regs[REG_RAX] = static_cast<greg_t>(m.rax);
-    regs[REG_RBX] = static_cast<greg_t>(m.rbx);
-    regs[REG_RBP] = static_cast<greg_t>(m.rbp);
-    regs[REG_R10] = static_cast<greg_t>(m.r10);
-    regs[REG_R11] = static_cast<greg_t>(m.r11);
-    regs[REG_R12] = static_cast<greg_t>(m.r12);
-    regs[REG_R13] = static_cast<greg_t>(m.r13);
-    regs[REG_R14] = static_cast<greg_t>(m.r14);
-    regs[REG_R15] = static_cast<greg_t>(m.r15);
-    regs[REG_RIP] = static_cast<greg_t>(m.rip);
-    regs[REG_RSP] = static_cast<greg_t>(m.rsp);
-    regs[REG_EFL] = static_cast<greg_t>(m.rflags);
-    if (host.uc_mcontext.fpregs != nullptr)
-        std::memcpy(host.uc_mcontext.fpregs, m.fpstate, sizeof(*host.uc_mcontext.fpregs));
-}
-
-void HostSignalEntry(int, siginfo_t*, void* raw) {
-    const int savedErrno = errno;
-    if (const auto handler = Handler(RaisedSignal); handler != nullptr) {
-        auto& host = *static_cast<ucontext_t*>(raw);
-        GuestUcontext guest{};
-        FillGuest(guest, host);
-        handler(RaisedSignal, &guest);
-        WriteGuest(host, guest);
-    }
-    errno = savedErrno;
-}
-
-void EnsureHostSignal() {
-    static std::once_flag installed;
-    std::call_once(installed, [] {
-        struct sigaction action {};
-        action.sa_sigaction = HostSignalEntry;
+void InstallDelivery() {
+    static const bool installed = [] {
+        struct sigaction action{};
+        action.sa_sigaction = Deliver;
         action.sa_flags = SA_SIGINFO | SA_RESTART;
         sigemptyset(&action.sa_mask);
         if (sigaction(HostSignal, &action, nullptr) != 0)
             throw std::system_error(errno, std::generic_category(), "sceKernelRaiseException: cannot install the host signal handler");
-    });
+        return true;
+    }();
+    (void)installed;
 }
 
-bool RaiseOn(Pthread thread, GuestExceptionHandler handler, int signum) {
-    if (thread == scePthreadSelf()) {
-        ucontext_t host{};
-        if (getcontext(&host) != 0)
-            throw std::system_error(errno, std::generic_category(), "sceKernelRaiseException: cannot capture the current context");
-        GuestUcontext guest{};
-        FillGuest(guest, host);
-        handler(signum, &guest);
-        return true;
-    }
-    if (thread->hostThread == pthread_t{})
-        throw std::runtime_error("sceKernelRaiseException: the target thread has no host thread");
-    EnsureHostSignal();
+bool Send(Pthread thread) {
     const int result = pthread_kill(thread->hostThread, HostSignal);
-    if (result == 0) return true;
     if (result == ESRCH) return false;
-    throw std::system_error(result, std::generic_category(), "sceKernelRaiseException: cannot signal the target thread");
+    if (result != 0) throw std::system_error(result, std::generic_category(), "sceKernelRaiseException: cannot signal the target thread");
+    return true;
+}
+
+class HostSignalBlock {
+public:
+    HostSignalBlock() {
+        sigset_t blocked;
+        sigemptyset(&blocked);
+        sigaddset(&blocked, HostSignal);
+        pthread_sigmask(SIG_BLOCK, &blocked, &previous);
+    }
+    ~HostSignalBlock() { pthread_sigmask(SIG_SETMASK, &previous, nullptr); }
+    HostSignalBlock(const HostSignalBlock&) = delete;
+    HostSignalBlock& operator=(const HostSignalBlock&) = delete;
+
+private:
+    sigset_t previous;
+};
+
+bool RaiseOn(Pthread thread) {
+    InstallDelivery();
+    if (thread == scePthreadSelf()) return Send(thread);
+    HostSignalBlock block;
+    std::lock_guard lock(thread->_join_mtx);
+    if (thread->_finished.load(std::memory_order_acquire)) return false;
+    return Send(thread);
 }
 #endif
 
@@ -455,15 +491,13 @@ extern "C" {
 
 int APS5_VABI sceKernelInstallExceptionHandler(int signum, void* handler) {
  if (!Allowed(signum) || handler == nullptr) return SCE_KERNEL_ERROR_EINVAL;
- std::lock_guard lock(handlersLock);
- if (handlers[signum].load(std::memory_order_relaxed) != nullptr) return SCE_KERNEL_ERROR_EAGAIN;
- handlers[signum].store(handler, std::memory_order_release);
+ void* expected = nullptr;
+ if (!handlers[signum].compare_exchange_strong(expected, handler, std::memory_order_acq_rel)) return SCE_KERNEL_ERROR_EAGAIN;
  return 0;
 }
 
 int APS5_VABI sceKernelRemoveExceptionHandler(int signum) {
  if (!Allowed(signum)) return SCE_KERNEL_ERROR_EINVAL;
- std::lock_guard lock(handlersLock);
  handlers[signum].store(nullptr, std::memory_order_release);
  return 0;
 }
@@ -473,7 +507,11 @@ int APS5_VABI sceKernelRaiseException(Pthread thread, int signum) {
  if (thread == nullptr || thread->_finished.load(std::memory_order_acquire)) return SCE_KERNEL_ERROR_ESRCH;
  const auto handler = Handler(signum);
  if (handler == nullptr) throw std::runtime_error("sceKernelRaiseException: no handler installed for the signal");
+#ifdef _WIN32
  return RaiseOn(thread, handler, signum) ? 0 : SCE_KERNEL_ERROR_ESRCH;
+#else
+ return RaiseOn(thread) ? 0 : SCE_KERNEL_ERROR_ESRCH;
+#endif
 }
 
 void APS5_VABI sceKernelDebugRaiseException(int c1, int c2) {

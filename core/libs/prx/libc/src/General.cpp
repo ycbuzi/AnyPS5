@@ -1,3 +1,5 @@
+#include <atomic>
+#include <cstdio>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -11,6 +13,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <span>
 #include <system_error>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -20,6 +23,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <io.h>
 #else
 #include <ctime>
 #include <fcntl.h>
@@ -27,6 +31,7 @@
 #include <unistd.h>
 #endif
 #include "prx/libc/include/General.hpp"
+#include "prx/libc/include/AppArchive.hpp"
 #include "prx/libc/include/ApplicationHeap.hpp"
 
 namespace {
@@ -36,11 +41,12 @@ struct PathAliases {
     std::mutex mutex;
     std::vector<std::pair<std::string, std::string>> entries;
     std::vector<std::string> blocked;
+    std::vector<std::pair<std::string, PathProvider>> providers;
 };
 
 PathAliases& Aliases() {
-    static PathAliases aliases;
-    return aliases;
+    static auto* aliases = new PathAliases;
+    return *aliases;
 }
 
 std::string TrimSlashes(const char* path) {
@@ -68,31 +74,96 @@ bool HasPrefix(const std::string& path, const std::string& prefix) {
            (path.size() == prefix.size() || path[prefix.size()] == '/');
 }
 
-std::filesystem::path ResolveHostPath(std::filesystem::path root, const std::filesystem::path& relative) {
-    const auto direct = root / relative;
+std::filesystem::path RelinkedModuleName(std::filesystem::path path) {
+    path += ".guest.prx";
+    return path;
+}
+
+struct NameMatch {
+    std::string name;
+    std::optional<std::filesystem::path> path;
+    bool ambiguous = false;
+};
+
+std::error_code MatchNames(const std::filesystem::path& directory, std::span<NameMatch> names) {
+    std::error_code error;
+    std::filesystem::directory_iterator entry(directory, error), end;
+    for (; !error && entry != end; entry.increment(error)) {
+        const auto filename = entry->path().filename().string();
+        for (auto& name : names) {
+            if (!SameName(filename, name.name)) continue;
+            name.ambiguous = name.ambiguous || name.path.has_value();
+            name.path = entry->path();
+        }
+    }
+    return error;
+}
+
+std::filesystem::path MatchedModuleOrPath(const std::filesystem::path& path, const std::filesystem::path& relinked, const NameMatch& match) {
+    if (match.ambiguous) throw std::runtime_error("Ambiguous case-insensitive guest path: " + relinked.string());
+    std::error_code error;
+    return match.path && std::filesystem::is_regular_file(*match.path, error) ? *match.path : path;
+}
+
+std::filesystem::path PathOrRelinkedModule(const std::filesystem::path& path) {
+    std::error_code error;
+    if (std::filesystem::exists(std::filesystem::symlink_status(path, error))) return path;
+    return RelinkedModulePath_nid_no_patch(path);
+}
+
+std::vector<std::string> SplitNames(std::string_view text) {
+    std::vector<std::string> names;
+    while (!text.empty()) {
+        const auto separator = text.find('/');
+        names.emplace_back(text.substr(0, separator));
+        if (separator == std::string_view::npos) break;
+        text.remove_prefix(separator + 1);
+        if (text.empty()) names.emplace_back();
+    }
+    return names;
+}
+
+std::string JoinNames(const std::vector<std::string>& names) {
+    std::string joined;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i != 0) joined += '/';
+        joined += names[i];
+    }
+    return joined;
+}
+
+std::filesystem::path Child(std::filesystem::path parent, const std::string& name) {
+    parent /= "";
+    parent += name;
+    return parent;
+}
+
+std::filesystem::path ResolveHostPath(std::filesystem::path root, const std::vector<std::string>& relative, bool module = false) {
+    const auto direct = Child(root, JoinNames(relative));
     std::error_code error;
     if (std::filesystem::exists(direct, error)) return direct;
-    for (const auto& part : relative) {
-        const auto candidate = root / part;
+    for (auto part = relative.begin(); part != relative.end(); ++part) {
+        const auto candidate = Child(root, *part);
         const auto status = std::filesystem::symlink_status(candidate, error);
         if (std::filesystem::exists(status) || (error && error != std::errc::no_such_file_or_directory)) {
             root = candidate;
             continue;
         }
-        std::optional<std::filesystem::path> matched;
-        const auto name = part.string();
-        std::filesystem::directory_iterator entry(root, error), end;
-        for (; !error && entry != end; entry.increment(error)) {
-            if (!SameName(entry->path().filename().string(), name)) continue;
-            if (matched) throw std::runtime_error("Ambiguous case-insensitive guest path: " + candidate.string());
-            matched = entry->path();
-        }
-        root = !error && matched ? *matched : candidate;
+        const bool last = module && std::next(part) == relative.end();
+        const auto relinked = RelinkedModuleName(candidate);
+        NameMatch names[] = {{*part}, {relinked.filename().string()}};
+        error = MatchNames(root, std::span(names, last ? 2 : 1));
+        if (names[0].ambiguous) throw std::runtime_error("Ambiguous case-insensitive guest path: " + candidate.string());
+        const bool matched = !error && names[0].path;
+        root = matched ? *names[0].path : candidate;
+        if (!last || matched) continue;
+        if (std::filesystem::is_regular_file(relinked, error)) return relinked;
+        return MatchedModuleOrPath(candidate, relinked, names[1]);
     }
-    return root;
+    return module ? PathOrRelinkedModule(root) : root;
 }
 
-std::optional<std::filesystem::path> ResolveAlias(const std::string& guestPath) {
+std::optional<std::filesystem::path> ResolveAlias(const std::string& guestPath, bool module) {
     const auto relative = TrimSlashes(guestPath.c_str());
     auto& aliases = Aliases();
     std::lock_guard lock(aliases.mutex);
@@ -102,9 +173,18 @@ std::optional<std::filesystem::path> ResolveAlias(const std::string& guestPath) 
     }
     for (const auto& [prefix, host] : aliases.entries) {
         if (!HasPrefix(relative, prefix)) continue;
-        if (relative.size() == prefix.size()) return std::filesystem::path(host).make_preferred();
-        std::filesystem::path result = ResolveHostPath(host, relative.substr(prefix.size() + 1));
-        return result.make_preferred();
+        if (relative.size() == prefix.size()) {
+            const auto result = std::filesystem::path(host).make_preferred();
+            return module ? PathOrRelinkedModule(result) : result;
+        }
+#ifndef _WIN32
+        if (guestPath.back() == '/') {
+            auto result = ResolveHostPath(host, SplitNames(std::string_view(relative).substr(prefix.size() + 1)));
+            result /= "";
+            return module ? PathOrRelinkedModule(result) : result;
+        }
+#endif
+        return ResolveHostPath(host, SplitNames(std::string_view(relative).substr(prefix.size() + 1)), module).make_preferred();
     }
     return std::nullopt;
 }
@@ -114,19 +194,78 @@ struct WorkingDirectory {
     const std::filesystem::path root = std::filesystem::canonical(std::filesystem::current_path());
     std::filesystem::path current = root;
 };
-WorkingDirectory& Directories() { static WorkingDirectory state; return state; }
-std::filesystem::path Resolve(WorkingDirectory& state, const char* path) {
+WorkingDirectory& Directories() {
+    static auto* state = new WorkingDirectory;
+    return *state;
+}
+std::optional<std::filesystem::path> ProvidedPath(const WorkingDirectory& state, const std::vector<std::string>& names) {
+    const auto relative = TrimSlashes(JoinNames(names).c_str());
+    PathProvider provide = nullptr;
+    {
+        auto& aliases = Aliases();
+        std::lock_guard lock(aliases.mutex);
+        for (const auto& [path, provider] : aliases.providers) {
+            if (SameName(relative, path)) provide = provider;
+        }
+    }
+    if (provide == nullptr) return std::nullopt;
+    const auto supplied = ResolveHostPath(state.root, names);
+    std::error_code error;
+    if (std::filesystem::exists(supplied, error) || error) return supplied;
+    auto provided = provide(state.root);
+    if (provided.empty()) return std::nullopt;
+    return provided.make_preferred();
+}
+std::filesystem::path HostPath(WorkingDirectory& state, const std::vector<std::string>& names, bool module = false) {
+    if (auto aliased = ResolveAlias(JoinNames(names), module)) return *aliased;
+    if (auto provided = ProvidedPath(state, names)) return *provided;
+    return ResolveHostPath(state.root, names, module).make_preferred();
+}
+void RequireHostDirectory(WorkingDirectory& state, const std::vector<std::string>& names) {
+    const auto host = HostPath(state, names);
+    std::error_code error;
+    const auto status = std::filesystem::status(host, error);
+    if (std::filesystem::is_directory(status)) return;
+    if (!error) error = std::make_error_code(std::filesystem::exists(status) ? std::errc::not_a_directory : std::errc::no_such_file_or_directory);
+#ifdef _WIN32
+    if (error == std::errc::no_such_file_or_directory) {
+        for (auto prefix = host.parent_path(); prefix.has_relative_path(); prefix = prefix.parent_path()) {
+            std::error_code prefixError;
+            const auto prefixStatus = std::filesystem::status(prefix, prefixError);
+            if (!std::filesystem::exists(prefixStatus)) continue;
+            if (!std::filesystem::is_directory(prefixStatus)) error = std::make_error_code(std::errc::not_a_directory);
+            break;
+        }
+    }
+#endif
+    throw std::filesystem::filesystem_error("Guest path component is not a directory", host, error);
+}
+std::vector<std::string> WithTrailingSeparator(std::vector<std::string> names, bool trailing) {
+    if (trailing && !names.empty()) names.emplace_back();
+    return names;
+}
+std::filesystem::path Resolve(WorkingDirectory& state, const char* path, bool module = false, bool archived = false) {
     std::string text(path);
     for (auto& character : text) if (character == '\\') character = '/';
-    std::filesystem::path input(text);
 #ifdef _WIN32
     // Preserve the existing ability to pass explicit native drive paths.
-    if (input.has_root_name()) return input;
+    if (std::filesystem::path input(text); input.has_root_name()) return module ? PathOrRelinkedModule(input) : input;
 #endif
-    auto guest = (std::filesystem::path("/") / state.current.lexically_relative(state.root));
-    guest = (input.is_absolute() ? input : guest / input).lexically_normal();
-    if (auto aliased = ResolveAlias(guest.relative_path().generic_string())) return *aliased;
-    return ResolveHostPath(state.root, guest.relative_path()).make_preferred();
+    if (text.empty() || text.front() != '/') text = state.current.lexically_relative(state.root).generic_string() + "/" + text;
+    std::vector<std::string> names;
+    bool trailing = true;
+    const auto parts = SplitNames(text);
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        const auto& name = parts[i];
+        if (name.empty() && i + 1 != parts.size()) continue;
+        if (name == ".." && !names.empty()) {
+            if (!(archived && AppArchiveHasDirectory_nid_no_patch(HostPath(state, names)))) RequireHostDirectory(state, WithTrailingSeparator(names, trailing));
+            names.pop_back();
+        }
+        trailing = name.empty() || name == "." || name == "..";
+        if (!trailing) names.push_back(name);
+    }
+    return HostPath(state, WithTrailingSeparator(std::move(names), trailing), module);
 }
 #ifdef _WIN32
 using WriteMark = FILETIME;
@@ -209,7 +348,69 @@ int DirectoryFailure(const std::error_code& error) {
     if (error == std::errc::too_many_symbolic_link_levels) return 62;
     return 5;
 }
+int SetWorkingDirectory(WorkingDirectory& state, const std::filesystem::path& resolved) {
+    std::error_code error;
+    const auto canonical = std::filesystem::canonical(resolved, error);
+    if (error) return DirectoryFailure(error);
+    if (!std::filesystem::is_directory(canonical, error)) return error ? DirectoryFailure(error) : 20;
+    auto relative = canonical.lexically_relative(state.root);
+#ifdef _WIN32
+    if (relative.empty() || *relative.begin() == "..") {
+        auto ancestor = canonical;
+        while (!std::filesystem::equivalent(ancestor, state.root, error)) {
+            if (error) return DirectoryFailure(error);
+            const auto parent = ancestor.parent_path();
+            if (parent == ancestor) return 45;
+            ancestor = parent;
+        }
+        relative = canonical.lexically_relative(ancestor);
+    }
+#endif
+    if (relative.empty() || *relative.begin() == "..") return 45;
+#ifdef _WIN32
+    state.current = relative == "." ? state.root : state.root / relative;
+#else
+    state.current = canonical;
+#endif
+    return 0;
 }
+}
+
+#ifndef _WIN32
+namespace {
+std::mutex g_hostStandardErrorMutex;
+std::atomic<int> g_hostStandardError{-1};
+}
+
+extern "C" int KeepHostStandardError_nid_no_patch() {
+    const std::lock_guard lock(g_hostStandardErrorMutex);
+    if (const int kept = g_hostStandardError.load(); kept >= 0) return kept;
+    const int kept = ::fcntl(2, F_DUPFD_CLOEXEC, 3);
+    if (kept < 0) {
+        if (errno == EBADF) return -1;
+        throw std::system_error(errno, std::generic_category(), "Keeping the host standard error");
+    }
+    std::FILE* const stream = ::fdopen(kept, "w");
+    if (stream == nullptr) {
+        const int error = errno;
+        ::close(kept);
+        throw std::system_error(error, std::generic_category(), "Keeping the host standard error");
+    }
+    std::setvbuf(stream, nullptr, _IONBF, 0);
+    std::fflush(stderr);
+    stderr = stream;
+    g_hostStandardError.store(kept);
+    return kept;
+}
+
+extern "C" int HostStandardError_nid_no_patch() {
+    return g_hostStandardError.load();
+}
+
+extern "C" int DuplicateHostDescriptor_nid_no_patch(int descriptor) {
+    return ::fcntl(descriptor, F_DUPFD_CLOEXEC, 3);
+}
+#endif
 
 extern "C" void AddPathAlias_nid_no_patch(const char* guestPrefix, const char* hostPath) {
     if (guestPrefix == nullptr || hostPath == nullptr) {
@@ -226,6 +427,23 @@ extern "C" void AddPathAlias_nid_no_patch(const char* guestPrefix, const char* h
         }
     }
     aliases.entries.emplace_back(prefix, hostPath);
+}
+
+extern "C" void AddPathProvider_nid_no_patch(const char* guestPath, PathProvider provide) {
+    if (guestPath == nullptr || provide == nullptr) {
+        APS5_INVALID_ARG_EX;
+    }
+    const auto path = TrimSlashes(guestPath);
+    if (path.empty()) { APS5_INVALID_ARG_EX; }
+    auto& aliases = Aliases();
+    std::lock_guard lock(aliases.mutex);
+    for (auto& entry : aliases.providers) {
+        if (SameName(entry.first, path)) {
+            entry.second = provide;
+            return;
+        }
+    }
+    aliases.providers.emplace_back(path, provide);
 }
 
 extern "C" void RemovePathAlias_nid_no_patch(const char* guestPrefix) {
@@ -298,28 +516,75 @@ extern "C" void BlockPathAlias_nid_no_patch(const char* guestPrefix) {
     aliases.blocked.push_back(prefix);
 }
 
-extern "C" std::filesystem::path ResolvePath_nid_no_patch(const char* path) {
+static std::filesystem::path ResolveLocked(const char* path, bool module, bool archived) {
     if (!path) { APS5_INVALID_ARG_EX; }
+    if (archived) AppArchiveReady_nid_no_patch();
     auto& state = Directories();
     std::lock_guard lock(state.mutex);
-    return Resolve(state, path);
+    return Resolve(state, path, module, archived);
+}
+
+extern "C" std::filesystem::path ResolveDiskPath_nid_no_patch(const char* path) {
+    return ResolveLocked(path, false, false);
+}
+
+extern "C" std::filesystem::path ResolveArchivedPath_nid_no_patch(const char* path, bool module) {
+    return ResolveLocked(path, module, true);
+}
+
+extern "C" std::filesystem::path ResolvePath_nid_no_patch(const char* path) {
+    auto resolved = ResolveLocked(path, false, true);
+    AppArchiveRefuseOnly_nid_no_patch(resolved, path, "reading");
+    return resolved;
+}
+
+extern "C" std::filesystem::path ResolvePathOrRelinkedModule_nid_no_patch(const char* path) {
+    auto resolved = ResolveLocked(path, true, true);
+    AppArchiveRefuseOnly_nid_no_patch(resolved, path, "reading");
+    return resolved;
+}
+
+extern "C" std::filesystem::path RelinkedModulePath_nid_no_patch(const std::filesystem::path& path) {
+    const auto relinked = RelinkedModuleName(path);
+    std::error_code error;
+    if (std::filesystem::is_regular_file(relinked, error)) return relinked;
+    NameMatch names[] = {{relinked.filename().string()}};
+    MatchNames(relinked.parent_path().empty() ? "." : relinked.parent_path(), names);
+    return MatchedModuleOrPath(path, relinked, names[0]);
+}
+
+extern "C" int SetWorkingDirectory_nid_no_patch(const char* resolved) {
+    if (resolved == nullptr) return 14;
+    auto& state = Directories();
+    std::lock_guard lock(state.mutex);
+    try {
+        return SetWorkingDirectory(state, std::filesystem::path(reinterpret_cast<const char8_t*>(resolved)));
+    } catch (const std::bad_alloc&) {
+        return 12;
+    } catch (const std::filesystem::filesystem_error& error) {
+        return DirectoryFailure(error.code());
+    }
+}
+
+extern "C" bool FinalPathComponentIsDot_nid_no_patch(const char* path) {
+    std::string_view text(path);
+    while (!text.empty() && (text.back() == '/' || text.back() == '\\')) text.remove_suffix(1);
+    const auto separator = text.find_last_of("/\\");
+    const auto component = text.substr(separator == std::string_view::npos ? 0 : separator + 1);
+    return component == ".";
 }
 
 extern "C" int APS5_VABI chdir_nid_postfix(const char* path) {
     if (!path) { errno = 14; return -1; }
     if (!*path) { errno = 2; return -1; }
     try {
+        AppArchiveReady_nid_no_patch();
         auto& state = Directories();
         std::lock_guard lock(state.mutex);
-        std::error_code error;
-        const auto resolved = std::filesystem::canonical(Resolve(state, path), error);
-        if (error) { errno = DirectoryFailure(error); return -1; }
-        if (!std::filesystem::is_directory(resolved, error)) {
-            errno = error ? DirectoryFailure(error) : 20; return -1;
-        }
-        const auto relative = resolved.lexically_relative(state.root);
-        if (relative.empty() || *relative.begin() == "..") { errno = 45; return -1; }
-        state.current = resolved;
+        const auto resolved = Resolve(state, path, false, true);
+        AppArchiveRefuseOnly_nid_no_patch(resolved, path, "changing the working directory to");
+        const int error = SetWorkingDirectory(state, resolved);
+        if (error) { errno = error; return -1; }
         return 0;
     } catch (const std::bad_alloc&) { errno = 12; return -1; }
       catch (const std::filesystem::filesystem_error& error) { errno = DirectoryFailure(error.code()); return -1; }
@@ -337,8 +602,8 @@ extern "C" char* APS5_VABI getcwd_nid_postfix(char* buffer, std::size_t size) {
         const auto relative = state.current.lexically_relative(state.root);
         const auto path = relative == "." ? std::string("/") : "/" + relative.generic_string();
         const auto required = path.size() + 1;
-        if ((buffer || size) && size < required) { errno = 34; return nullptr; }
-        if (!buffer) buffer = static_cast<char*>(ApplicationHeapAllocate_nid_no_patch(size ? size : required));
+        if (buffer && size < required) { errno = 34; return nullptr; }
+        if (!buffer) buffer = static_cast<char*>(ApplicationHeapAllocate_nid_no_patch(required));
         if (!buffer) { errno = 12; return nullptr; }
         std::memcpy(buffer, path.c_str(), required);
         return buffer;
@@ -346,6 +611,69 @@ extern "C" char* APS5_VABI getcwd_nid_postfix(char* buffer, std::size_t size) {
       catch (const std::filesystem::filesystem_error& error) { errno = DirectoryFailure(error.code()); return nullptr; }
 }
 
-extern "C" void NotImplemented_nid_no_patch(const char* funcName) {
+#ifdef _WIN32
+extern "C" int WindowsOpenError_nid_no_patch(unsigned long error) {
+    switch (error) {
+    case ERROR_FILE_NOT_FOUND:
+    case ERROR_PATH_NOT_FOUND:
+    case ERROR_INVALID_DRIVE:
+    case ERROR_BAD_NETPATH:
+    case ERROR_BAD_NET_NAME:
+    case ERROR_BAD_PATHNAME:
+    case ERROR_FILENAME_EXCED_RANGE:
+        return ENOENT;
+    case ERROR_ACCESS_DENIED:
+    case ERROR_SHARING_VIOLATION:
+    case ERROR_LOCK_VIOLATION:
+    case ERROR_WRITE_PROTECT:
+    case ERROR_NETWORK_ACCESS_DENIED:
+    case ERROR_CANNOT_MAKE:
+    case ERROR_DRIVE_LOCKED:
+        return EACCES;
+    case ERROR_FILE_EXISTS:
+    case ERROR_ALREADY_EXISTS:
+        return EEXIST;
+    case ERROR_TOO_MANY_OPEN_FILES:
+        return EMFILE;
+    case ERROR_NOT_ENOUGH_MEMORY:
+    case ERROR_OUTOFMEMORY:
+        return ENOMEM;
+    case ERROR_DISK_FULL:
+        return ENOSPC;
+    default:
+        return EINVAL;
+    }
+}
+
+extern "C" _invalid_parameter_handler _set_thread_local_invalid_parameter_handler(_invalid_parameter_handler);
+static DWORD StandardHandleId(int descriptor) {
+    return descriptor == 0 ? STD_INPUT_HANDLE : descriptor == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE;
+}
+extern "C" void* HostStandardHandle_nid_no_patch(int descriptor) {
+    if (descriptor < 0 || descriptor > 2) return nullptr;
+    const HANDLE current = GetStdHandle(StandardHandleId(descriptor));
+    if (current == nullptr || current == INVALID_HANDLE_VALUE) return nullptr;
+    const auto previous = _set_thread_local_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, std::uintptr_t) {});
+    const auto owned = ::_get_osfhandle(descriptor);
+    _set_thread_local_invalid_parameter_handler(previous);
+    if (reinterpret_cast<HANDLE>(owned) != current) return current;
+    HANDLE kept = nullptr;
+    if (!DuplicateHandle(GetCurrentProcess(), current, GetCurrentProcess(), &kept, 0, TRUE, DUPLICATE_SAME_ACCESS))
+        throw std::runtime_error("Cannot keep the host standard handle of descriptor " + std::to_string(descriptor));
+    return kept;
+}
+extern "C" void KeepStandardHandle_nid_no_patch(int descriptor, void* handle) {
+    if (handle != nullptr && !SetStdHandle(StandardHandleId(descriptor), handle))
+        throw std::runtime_error("Cannot keep the host standard handle of descriptor " + std::to_string(descriptor));
+}
+extern "C" int DuplicateHostDescriptor_nid_no_patch(int descriptor) {
+    const auto previous = _set_thread_local_invalid_parameter_handler([](const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, std::uintptr_t) {});
+    const int kept = ::_dup(descriptor);
+    _set_thread_local_invalid_parameter_handler(previous);
+    return kept;
+}
+#endif
+
+extern "C" [[noreturn]] void NotImplemented_nid_no_patch(const char* funcName) {
     throw std::runtime_error(std::string(funcName) + " not implemented");
 }

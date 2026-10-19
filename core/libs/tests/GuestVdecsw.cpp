@@ -120,9 +120,12 @@ int APS5_VABI sceVdecswCreateDecoder(const DecoderConfigInfo*, const DecoderMemo
 int APS5_VABI sceVdecswDeleteDecoder(std::uint64_t);
 int APS5_VABI sceVdecswSetDecodeInput(std::uint64_t, const InputData*);
 int APS5_VABI sceVdecswTrySyncDecodeInput(std::uint64_t, InputResult*);
+int APS5_VABI sceVdecswSyncDecodeInput(std::uint64_t, InputResult*);
 int APS5_VABI sceVdecswSetDecodeOutput(std::uint64_t, const FrameBuffer*);
 int APS5_VABI sceVdecswTrySyncDecodeOutput(std::uint64_t, OutputInfo*);
+int APS5_VABI sceVdecswSyncDecodeOutput(std::uint64_t, OutputInfo*);
 int APS5_VABI sceVdecswGetAvcPictureInfo(const OutputInfo*, AvcPictureInfo*, AvcPictureInfo*);
+int APS5_VABI sceVdecswGetHevcPictureInfo(const OutputInfo*, void*);
 int APS5_VABI sceVdecswFinalizeDecodeSequence(std::uint64_t);
 int APS5_VABI sceVdecswResetDecoder(std::uint64_t);
 }
@@ -188,13 +191,13 @@ void testDecode() {
             }
             check(pictures < PictureHashes.size(), "more pictures than access units");
             check(output.isLastFrame == (pictures + 1 == PictureHashes.size()), "only the last picture of the finalized sequence is marked last");
-            check(!output.isErrorFrame && !output.isDiscardedFrame && output.pictureCount == 1 && output.frameWidth == Width && output.frameHeight == Height && output.frameBuffer == buffers[pictures % 2].data(), "unexpected picture geometry");
+            check(!output.isErrorFrame && !output.isDiscardedFrame && output.pictureCount == 1 && output.frameWidth == Width && output.frameHeight == CodedHeight && output.frameBuffer == buffers[pictures % 2].data(), "unexpected picture geometry");
             AvcPictureInfo info{sizeof(AvcPictureInfo)};
             check(sceVdecswGetAvcPictureInfo(&output, &info, nullptr) == 0 && info.isValid, "picture info missing");
             const auto unit = DisplayOrderUnits[pictures];
             check(info.ptsData == 1000 + unit && info.dtsData == unit && info.attachedData == 0xa0 + unit && info.idrPictureFlag == (pictures == 0 ? 1 : 0) && info.profileIdc == 100, "pictures out of display order");
-            check(info.picWidthInMbsMinus1 == Width / 16 - 1 && info.picHeightInMapUnitsMinus1 == (Height + 15) / 16 - 1 && info.frameMbsOnlyFlag == 1 && info.frameCroppingFlag == 1 && info.frameCropRightOffset == 0 && info.frameCropBottomOffset == ((Height + 15) / 16 * 16 - Height) / 2, "picture geometry in the picture info is wrong");
-            check(hashNv12(static_cast<const std::uint8_t*>(output.frameBuffer), output.framePitch) == PictureHashes[pictures], "picture " + std::to_string(pictures) + " differs from the reference");
+            check(info.picWidthInMbsMinus1 == Width / 16 - 1 && info.picHeightInMapUnitsMinus1 == CodedHeight / 16 - 1 && info.frameMbsOnlyFlag == 1 && info.frameCroppingFlag == 1 && info.frameCropLeftOffset == 0 && info.frameCropRightOffset == 0 && info.frameCropTopOffset == 0 && info.frameCropBottomOffset == (CodedHeight - Height) / 2, "picture geometry in the picture info is wrong");
+            check(hashNv12(static_cast<const std::uint8_t*>(output.frameBuffer), output.framePitch, output.frameHeight) == PictureHashes[pictures], "picture " + std::to_string(pictures) + " differs from the reference");
             ++pictures;
         }
     };
@@ -233,12 +236,37 @@ void testWithoutOutput() {
     check(sceVdecswTrySyncDecodeInput(session.decoder, &result) == InputQueueEmpty, "a reset decoder kept its inputs");
 }
 
+void testSyncWrappers() {
+    Session session;
+    InputResult idle{sizeof(InputResult)};
+    check(sceVdecswSyncDecodeInput(session.decoder, &idle) == InputQueueEmpty, "sync input on an idle decoder did not report an empty queue");
+    const auto units = accessUnits(false);
+    const InputData input{sizeof(InputData), units[0].data(), units[0].size(), 1000, 0, 0xa0};
+    check(sceVdecswSetDecodeInput(session.decoder, &input) == 0, "decode input was rejected");
+    InputResult result{sizeof(InputResult)};
+    check(sceVdecswSyncDecodeInput(session.decoder, &result) == 0 && result.decodedAu == units[0].data(), "sync input did not consume the access unit");
+    std::vector<std::uint8_t> buffer(session.memory.maxFrameBufferSize);
+    const FrameBuffer frame{sizeof(FrameBuffer), buffer.data(), buffer.size()};
+    check(sceVdecswSetDecodeOutput(session.decoder, &frame) == 0, "output buffer was rejected");
+    check(sceVdecswFinalizeDecodeSequence(session.decoder) == 0, "finalize failed");
+    OutputInfo output{sizeof(OutputInfo)};
+    check(sceVdecswSyncDecodeOutput(session.decoder, &output) == 0 && output.isValid && output.isLastFrame, "sync output did not return the finalized picture");
+    bool hevcThrows = false;
+    try {
+        sceVdecswGetHevcPictureInfo(&output, &result);
+    } catch (const std::exception&) {
+        hevcThrows = true;
+    }
+    check(hevcThrows, "GetHevcPictureInfo must still throw");
+}
+
 }
 
 int main() {
     try {
         testDecode();
         testWithoutOutput();
+        testSyncWrappers();
         std::puts("Vdecsw tests passed");
         return 0;
     } catch (const std::exception& error) {

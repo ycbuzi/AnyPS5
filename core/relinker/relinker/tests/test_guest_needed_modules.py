@@ -114,7 +114,12 @@ def main():
             artifact = case / "app0" / "sce_module" / "needed.prx.guest.prx"
             assert artifact.read_bytes().startswith(b"MZ" if windows else b"\x7fELF"), artifact
             assert list((case / "app0").rglob("*.guest.prx")) == [artifact]
-            assert "    sce_module/needed.prx.guest.prx\n" in result.stdout, result.stdout
+            layout = "        |-- sce_module/\n              |-- needed.prx.guest.prx\n"
+            assert layout in result.stdout, result.stdout
+            for spelling in (os.path.join(".", output.name), os.path.join("..", case.name, output.name)):
+                relative = subprocess.run([str(relinker), *(["--windows"] if windows else []), "input.elf", spelling], cwd=case,
+                                          capture_output=True, text=True, timeout=30)
+                assert relative.returncode == 0 and layout in relative.stdout, (spelling, relative.stdout, relative.stderr)
             if windows and os.name == "nt":
                 run = subprocess.run([str(output)], capture_output=True, text=True, timeout=30)
                 assert run.returncode == 42, (run.returncode, run.stdout, run.stderr)
@@ -141,6 +146,24 @@ def main():
                 if not windows:
                     needed = needed_libraries(output.read_bytes())
                     assert needed == [f"$ORIGIN/app0/{directory}/needed.prx.guest.prx"], needed
+
+            for requested, physical in ((b"needed.suprx", "needed.prx"),
+                                        (b"needed.prx", "needed.suprx"),
+                                        (b"needed.sprx", "needed.suprx"),
+                                        (b"needed.debug_prx", "needed.suprx")):
+                case = work / f"{windows}-suprx-alias-{requested.decode()}-{physical}"
+                (case / "sce_module").mkdir(parents=True)
+                (case / "sce_module" / physical).write_bytes(module_with_symbol(True))
+                result, output = convert(case, windows, requested)
+                assert result.returncode == 0, (result.stdout, result.stderr)
+                artifact = case / "app0" / "sce_module" / (physical + ".guest.prx")
+                assert artifact.is_file(), (requested, physical, result.stdout)
+                if not windows:
+                    needed = needed_libraries(output.read_bytes())
+                    assert needed == [f"$ORIGIN/app0/sce_module/{physical}.guest.prx"], needed
+                elif os.name == "nt":
+                    run = subprocess.run([str(output)], capture_output=True, text=True, timeout=30)
+                    assert run.returncode == 42, (run.returncode, run.stdout, run.stderr)
 
             if windows:
                 case = work / "debug-name-case"

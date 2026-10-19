@@ -6,9 +6,9 @@
 
 extern "C" {
 int APS5_VABI sceShareCaptureScreenshotExtended(const void* extended_param, std::int32_t* req_id);
-int APS5_VABI sceShareCaptureVideoClipExtended(const void* extended_param, std::int32_t* req_id);
 int APS5_VABI sceShareCaptureScreenshot(const void* param, std::int32_t* req_id);
 int APS5_VABI sceShareCaptureVideoClip(const void* param, std::int32_t* req_id);
+int APS5_VABI sceShareCaptureVideoClipExtended(const void* extended_param, std::int32_t* req_id);
 int APS5_VABI sceShareGetCurrentStatus(std::uint32_t feature_flag, void* status);
 int APS5_VABI sceShareOpenMenuForContent(const void* content_id);
 int APS5_VABI sceShareGetRunningStatus(std::uint32_t* status);
@@ -40,7 +40,6 @@ int main() {
         Require(capture(nullptr, nullptr) == notSupported);
     }
 
-    using Capture = int (APS5_VABI*)(const void*, std::int32_t*);
     for (Capture capture : {sceShareCaptureScreenshot, sceShareCaptureVideoClip}) {
         reqId = 7;
         Require(capture(param, &reqId) == notSupported);

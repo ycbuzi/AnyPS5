@@ -6,11 +6,13 @@
 namespace ShaderRecompiler::Detail {
 
 bool IsRawRead(const IrResourcePlan& program, const IrValue& inst) {
-    const auto op = inst.Opcode();
+    return IsRawRead(program, inst.Opcode(), inst.Flags<MemoryFlags>().index);
+}
+
+bool IsRawRead(const IrResourcePlan& program, IrOpcode op, std::uint32_t index) {
     if (op != IrOpcode::LoadAddressU32 && op != IrOpcode::ReadConstBuffer) {
         return false;
     }
-    const auto index = inst.Flags<MemoryFlags>().index;
     if (index >= program.memoryInfo.size()) {
         return false;
     }
@@ -70,6 +72,7 @@ bool IsRuntimeUniformOp(IrOpcode opcode) {
         case IrOpcode::ISub64:
         case IrOpcode::IMul32:
         case IrOpcode::IMul64:
+        case IrOpcode::SMin32:
         case IrOpcode::UMin32:
         case IrOpcode::ShiftLeftLogical32:
         case IrOpcode::ShiftLeftLogical64:
@@ -85,6 +88,7 @@ bool IsRuntimeUniformOp(IrOpcode opcode) {
         case IrOpcode::SelectU1:
         case IrOpcode::SelectU32:
         case IrOpcode::SelectF32:
+        case IrOpcode::SLessThan32:
         case IrOpcode::ULessThan32:
         case IrOpcode::IEqual32:
         case IrOpcode::UGreaterThan32:

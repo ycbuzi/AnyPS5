@@ -33,13 +33,24 @@ bool TranslationContext::float64Operation(const RdnaInstruction& inst, IrOpcode 
     return true;
 }
 
-bool TranslationContext::nonIeeeMinMaxF64(const RdnaInstruction& inst, IrOpcode opcode) {
-    const std::array<std::array<IrU32, 2>, 2> bits{readF64Bits(sourceAt(inst, 0u)), readF64Bits(sourceAt(inst, 1u))};
+bool TranslationContext::minMaxF64(const RdnaInstruction& inst, IrOpcode opcode) {
+    std::array<std::array<IrU32, 2>, 2> bits{readF64Bits(sourceAt(inst, 0u)), readF64Bits(sourceAt(inst, 1u))};
+    if (floatMode.has_value() && (floatMode->floatMode & 0x40u) == 0u) {
+        for (auto& value : bits) {
+            const IrU1 zeroExponent(ir.IEqual(ir.BitwiseAnd(value[1].Value(), ir.Constant(0x7ff00000u)), ir.Constant(0u)));
+            value[0] = IrU32(ir.Select(zeroExponent.Value(), ir.Constant(0u), value[0].Value()));
+            value[1] = IrU32(ir.Select(zeroExponent.Value(), ir.BitwiseAnd(value[1].Value(), ir.Constant(0x80000000u)), value[1].Value()));
+        }
+    }
     const auto isNan = [&](const std::array<IrU32, 2>& value) {
         IrValue& magnitude = ir.BitwiseAnd(value[1].Value(), ir.Constant(0x7fffffffu));
         return &ir.LogicalOr(ir.UGreaterThan(magnitude, ir.Constant(0x7ff00000u)), ir.LogicalAnd(ir.IEqual(magnitude, ir.Constant(0x7ff00000u)), ir.INotEqual(value[0].Value(), ir.Constant(0u))));
     };
     IrValue& plain = ir.Emit(opcode, IrType::U64, {&ir.ConstructU64(bits[0][0].Value(), bits[0][1].Value()), &ir.ConstructU64(bits[1][0].Value(), bits[1][1].Value())});
+    if (ieeeMode) {
+        writeF64Result(inst.destination, plain);
+        return true;
+    }
     IrValue* lhsNan = isNan(bits[0]);
     IrValue* rhsNan = isNan(bits[1]);
     std::array<IrValue*, 2> words{};
@@ -149,9 +160,14 @@ bool TranslationContext::vDivFmasF64(const RdnaInstruction& inst) {
 }
 
 bool TranslationContext::vDivFixupF64(const RdnaInstruction& inst) {
+    const auto flush = [&](const std::array<IrU32, 2>& word) {
+        if (!floatMode.has_value() || (floatMode->floatMode & 0x40u) != 0u) return word;
+        const IrU1 tiny(ir.IEqual(ir.BitwiseAnd(word[1].Value(), ir.Constant(0x7ff00000u)), ir.Constant(0u)));
+        return std::array<IrU32, 2>{IrU32(ir.Select(tiny.Value(), ir.Constant(0u), word[0].Value())), IrU32(ir.Select(tiny.Value(), ir.BitwiseAnd(word[1].Value(), ir.Constant(0x80000000u)), word[1].Value()))};
+    };
     const auto quotient = readF64Bits(sourceAt(inst, 0u));
-    const auto denominator = readF64Bits(sourceAt(inst, 1u));
-    const auto numerator = readF64Bits(sourceAt(inst, 2u));
+    const auto denominator = flush(readF64Bits(sourceAt(inst, 1u)));
+    const auto numerator = flush(readF64Bits(sourceAt(inst, 2u)));
     const auto magnitude = [&](IrU32 high) { return IrU32(ir.BitwiseAnd(high.Value(), ir.Constant(0x7fffffffu))); };
     const auto lowNonzero = [&](const std::array<IrU32, 2>& word) { return IrU1(ir.INotEqual(word[0].Value(), ir.Constant(0u))); };
     const auto isNan = [&](const std::array<IrU32, 2>& word) {

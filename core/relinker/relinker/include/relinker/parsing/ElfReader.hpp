@@ -15,11 +15,10 @@ public:
     std::vector<SectionHeader> ReadSectionHeaders() const override;
     std::vector<DynamicTag> ReadDynamicTags(const ProgramHeader& dynamicHeader) const override;
     FileByteOffset TranslateVirtualAddress(VirtualAddress address) const override;
-    std::vector<std::uint8_t> ReadSection(const SectionHeader& header) const override;
     std::vector<std::uint8_t> ReadSegment(const ProgramHeader& header) const override;
-    std::vector<ProgramHeader> ReadCodeSegments() const override;
     std::uint64_t GetFileSize() const override;
     const std::vector<std::uint8_t>& GetRawBytes() const override;
+    std::vector<std::uint8_t> TakeBytes();
 
 private:
     std::vector<std::uint8_t> _fileBuffer;

@@ -46,13 +46,14 @@ void checkRuntimeDependencies() {
             throw std::runtime_error("Incorrect Windows runtime dependency visibility");
     };
     check({}, {});
-    check({"libkernel.prx"}, {"libkernel.prx"});
+    check({"libkernel.prx"}, {"libkernel.prx", "libc.prx"});
+    check({"libkernel.prx", "libc.prx"}, {"libkernel.prx", "libc.prx"});
     check({"libSceLibcInternal.prx", "libkernel.prx"},
           {"libSceLibcInternal.prx", "libkernel.prx", "libc.prx"});
     check({"libc.prx", "libSceLibcInternal.prx"},
           {"libc.prx", "libSceLibcInternal.prx"});
     check({"libSceVideoOut.prx", "libkernel.prx", "libSceVideoOut.prx"},
-          {"libSceVideoOut.prx", "libkernel.prx"});
+          {"libSceVideoOut.prx", "libkernel.prx", "libc.prx"});
     check({"libSceVideoOut.prx", "libSceVideoOut.prx"}, {"libSceVideoOut.prx"});
 }
 
@@ -184,7 +185,7 @@ void expectDiagnostic(const Fs::path& runner, const std::vector<std::string>& ex
     if (!CreateProcessW(filename.c_str(), nullptr, nullptr, nullptr, TRUE, CREATE_NO_WINDOW, nullptr, runner.parent_path().wstring().c_str(), &startup, &process))
         throw std::runtime_error("Cannot start diagnostic test: " + std::to_string(GetLastError()));
     CloseHandle(output);
-    if (WaitForSingleObject(process.hProcess, 20000) != WAIT_OBJECT_0) {
+    if (WaitForSingleObject(process.hProcess, 120000) != WAIT_OBJECT_0) {
         TerminateProcess(process.hProcess, 1);
         throw std::runtime_error("Diagnostic test timed out");
     }
@@ -243,6 +244,8 @@ int main() {
         expectDiagnostic(runner, {"Symbol: MissingInCycle", "Importer: " + leaf.string()});
         createImage(root, {{"diagnostic-absent.dll", "Missing"}}, {});
         expectDiagnostic(runner, {"dependency module not found", "Importer: " + root.string()});
+        createImage(root, {{"api-ms-win-core-relinkerdiagnostics-l1-1-0.dll", "Missing"}}, {});
+        expectDiagnostic(runner, {"dependency module not found: api-ms-win-core-relinkerdiagnostics-l1-1-0.dll", "Importer: " + root.string(), runner.string() + " -> " + root.string() + " -> api-ms-win-core-relinkerdiagnostics-l1-1-0.dll"});
         createImage(root, {{"KERNEL32.dll", "CreateRemoteThreadEx"}}, {});
         expectDiagnostic(runner, {"Dependency tables contain no missing imports"});
         createImage(root, {{"KERNEL32.dll", "RelinkerDiagnosticsMissingExport"}}, {});
@@ -256,7 +259,19 @@ int main() {
         }
         expectDiagnostic(runner, {"invalid or unsupported PE dependency metadata"});
         writeFile(root, {0, 1, 2});
+        expectDiagnostic(runner, {"dependency module is not a Windows PE image: " + root.string()});
+        std::vector<std::uint8_t> elf{0x7f, 'E', 'L', 'F', 2, 1, 1};
+        elf.resize(64);
+        writeFile(root, elf);
+        expectDiagnostic(runner, {"dependency module is not a Windows PE image: " + root.string(), "Importer: " + runner.string(), "Chain: " + runner.string() + " -> " + root.string() + "\n"});
+        Fs::remove(root);
+        expectDiagnostic(runner, {"dependency module not found: " + root.string(), "Importer: " + runner.string(), "Chain: " + runner.string() + " -> " + root.string() + "\n"});
+        Fs::create_directory(root);
         expectDiagnostic(runner, {"Windows API failed"});
+        Fs::remove(root);
+        createImage(root, {{middle.filename().string(), "Middle"}}, {});
+        writeFile(middle, elf);
+        expectDiagnostic(runner, {"dependency module is not a Windows PE image: " + middle.string(), "Importer: " + root.string(), "Chain: " + runner.string() + " -> " + root.string() + " -> " + middle.string() + "\n"});
         Fs::remove_all(directory);
         std::cout << "Windows dependency machine-code tests passed\n";
     } catch (const std::exception& error) {

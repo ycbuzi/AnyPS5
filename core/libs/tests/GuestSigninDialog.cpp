@@ -1,6 +1,7 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 
 extern "C" {
 int APS5_VABI sceSigninDialogInitialize(void);
@@ -16,39 +17,61 @@ namespace {
 
 void Require(bool value) { if (!value) std::abort(); }
 
+constexpr int kStatusNone = 0;
+constexpr int kStatusInitialized = 1;
 constexpr int kStatusFinished = 3;
-constexpr int kResultUserCanceled = 1;
 constexpr int kErrNotInitialized = static_cast<int>(0x80B80003);
 constexpr int kErrAlreadyInitialized = static_cast<int>(0x80B80004);
 constexpr int kErrNotFinished = static_cast<int>(0x80B80005);
 constexpr int kErrArgNull = static_cast<int>(0x80B8000D);
+constexpr int kResultUserCanceled = 1;
 
 }
 
 int main() {
     std::int64_t param = 0;
     std::int32_t result[4];
+    std::memset(result, 0x5a, sizeof(result));
 
-    Require(sceSigninDialogGetStatus() == 0);
+    Require(sceSigninDialogTerminate() == kErrNotInitialized);
+    Require(sceSigninDialogOpen(&param) == kErrNotInitialized);
+    Require(sceSigninDialogClose() == kErrNotInitialized);
     Require(sceSigninDialogGetResult(result) == kErrNotInitialized);
+    Require(sceSigninDialogGetStatus() == kStatusNone);
+    Require(sceSigninDialogUpdateStatus() == kStatusNone);
 
     Require(sceSigninDialogInitialize() == 0);
     Require(sceSigninDialogInitialize() == kErrAlreadyInitialized);
-
-    Require(sceSigninDialogGetResult(result) == kErrNotFinished);
+    Require(sceSigninDialogGetStatus() == kStatusInitialized);
 
     Require(sceSigninDialogOpen(nullptr) == kErrArgNull);
+    Require(sceSigninDialogGetResult(result) == kErrNotFinished);
+
     Require(sceSigninDialogOpen(&param) == 0);
     Require(sceSigninDialogGetStatus() == kStatusFinished);
     Require(sceSigninDialogUpdateStatus() == kStatusFinished);
 
     Require(sceSigninDialogGetResult(nullptr) == kErrArgNull);
-    for (int i = 0; i < 4; ++i) result[i] = -1;
     Require(sceSigninDialogGetResult(result) == 0);
     Require(result[0] == kResultUserCanceled);
-    Require(result[1] == -1 && result[2] == -1 && result[3] == -1);
+    Require(result[1] == 0);
+    Require(result[2] == 0);
+    Require(result[3] == 0);
 
     Require(sceSigninDialogClose() == 0);
     Require(sceSigninDialogTerminate() == 0);
     Require(sceSigninDialogTerminate() == kErrNotInitialized);
+    Require(sceSigninDialogGetStatus() == kStatusNone);
+
+    Require(sceSigninDialogInitialize() == 0);
+    Require(sceSigninDialogGetStatus() == kStatusInitialized);
+    Require(sceSigninDialogClose() == 0);
+    Require(sceSigninDialogGetStatus() == kStatusFinished);
+    std::memset(result, 0xa5, sizeof(result));
+    Require(sceSigninDialogGetResult(result) == 0);
+    Require(result[0] == kResultUserCanceled);
+    Require(result[1] == 0);
+    Require(result[2] == 0);
+    Require(result[3] == 0);
+    Require(sceSigninDialogTerminate() == 0);
 }

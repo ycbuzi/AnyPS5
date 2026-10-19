@@ -20,7 +20,7 @@ namespace {
         if (ShaderWorkgroupInput(state) == nullptr) {
             FailEmit("function LDS was not prepared before function emission");
         }
-        state.ldsVariable = state.module.DefineGlobalVariable(TypeU32ArrayPointer(state, spv::StorageClassWorkgroup, LdsDwordCount(state) + (state.requirements.ldsLock ? 1u : 0u)), spv::StorageClassWorkgroup);
+        state.ldsVariable = state.module.DefineGlobalVariable(TypeU32ArrayPointer(state, spv::StorageClassWorkgroup, LdsStorageDwords(state)), spv::StorageClassWorkgroup);
         state.module.AddName(state.ldsVariable, "lds_dwords");
     }
 
@@ -37,8 +37,8 @@ std::uint32_t EmitShaderDataDwordLoad(SpirvEmitterState& state, std::uint32_t dw
     const auto pointer = state.module.AllocateId();
     const auto value = state.module.AllocateId();
     if (layout.UsesPushData()) {
-        const auto base = state.module.SpecializationConstant(TypeU32(state), PipelineSpecialization::PushDataOffset, layout.pushDataStartDword);
-        const auto index = Binary(state, spv::OpIAdd, TypeU32(state), Binary(state, spv::OpISub, TypeU32(state), base, ConstantU32(state, layout.PushSlotDword())), ConstantU32(state, dwordIndex));
+        const auto base = state.module.SpecializationConstant(TypeU32(state), PipelineSpecialization::PushDataOffset, state.stencilReplay ? layout.pushDataStartDword % PushData::DwordCount : layout.pushDataStartDword);
+        const auto index = Binary(state, spv::OpIAdd, TypeU32(state), Binary(state, spv::OpISub, TypeU32(state), base, ConstantU32(state, state.stencilReplay ? 0u : layout.PushSlotDword())), ConstantU32(state, dwordIndex));
         state.module.AddFunction(spv::OpAccessChain, TypePushConstantElementPointer(state), pointer, state.pushConstantVariable, ConstantU32(state, 0), index);
     } else if (state.shaderDataStorageVariable != 0) {
         state.module.AddFunction(spv::OpAccessChain, TypeStorageBufferElementPointer(state), pointer, state.shaderDataStorageVariable, ConstantU32(state, 0), ConstantU32(state, dwordIndex));
@@ -111,6 +111,15 @@ std::uint32_t EmitLdsLockPointer(SpirvEmitterState& state) {
     return pointer;
 }
 
+std::uint32_t EmitLdsBufferU64Pointer(SpirvEmitterState& state, std::uint32_t index) {
+    if (!state.requirements.ldsBufferInt64Atomics || state.ldsBufferU64Variable == 0u || state.ldsBufferBase == 0u) {
+        FailEmit("64-bit device memory LDS atomics were not prepared at function entry");
+    }
+    const auto pointer = state.module.AllocateId();
+    state.module.AddFunction(spv::OpAccessChain, TypePointer(state, spv::StorageClassStorageBuffer, TypeScalarU64(state)), pointer, state.ldsBufferU64Variable, ConstantU32(state, 0u), EmitBinaryU32(state, spv::OpShiftRightLogical, EmitAddU32(state, state.ldsBufferBase, index), ConstantU32(state, 1u)));
+    return pointer;
+}
+
 MemoryResourceAccess PrepareMemoryResourceAccess(SpirvEmitterState& state, const MemoryInfo& mem) {
     MemoryResourceAccess access;
     access.kind = mem.kind;
@@ -168,13 +177,38 @@ std::uint32_t EmitMemoryElementInBounds(SpirvEmitterState& state, const MemoryRe
     return inBounds;
 }
 
+bool InFunctionStorage(const SpirvEmitterState& state, ResourceKind kind) {
+    if (kind == ResourceKind::Scratch) return true;
+    return kind == ResourceKind::Lds && !LdsInDeviceMemory(state) && ShaderWorkgroupInput(state) == nullptr;
+}
+
+std::uint32_t EmitValueOrZero(SpirvEmitterState& state, std::uint32_t condition, std::uint32_t value) {
+    return Select(state, TypeU32(state), condition, value, ConstantU32(state, 0u));
+}
+
+std::uint32_t LdsStorageDwords(const SpirvEmitterState& state) {
+    return LdsDwordCount(state) + (state.requirements.ldsLock ? 1u : 0u);
+}
+
+bool LoadsSelectable(const SpirvEmitterState& state, const MemoryResourceAccess& access) {
+    if (access.kind == ResourceKind::Scratch) return true;
+    if (access.kind == ResourceKind::Lds) return false;
+    return state.robustBufferAccess2;
+}
+
+std::uint32_t GuardedElementIndex(SpirvEmitterState& state, const MemoryResourceAccess& access, std::uint32_t condition, std::uint32_t index) {
+    if (access.kind == ResourceKind::Lds) FailEmit("LDS loads keep their branch and have no guarded element");
+    const auto fallback = access.kind == ResourceKind::Scratch ? 0u : 0xfffffffeu;
+    return Select(state, TypeU32(state), condition, index, ConstantU32(state, fallback));
+}
+
 std::uint32_t EmitMemoryElementPointer(SpirvEmitterState& state, const MemoryResourceAccess& access, std::uint32_t index) {
     if (access.kind == ResourceKind::Lds && LdsInDeviceMemory(state)) {
         return EmitStorageBufferElementPointer(state, access, EmitAddU32(state, state.ldsBufferBase, index), TypeStorageBufferElementPointer(state));
     }
     if (access.kind == ResourceKind::Lds || access.kind == ResourceKind::Scratch) {
         const auto pointer = state.module.AllocateId();
-        const std::uint32_t storageClass = access.kind == ResourceKind::Scratch ? spv::StorageClassFunction : ShaderWorkgroupInput(state) != nullptr ? spv::StorageClassWorkgroup : spv::StorageClassFunction;
+        const std::uint32_t storageClass = InFunctionStorage(state, access.kind) ? spv::StorageClassFunction : spv::StorageClassWorkgroup;
         state.module.AddFunction(spv::OpAccessChain, TypeU32ElementPointer(state, storageClass), pointer, access.objectPointer, index);
         return pointer;
     }

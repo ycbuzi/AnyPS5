@@ -1,6 +1,6 @@
 #include "prx/libc/include/general/AsmMacros.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
-#include "prx/libkernel/System/include/GuestContext.hpp"
+#include "prx/libkernel/System/include/UserContext.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -16,15 +16,17 @@
 using ContextEntry = void (APS5_VABI*)();
 
 extern "C" {
-[[gnu::returns_twice]] int APS5_VABI getcontext_nid_postfix(GuestUcontext* context);
-int APS5_VABI setcontext_nid_postfix(const GuestUcontext* context);
-void APS5_VABI makecontext_nid_postfix(GuestUcontext* context, ContextEntry entry, int count, ...);
+[[gnu::returns_twice]] int APS5_VABI getcontext_nid_postfix(UserUcontext* context);
+int APS5_VABI setcontext_nid_postfix(const UserUcontext* context);
+void APS5_VABI makecontext_nid_postfix(UserUcontext* context, ContextEntry entry, int count, ...);
 [[gnu::returns_twice]] int APS5_VABI setjmp_nid_postfix(std::uint64_t* buffer);
 [[noreturn]] void APS5_VABI longjmp_nid_postfix(std::uint64_t* buffer, int value);
+[[gnu::returns_twice]] int APS5_VABI sigsetjmp_nid_postfix(std::uint64_t* buffer, int saveMask);
+[[noreturn]] void APS5_VABI siglongjmp_nid_postfix(std::uint64_t* buffer, int value);
 int APS5_VABI sigprocmask_nid_postfix(int how, const void* set, void* previousSet);
 int* APS5_VABI __error_nid_postfix();
 
-int APS5_VABI CaptureKnownRegisters(GuestUcontext* context);
+int APS5_VABI CaptureKnownRegisters(UserUcontext* context);
 void CaptureReturnAddress();
 void RecordRegisters();
 void APS5_VABI EntryThunk();
@@ -35,7 +37,7 @@ std::uint64_t RecordedRegisters[18] = {};
 std::uint32_t RecordedMxcsr = 0;
 std::uint16_t RecordedControlWord = 0;
 alignas(16) std::uint8_t RecordedXmm[16 * 16] = {};
-GuestUcontext ReturnContext = {};
+UserUcontext ReturnContext = {};
 }
 
 asm(".text\n"
@@ -61,9 +63,9 @@ asm(".text\n"
     "    movabsq $0xcccccccccccccccc, %r11\n"
     "    movabsq $0xdddddddddddddddd, %rdx\n"
     "    movabsq $0xeeeeeeeeeeeeeeee, %rax\n"
-    "    mov %rsp, CapturedStackPointer(%rip)\n"
+    "    mov %rsp, " APS5_ASM_SYMBOL("CapturedStackPointer") "(%rip)\n"
     "    stc\n"
-    "    call getcontext_nid_postfix\n"
+    "    call " APS5_ASM_SYMBOL("getcontext_nid_postfix") "\n"
     APS5_ASM_FUNCTION("CaptureReturnAddress")
     "    add $8, %rsp\n"
     "    pop %r15\n"
@@ -75,50 +77,50 @@ asm(".text\n"
     "    ret\n"
     APS5_ASM_FUNCTION("RecordRegisters")
     "    pushfq\n"
-    "    mov %rax, RecordedRegisters+0x00(%rip)\n"
+    "    mov %rax, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x00(%rip)\n"
     "    pop %rax\n"
-    "    mov %rax, RecordedRegisters+0x88(%rip)\n"
-    "    mov %rbx, RecordedRegisters+0x08(%rip)\n"
-    "    mov %rcx, RecordedRegisters+0x10(%rip)\n"
-    "    mov %rdx, RecordedRegisters+0x18(%rip)\n"
-    "    mov %rsi, RecordedRegisters+0x20(%rip)\n"
-    "    mov %rdi, RecordedRegisters+0x28(%rip)\n"
-    "    mov %rbp, RecordedRegisters+0x30(%rip)\n"
-    "    mov %rsp, RecordedRegisters+0x38(%rip)\n"
-    "    mov %r8, RecordedRegisters+0x40(%rip)\n"
-    "    mov %r9, RecordedRegisters+0x48(%rip)\n"
-    "    mov %r10, RecordedRegisters+0x50(%rip)\n"
-    "    mov %r11, RecordedRegisters+0x58(%rip)\n"
-    "    mov %r12, RecordedRegisters+0x60(%rip)\n"
-    "    mov %r13, RecordedRegisters+0x68(%rip)\n"
-    "    mov %r14, RecordedRegisters+0x70(%rip)\n"
-    "    mov %r15, RecordedRegisters+0x78(%rip)\n"
-    "    stmxcsr RecordedMxcsr(%rip)\n"
-    "    fnstcw RecordedControlWord(%rip)\n"
-    "    movdqu %xmm0, RecordedXmm+0x00(%rip)\n"
-    "    movdqu %xmm1, RecordedXmm+0x10(%rip)\n"
-    "    movdqu %xmm2, RecordedXmm+0x20(%rip)\n"
-    "    movdqu %xmm3, RecordedXmm+0x30(%rip)\n"
-    "    movdqu %xmm4, RecordedXmm+0x40(%rip)\n"
-    "    movdqu %xmm5, RecordedXmm+0x50(%rip)\n"
-    "    movdqu %xmm6, RecordedXmm+0x60(%rip)\n"
-    "    movdqu %xmm7, RecordedXmm+0x70(%rip)\n"
-    "    movdqu %xmm8, RecordedXmm+0x80(%rip)\n"
-    "    movdqu %xmm9, RecordedXmm+0x90(%rip)\n"
-    "    movdqu %xmm10, RecordedXmm+0xa0(%rip)\n"
-    "    movdqu %xmm11, RecordedXmm+0xb0(%rip)\n"
-    "    movdqu %xmm12, RecordedXmm+0xc0(%rip)\n"
-    "    movdqu %xmm13, RecordedXmm+0xd0(%rip)\n"
-    "    movdqu %xmm14, RecordedXmm+0xe0(%rip)\n"
-    "    movdqu %xmm15, RecordedXmm+0xf0(%rip)\n"
+    "    mov %rax, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x88(%rip)\n"
+    "    mov %rbx, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x08(%rip)\n"
+    "    mov %rcx, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x10(%rip)\n"
+    "    mov %rdx, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x18(%rip)\n"
+    "    mov %rsi, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x20(%rip)\n"
+    "    mov %rdi, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x28(%rip)\n"
+    "    mov %rbp, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x30(%rip)\n"
+    "    mov %rsp, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x38(%rip)\n"
+    "    mov %r8, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x40(%rip)\n"
+    "    mov %r9, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x48(%rip)\n"
+    "    mov %r10, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x50(%rip)\n"
+    "    mov %r11, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x58(%rip)\n"
+    "    mov %r12, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x60(%rip)\n"
+    "    mov %r13, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x68(%rip)\n"
+    "    mov %r14, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x70(%rip)\n"
+    "    mov %r15, " APS5_ASM_SYMBOL("RecordedRegisters") "+0x78(%rip)\n"
+    "    stmxcsr " APS5_ASM_SYMBOL("RecordedMxcsr") "(%rip)\n"
+    "    fnstcw " APS5_ASM_SYMBOL("RecordedControlWord") "(%rip)\n"
+    "    movdqu %xmm0, " APS5_ASM_SYMBOL("RecordedXmm") "+0x00(%rip)\n"
+    "    movdqu %xmm1, " APS5_ASM_SYMBOL("RecordedXmm") "+0x10(%rip)\n"
+    "    movdqu %xmm2, " APS5_ASM_SYMBOL("RecordedXmm") "+0x20(%rip)\n"
+    "    movdqu %xmm3, " APS5_ASM_SYMBOL("RecordedXmm") "+0x30(%rip)\n"
+    "    movdqu %xmm4, " APS5_ASM_SYMBOL("RecordedXmm") "+0x40(%rip)\n"
+    "    movdqu %xmm5, " APS5_ASM_SYMBOL("RecordedXmm") "+0x50(%rip)\n"
+    "    movdqu %xmm6, " APS5_ASM_SYMBOL("RecordedXmm") "+0x60(%rip)\n"
+    "    movdqu %xmm7, " APS5_ASM_SYMBOL("RecordedXmm") "+0x70(%rip)\n"
+    "    movdqu %xmm8, " APS5_ASM_SYMBOL("RecordedXmm") "+0x80(%rip)\n"
+    "    movdqu %xmm9, " APS5_ASM_SYMBOL("RecordedXmm") "+0x90(%rip)\n"
+    "    movdqu %xmm10, " APS5_ASM_SYMBOL("RecordedXmm") "+0xa0(%rip)\n"
+    "    movdqu %xmm11, " APS5_ASM_SYMBOL("RecordedXmm") "+0xb0(%rip)\n"
+    "    movdqu %xmm12, " APS5_ASM_SYMBOL("RecordedXmm") "+0xc0(%rip)\n"
+    "    movdqu %xmm13, " APS5_ASM_SYMBOL("RecordedXmm") "+0xd0(%rip)\n"
+    "    movdqu %xmm14, " APS5_ASM_SYMBOL("RecordedXmm") "+0xe0(%rip)\n"
+    "    movdqu %xmm15, " APS5_ASM_SYMBOL("RecordedXmm") "+0xf0(%rip)\n"
     "    cld\n"
-    "    lea ReturnContext(%rip), %rdi\n"
+    "    lea " APS5_ASM_SYMBOL("ReturnContext") "(%rip), %rdi\n"
     "    and $-16, %rsp\n"
-    "    call setcontext_nid_postfix\n"
+    "    call " APS5_ASM_SYMBOL("setcontext_nid_postfix") "\n"
     "    ud2\n"
     APS5_ASM_FUNCTION("EntryThunk")
-    "    mov %rsp, EntryStackPointer(%rip)\n"
-    "    jmp ContextBody\n");
+    "    mov %rsp, " APS5_ASM_SYMBOL("EntryStackPointer") "(%rip)\n"
+    "    jmp " APS5_ASM_SYMBOL("ContextBody") "\n");
 
 namespace {
 
@@ -136,7 +138,7 @@ struct alignas(16) Stack {
 };
 
 struct Fibre {
-    GuestUcontext context;
+    UserUcontext context;
     std::uint64_t jump[12];
     int started;
 };
@@ -147,9 +149,11 @@ Stack g_jobStack;
 Stack g_exitStack;
 std::uint64_t g_arguments[6] = {};
 int g_entries = 0;
+bool g_contextChainEnded = false;
 Fibre g_dispatcher = {};
 Fibre g_job = {};
 int g_jobRuns = 0;
+bool g_signalJumps = false;
 
 void Require(bool value, const char* what) {
     if (!value) {
@@ -190,6 +194,23 @@ void ThrowAndCatch() {
     Require(caught, "a host exception is caught on a context stack");
 }
 
+[[gnu::noinline]] void WalkContextChain() {
+    auto* frame = static_cast<std::uintptr_t*>(__builtin_frame_address(0));
+    const auto low = reinterpret_cast<std::uintptr_t>(g_contextStack.bytes);
+    const auto high = low + StackBytes;
+    for (int depth = 0; depth < 100; ++depth) {
+        const auto address = reinterpret_cast<std::uintptr_t>(frame);
+        if (address < low || address + 2 * sizeof(std::uintptr_t) > high) return;
+        if (frame[1] == 0) {
+            g_contextChainEnded = frame[0] == 0;
+            return;
+        }
+        auto* next = reinterpret_cast<std::uintptr_t*>(frame[0]);
+        if (reinterpret_cast<std::uintptr_t>(next) <= address) return;
+        frame = next;
+    }
+}
+
 [[gnu::noinline]] void GrowStack(int depth) {
     volatile unsigned char page[16 * 1024];
     page[0] = static_cast<unsigned char>(depth);
@@ -203,17 +224,17 @@ void CheckErrors() {
     Require(getcontext_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == GuestEinval, "getcontext rejects a null context");
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(nullptr) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects a null context");
-    GuestUcontext context{};
+    UserUcontext context{};
     Require(getcontext_nid_postfix(&context) == 0, "capture a context to corrupt");
     context.mcontext.len = 0;
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(&context) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects a wrong mc_len");
-    context.mcontext.len = sizeof(GuestMcontext);
+    context.mcontext.len = sizeof(UserMcontext);
     context.mcontext.flags = 0x8;
     *__error_nid_postfix() = 0;
     Require(setcontext_nid_postfix(&context) == -1 && *__error_nid_postfix() == GuestEinval, "setcontext rejects unknown mc_flags");
     context.mcontext.flags = 0;
-    GuestUcontext invalid = context;
+    UserUcontext invalid = context;
     invalid.stackPointer = g_contextStack.bytes;
     invalid.stackSize = StackBytes;
     makecontext_nid_postfix(&invalid, &EntryThunk, 7);
@@ -238,9 +259,9 @@ void CheckErrors() {
 }
 
 void CheckCapture() {
-    GuestUcontext context;
+    UserUcontext context;
     std::memset(&context, 0xa5, sizeof(context));
-    GuestUcontext untouched;
+    UserUcontext untouched;
     std::memset(&untouched, 0xa5, sizeof(untouched));
     std::uint32_t previous[4] = {};
     const std::uint32_t blocked[4] = {0x24, 0, 0, 0};
@@ -259,24 +280,23 @@ void CheckCapture() {
     Require((machine.rflags & 1) == 0, "getcontext clears the carry flag");
     Require(machine.rip == reinterpret_cast<std::uint64_t>(&CaptureReturnAddress), "getcontext saves its return address");
     Require(machine.rsp == CapturedStackPointer, "getcontext saves the caller's stack pointer");
-    Require(machine.len == sizeof(GuestMcontext) && machine.fpformat == 0x10002 && machine.ownedfp == 0x20001, "getcontext sets mc_len, mc_fpformat and mc_ownedfp");
+    Require(machine.len == sizeof(UserMcontext) && machine.fpformat == 0x10002 && machine.ownedfp == 0x20001, "getcontext sets mc_len, mc_fpformat and mc_ownedfp");
     Require(machine.onstack == 0 && machine.trapno == 0 && machine.addr == 0 && machine.flags == 0 && machine.err == 0, "getcontext zeroes the trap fields");
-    Require(machine.fsbase == 0 && machine.gsbase == 0 && machine.lbrfrom == 0 && machine.lbrto == 0 && machine.aux1 == 0 && machine.aux2 == 0, "getcontext zeroes the bases and branch records");
+    Require(machine.fsbase == 0 && machine.gsbase == 0 && machine.xfpustate == 0 && machine.xfpustateLength == 0, "getcontext zeroes the bases and the extended FPU state");
+    for (const auto word : machine.spare) Require(word == 0, "getcontext zeroes mc_spare");
     Require(context.sigmask[0] == 0x24 && context.sigmask[1] == 0 && context.sigmask[2] == 0 && context.sigmask[3] == 0, "getcontext saves the signal mask");
-    for (const auto word : context.reserved) Require(word == 0, "getcontext zeroes the words after the signal mask");
     std::uint32_t mxcsr = 0;
     std::memcpy(&mxcsr, reinterpret_cast<const std::uint8_t*>(machine.fpstate) + FxsaveMxcsr, sizeof(mxcsr));
     std::uint16_t control = 0;
     std::memcpy(&control, machine.fpstate, sizeof(control));
     Require(mxcsr == _mm_getcsr() && control == ControlWord(), "getcontext saves MXCSR and the x87 control word");
-    for (std::size_t index = 64; index < 104; ++index) Require(machine.fpstate[index] == 0, "getcontext zeroes mc_fpstate after the FXSAVE image");
-    Require(std::memcmp(&context.link, &untouched.link, sizeof(GuestUcontext) - offsetof(GuestUcontext, link)) == 0, "getcontext keeps uc_link, uc_stack and uc_flags");
+    Require(std::memcmp(&context.link, &untouched.link, sizeof(UserUcontext) - offsetof(UserUcontext, link)) == 0, "getcontext keeps uc_link, uc_stack and uc_flags");
 }
 
 void CheckRestore() {
     const auto mxcsrBefore = _mm_getcsr();
     const auto controlBefore = ControlWord();
-    GuestUcontext target{};
+    UserUcontext target{};
     volatile int phase = 0;
     Require(getcontext_nid_postfix(&ReturnContext) == 0, "capture the return context");
     if (phase == 0) {
@@ -339,6 +359,7 @@ extern "C" void APS5_VABI ContextBody(std::uint64_t first, std::uint64_t second,
     g_arguments[4] = fifth;
     g_arguments[5] = sixth;
     CheckStackBounds(&g_contextStack, "the stack bounds follow setcontext onto the context stack");
+    WalkContextChain();
     ThrowAndCatch();
     ++g_entries;
 }
@@ -349,6 +370,14 @@ namespace {
 
 [[gnu::noinline]] void Switch(Fibre* from, Fibre* to) {
     from->started = 1;
+    if (g_signalJumps) {
+        if (sigsetjmp_nid_postfix(from->jump, 1) == 0) {
+            if (to->started) siglongjmp_nid_postfix(to->jump, 1);
+            setcontext_nid_postfix(&to->context);
+            Require(false, "setcontext into the job returned");
+        }
+        return;
+    }
     if (setjmp_nid_postfix(from->jump) == 0) {
         if (to->started) longjmp_nid_postfix(to->jump, 1);
         setcontext_nid_postfix(&to->context);
@@ -361,7 +390,7 @@ namespace {
 extern "C" void APS5_VABI JobEntry() {
     for (;;) {
         ++g_jobRuns;
-        CheckStackBounds(&g_jobStack, "the stack bounds follow longjmp onto the job stack");
+        CheckStackBounds(&g_jobStack, g_signalJumps ? "the stack bounds follow siglongjmp onto the job stack" : "the stack bounds follow longjmp onto the job stack");
         ThrowAndCatch();
         Switch(&g_job, &g_dispatcher);
     }
@@ -375,8 +404,8 @@ void CheckMakecontext() {
     ULONG_PTR threadHigh = 0;
     GetCurrentThreadStackLimits(&threadLow, &threadHigh);
 #endif
-    GuestUcontext caller{};
-    GuestUcontext context{};
+    UserUcontext caller{};
+    UserUcontext context{};
     volatile int phase = 0;
     Require(getcontext_nid_postfix(&caller) == 0, "capture the caller");
     if (phase == 0) {
@@ -386,11 +415,12 @@ void CheckMakecontext() {
         context.stackSize = StackBytes;
         context.link = &caller;
         makecontext_nid_postfix(&context, &EntryThunk, 6, 0x8000000000000001ull, 0x8000000000000002ull, 0x8000000000000003ull, 0x8000000000000004ull, 0x8000000000000005ull, 0x8000000000000006ull);
-        Require(context.mcontext.len == sizeof(GuestMcontext), "makecontext keeps the context valid");
+        Require(context.mcontext.len == sizeof(UserMcontext), "makecontext keeps the context valid");
         setcontext_nid_postfix(&context);
         Require(false, "setcontext into the made context returned");
     }
     Require(g_entries == 1, "the made context runs once and resumes uc_link");
+    Require(g_contextChainEnded, "the frame chain of a made context ends on its stack at a frame whose saved frame pointer and return address are 0");
     for (unsigned index = 0; index < 6; ++index) Require(g_arguments[index] == 0x8000000000000001ull + index, "makecontext passes six 64-bit arguments");
     const auto stackLow = reinterpret_cast<std::uint64_t>(g_contextStack.bytes);
     Require(EntryStackPointer > stackLow && EntryStackPointer < stackLow + StackBytes, "the made context runs on its own stack");
@@ -403,7 +433,11 @@ void CheckMakecontext() {
 #endif
 }
 
-void CheckJumpBuffers() {
+void CheckJumpBuffers(bool signalJumps) {
+    g_signalJumps = signalJumps;
+    g_jobRuns = 0;
+    g_dispatcher = {};
+    g_job = {};
 #ifdef _WIN32
     ULONG_PTR threadLow = 0;
     ULONG_PTR threadHigh = 0;
@@ -421,7 +455,7 @@ void CheckJumpBuffers() {
         ULONG_PTR low = 0;
         ULONG_PTR high = 0;
         GetCurrentThreadStackLimits(&low, &high);
-        Require(low == threadLow && high == threadHigh, "the stack bounds follow longjmp back to the thread stack");
+        Require(low == threadLow && high == threadHigh, signalJumps ? "the stack bounds follow siglongjmp back to the thread stack" : "the stack bounds follow longjmp back to the thread stack");
 #endif
     }
 }
@@ -431,7 +465,7 @@ void CheckSignalMask() {
     Require(sigprocmask_nid_postfix(GuestSigBlock, nullptr, original) == 0, "read the signal mask");
     const std::uint32_t first[4] = {0x10, 0, 0, 0};
     const std::uint32_t second[4] = {0x20, 0, 0, 0};
-    GuestUcontext context{};
+    UserUcontext context{};
     volatile int phase = 0;
     Require(sigprocmask_nid_postfix(GuestSigSetmask, first, nullptr) == 0, "set the first mask");
     Require(getcontext_nid_postfix(&context) == 0, "capture the masked context");
@@ -447,7 +481,7 @@ void CheckSignalMask() {
 }
 
 int ExitFromContext() {
-    GuestUcontext context{};
+    UserUcontext context{};
     Require(getcontext_nid_postfix(&context) == 0, "capture the exiting template");
     context.stackPointer = g_exitStack.bytes;
     context.stackSize = StackBytes;
@@ -467,7 +501,8 @@ int main(int argc, char** argv) {
     CheckSignalMask();
     std::thread([] {
         CheckMakecontext();
-        CheckJumpBuffers();
+        CheckJumpBuffers(false);
+        CheckJumpBuffers(true);
         GrowStack(32);
     }).join();
     return 0;

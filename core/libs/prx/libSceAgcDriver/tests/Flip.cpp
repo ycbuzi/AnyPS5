@@ -1,4 +1,5 @@
 #include "prx/libSceAgcDriver/Execution/include/Driver.hpp"
+#include "prx/libSceAgcDriver/Execution/include/PresentMode.hpp"
 #include "prx/libc/include/Shutdown.hpp"
 #include "prx/libSceAgcDriver/Execution/include/VideoOutput.hpp"
 #include "prx/libSceAgcDriver/Submit/include/Dcb.hpp"
@@ -8,12 +9,28 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <future>
 #include <mutex>
 #include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
+#include <io.h>
+#define APS5_DUP _dup
+#define APS5_DUP2 _dup2
+#define APS5_CLOSE _close
+#define APS5_FILENO _fileno
+#else
+#include <unistd.h>
+#define APS5_DUP dup
+#define APS5_DUP2 dup2
+#define APS5_CLOSE close
+#define APS5_FILENO fileno
+#endif
 
 namespace {
 
@@ -119,7 +136,6 @@ void testFlipAndBoundary() {
     expectFailure([&] { AgcDriverRegisterVideoOutput_nid_postfix(7, output); });
     std::array<std::uint32_t, 6> words{0xc004105c, 7, 0xfffffffeu, 1, 0, 0};
     Packet packet{words.data(), 6, 0, {}};
-    expectFailure([&] { sceAgcDriverSubmitAcb(0x20, &packet); });
     words[0] = 0xc004105d;
     expectFailure([&] { sceAgcDriverSubmitDcb(&packet); });
     words[0] = 0xc004105c;
@@ -265,6 +281,58 @@ void testFlipHold() {
     AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
 }
 
+void testComputeRenderingWait() {
+    auto output = std::make_shared<Output>();
+    AgcDriverRegisterVideoOutput_nid_postfix(7, output);
+    std::array<std::uint32_t, 4> wait{0xc0021018, 8, 0, 0};
+    Packet packet{wait.data(), 4, 0, {}};
+    check(expectFailure([&] { sceAgcDriverSubmitAcb(0x20, &packet); }).find("unregistered video output") != std::string::npos, "a compute rendering wait on an unregistered output was accepted");
+    wait = {0xc0021018, 7, 0, 1};
+    check(expectFailure([&] { sceAgcDriverSubmitAcb(0x20, &packet); }).find("rendering wait mode") != std::string::npos, "a compute rendering wait with a mode was accepted");
+    {
+        std::lock_guard lock(output->state->mutex);
+        output->state->gate = true;
+    }
+    struct GateRelease {
+        std::shared_ptr<State> state;
+        ~GateRelease() {
+            {
+                std::lock_guard lock(state->mutex);
+                state->gate = false;
+            }
+            state->changed.notify_all();
+        }
+    } gateRelease{output->state};
+    wait = {0xc0021018, 7, 0, 0};
+    check(sceAgcDriverSubmitAcb(0x20, &packet) == 0, "compute rendering wait submission failed");
+    {
+        std::unique_lock lock(output->state->mutex);
+        check(output->state->changed.wait_for(lock, std::chrono::seconds(5), [&] { return output->state->waiting; }), "compute worker did not reach the rendering wait");
+    }
+    auto idle = std::async(std::launch::async, [] { AgcDriverWaitIdle_nid_postfix(); });
+    check(idle.wait_for(std::chrono::milliseconds(200)) == std::future_status::timeout, "the driver went idle past a closed compute rendering wait");
+    {
+        std::lock_guard lock(output->state->mutex);
+        output->state->gate = false;
+    }
+    output->state->changed.notify_all();
+    check(idle.wait_for(std::chrono::seconds(5)) == std::future_status::ready, "a compute rendering wait stayed blocked after release");
+    idle.get();
+    AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
+}
+
+void testComputeFlip() {
+    auto output = std::make_shared<Output>();
+    AgcDriverRegisterVideoOutput_nid_postfix(7, output);
+    std::array<std::uint32_t, 6> words{0xc004105c, 7, 0xfffffffeu, 1, 0x76543211u, 0xfedcba98u};
+    Packet packet{words.data(), static_cast<std::uint32_t>(words.size()), 0, {}};
+    check(sceAgcDriverSubmitAcb(0x20, &packet) == 0, "compute flip submission failed");
+    AgcDriverWaitIdle_nid_postfix();
+    check(output->state->ready == 1 && output->state->failed == 0, "a flip submitted on a compute queue was not handed to its output");
+    check(output->state->last.argument == -0x123456789abcdefLL && output->state->last.index == -2 && output->state->last.mode == 1, "decoded compute flip arguments changed");
+    AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
+}
+
 void testFailure() {
     auto output = std::make_shared<Output>();
     output->state->fail = true;
@@ -280,6 +348,40 @@ void testFailure() {
     check(expectFailure([] { submitFlip(); }) == messages[0], "submit lost flip failure");
     check(output->state->ready == 0 && output->state->failed == 1, "failed flip was completed successfully");
     AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
+}
+
+void testFailureLog() {
+    const auto path = std::filesystem::temp_directory_path() / ("aps5_worker_failure_log_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+    std::fflush(stderr);
+    const int saved = APS5_DUP(APS5_FILENO(stderr));
+    check(saved >= 0, "stderr could not be saved");
+    check(std::freopen(path.string().c_str(), "wb", stderr) != nullptr, "stderr could not be redirected");
+    std::string message;
+    std::string error;
+    try {
+        auto output = std::make_shared<Output>();
+        output->state->fail = true;
+        AgcDriverRegisterVideoOutput_nid_postfix(7, output);
+        submitFlip();
+        message = expectFailure([] { AgcDriverWaitIdle_nid_postfix(); });
+        check(expectFailure([] { submitFlip(); }) == message, "the stored failure was not rethrown on the next driver call");
+        AgcDriverUnregisterVideoOutput_nid_postfix(7, output);
+    } catch (const std::exception& caught) {
+        error = caught.what();
+    }
+    std::fflush(stderr);
+    APS5_DUP2(saved, APS5_FILENO(stderr));
+    APS5_CLOSE(saved);
+    std::string captured;
+    {
+        std::ifstream file(path, std::ios::binary);
+        captured.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    std::filesystem::remove(path);
+    if (!error.empty()) throw std::runtime_error(error);
+    check(message == "intentional flip failure", "the worker failure was not rethrown");
+    check(captured.find("[gpu] driver failure: intentional flip failure\n") != std::string::npos, "the worker failure was not printed");
+    check(captured.find("driver failure") == captured.rfind("driver failure"), "the worker failure was printed more than once");
 }
 
 void testReset(bool compute) {
@@ -298,10 +400,41 @@ void testReset(bool compute) {
 
 }
 
+void testPresentMode() {
+    using AgcDriver::SelectPresentMode;
+    const std::array wayland{VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_IMMEDIATE_KHR};
+    const std::array all{VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_MAILBOX_KHR, VK_PRESENT_MODE_FIFO_KHR};
+    check(SelectPresentMode(nullptr, wayland) == VK_PRESENT_MODE_FIFO_KHR, "the default present mode is not FIFO");
+    check(SelectPresentMode("fifo", wayland) == VK_PRESENT_MODE_FIFO_KHR, "fifo was not selected");
+    check(SelectPresentMode("immediate", wayland) == VK_PRESENT_MODE_IMMEDIATE_KHR, "immediate was not selected");
+    check(SelectPresentMode("mailbox", all) == VK_PRESENT_MODE_MAILBOX_KHR, "mailbox was not selected");
+    const std::array latest{VK_PRESENT_MODE_FIFO_KHR, VK_PRESENT_MODE_FIFO_LATEST_READY_KHR};
+    check(SelectPresentMode("fifo_latest_ready", latest) == VK_PRESENT_MODE_FIFO_LATEST_READY_KHR, "fifo_latest_ready was not selected");
+    check(SelectPresentMode(nullptr, latest) == VK_PRESENT_MODE_FIFO_KHR, "the default changed on a surface with fifo_latest_ready");
+    check(expectFailure([&] { SelectPresentMode("fifo_latest_ready", wayland); }).find("does not support") != std::string::npos, "fifo_latest_ready was accepted on a surface without it");
+    check(expectFailure([&] { SelectPresentMode("mailbox", wayland); }).find("does not support") != std::string::npos, "an unsupported present mode was accepted");
+    check(expectFailure([&] { SelectPresentMode("Immediate", all); }).find("must be fifo, fifo_latest_ready, mailbox or immediate") != std::string::npos, "an unknown present mode name was accepted");
+    check(expectFailure([&] { SelectPresentMode("", all); }).find("must be fifo, fifo_latest_ready, mailbox or immediate") != std::string::npos, "an empty present mode name was accepted");
+    const std::array<VkPresentModeKHR, 0> none{};
+    check(expectFailure([&] { SelectPresentMode(nullptr, none); }).find("does not support") != std::string::npos, "FIFO was selected on a surface without it");
+}
+
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string(argv[1]) == "present-mode") {
+            testPresentMode();
+            std::puts("present mode selection tests passed");
+            return 0;
+        }
+        if (argc == 2 && std::string(argv[1]) == "failure-log") {
+            testFailureLog();
+            const auto shutdown = expectFailure([] { LibcRunShutdown_nid_postfix(); });
+            check(shutdown == "intentional flip failure", "shutdown lost worker failure");
+            std::puts("AGC worker failure log test passed");
+            return 0;
+        }
         if (argc == 2) testReset(std::string(argv[1]) == "compute");
-        else { testFlipAndBoundary(); testFlipHold(); testFailure(); }
+        else { testFlipAndBoundary(); testFlipHold(); testComputeRenderingWait(); testComputeFlip(); testFailure(); }
         const auto shutdown = expectFailure([] { LibcRunShutdown_nid_postfix(); });
         check(shutdown.find(argc == 2 ? (std::string(argv[1]) == "compute" ? "not readable" : "required shader register") : "intentional flip failure") != std::string::npos, "shutdown lost worker failure");
         std::puts("AGC flip and suspend tests passed");

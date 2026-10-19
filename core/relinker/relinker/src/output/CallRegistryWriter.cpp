@@ -52,7 +52,8 @@ std::string CallRegistryWriter::WriteCallRegistry(const std::vector<CallRegistry
         }
 
         out << "],\n";
-        out << "    \"callSitesResolved\": " << (e.CallSitesResolved ? "true" : "false") << "\n";
+        out << "    \"callSitesResolved\": " << (e.CallSitesResolved ? "true" : "false") << ",\n";
+        out << "    \"weak\": " << (e.Weak ? "true" : "false") << "\n";
         out << "  }";
         if (i + 1 < entries.size()) out << ",";
         out << "\n";
@@ -71,12 +72,26 @@ std::string CallRegistryWriter::WriteModuleImports(const std::vector<CallRegistr
         out << "  {\n";
         out << "    \"nid\": " << _jsonString(e.Nid) << ",\n";
         out << "    \"library\": " << _jsonString(e.Library) << ",\n";
-        out << "    \"targetOffset\": " << _hexOffset(e.TargetOffset) << "\n";
+        out << "    \"targetOffset\": " << _hexOffset(e.TargetOffset);
+        if (e.Weak) out << ",\n    \"weak\": true";
+        out << "\n";
         out << "  }";
         if (i + 1 < entries.size()) out << ",";
         out << "\n";
     }
 
+    out << "]\n";
+    return out.str();
+}
+
+std::string CallRegistryWriter::WriteNeededLibraries(const std::vector<std::string>& libraries) {
+    std::ostringstream out;
+    out << "[\n";
+    for (std::size_t index = 0; index < libraries.size(); ++index) {
+        out << "  " << _jsonString(libraries[index]);
+        if (index + 1 < libraries.size()) out << ",";
+        out << "\n";
+    }
     out << "]\n";
     return out.str();
 }

@@ -1,5 +1,4 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -9,11 +8,6 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
-#ifdef _WIN32
-#include <io.h>
-#else
-#include <unistd.h>
-#endif
 
 struct Value { void* node; };
 struct String { void* text; };
@@ -27,6 +21,9 @@ struct Pair {
 };
 using NullAccessCallback = const Value& (APS5_VABI*)(std::int32_t, const Value*, void*);
 using SetNullAccessCallback = int (APS5_VABI*)(void*, NullAccessCallback, void*);
+using TypeMismatchHandler = const Value& (APS5_VABI*)(std::int32_t, const Value*, const Value*, void*);
+using SpecialFloatHandler = Value* (APS5_VABI*)(Value*, std::int32_t, double, const Value*, void*, bool*);
+using ElementAccessFailureHandler = void (APS5_VABI*)(std::int32_t, const String*, const std::size_t*, const Value*, const Value*, void*);
 
 extern "C" {
 int APS5_VABI _ZN3sce4Json11InitializerC1Ev(void*);
@@ -35,12 +32,24 @@ int APS5_VABI _ZN3sce4Json11Initializer10initializeEPKNS0_13InitParameterE(void*
 int APS5_VABI _ZN3sce4Json11Initializer9terminateEv(void*);
 int APS5_VABI _ZN3sce4Json11Initializer27setGlobalNullAccessCallBackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_(void*, NullAccessCallback, void*);
 int APS5_VABI _ZN3sce4Json11Initializer27setGlobalNullAccessCallbackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_(void*, NullAccessCallback, void*);
+void APS5_VABI _ZN3sce4Json5Value21setNullAccessCallBackEPFRKS1_NS0_9ValueTypeEPS2_PvES6_(NullAccessCallback, void*);
+int APS5_VABI _ZN3sce4Json5Value22setTypeMismatchHandlerEPFRKS1_NS0_9ValueTypeEPS2_S5_PvES6_(Value*, TypeMismatchHandler, void*);
+int APS5_VABI _ZN3sce4Json5Value22setSpecialFloatHandlerEPFKS1_NS0_12FunctionTypeEdPS2_PvPbES5_(Value*, SpecialFloatHandler, void*);
+int APS5_VABI _ZN3sce4Json5Value30setElementAccessFailureHandlerEPFviPKNS0_6StringEPKmPKS1_S8_PvES9_(Value*, ElementAccessFailureHandler, void*);
+int APS5_VABI _ZN3sce4Json5Value3setEd(Value*, double);
+int APS5_VABI _ZN3sce4Json5Value3setERKS1_(Value*, const Value*);
+Value* APS5_VABI _ZN3sce4Json5ValueaSERKS1_(Value*, const Value*);
+void APS5_VABI _ZN3sce4Json5ValueC1ERKS1_(Value*, const Value*);
 void APS5_VABI _ZN3sce4Json6StringC1Ev(String*);
 void APS5_VABI _ZN3sce4Json6StringC1EPKc(String*, const char*);
 void APS5_VABI _ZN3sce4Json6StringD1Ev(String*);
 const char* APS5_VABI _ZNK3sce4Json6String5c_strEv(const String*);
 std::size_t APS5_VABI _ZNK3sce4Json6String6lengthEv(const String*);
 void APS5_VABI _ZN3sce4Json5ArrayC1Ev(Array*);
+void APS5_VABI _ZN3sce4Json5ArrayC1ERKS1_(Array*, const Array*);
+void APS5_VABI _ZN3sce4Json5Array5clearEv(Array*);
+const Value* APS5_VABI _ZNK3sce4Json5Array5frontEv(const Array*);
+Value* APS5_VABI _ZNK3sce4Json5Array8iteratorptEv(const Iterator*);
 void APS5_VABI _ZN3sce4Json5ArrayD1Ev(Array*);
 void APS5_VABI _ZN3sce4Json5Array9push_backERKNS0_5ValueE(Array*, const Value*);
 Iterator* APS5_VABI _ZNK3sce4Json5Array5beginEv(Iterator*, const Array*);
@@ -59,6 +68,17 @@ Iterator* APS5_VABI _ZNK3sce4Json6Object3endEv(Iterator*, const Object*);
 void APS5_VABI _ZN3sce4Json6Object8iteratorD1Ev(Iterator*);
 Iterator* APS5_VABI _ZN3sce4Json6Object8iteratorppEv(Iterator*);
 Pair* APS5_VABI _ZNK3sce4Json6Object8iteratordeEv(const Iterator*);
+Pair* APS5_VABI _ZNK3sce4Json6Object8iteratorptEv(const Iterator*);
+Iterator* APS5_VABI _ZNK3sce4Json6Object4findERKNS0_6StringE(Iterator*, const Object*, const String*);
+int APS5_VABI _ZNK3sce4Json6String7compareEPKc(const String*, const char*);
+extern std::size_t _ZN3sce4Json6String4nposE;
+void APS5_VABI _ZN3sce4Json6String5clearEv(String*);
+void APS5_VABI _ZN3sce4Json6String7reserveEm(String*, std::size_t);
+String* APS5_VABI _ZN3sce4Json6String6appendERKS1_(String*, const String*);
+String* APS5_VABI _ZN3sce4Json6String6appendEPKc(String*, const char*);
+String* APS5_VABI _ZNK3sce4Json6String6substrEmm(String*, const String*, std::size_t, std::size_t);
+std::size_t APS5_VABI _ZNK3sce4Json6String4findEcm(const String*, char, std::size_t);
+std::size_t APS5_VABI _ZNK3sce4Json6String5rfindEcm(const String*, char, std::size_t);
 bool APS5_VABI _ZNK3sce4Json6Object8iteratorneERKS2_(const Iterator*, const Iterator*);
 void APS5_VABI _ZN3sce4Json5ValueC1Ev(Value*);
 void APS5_VABI _ZN3sce4Json5ValueC1Eb(Value*, bool);
@@ -81,6 +101,7 @@ Value* APS5_VABI _ZN3sce4Json5Value10referValueERKNS0_6StringE(Value*, const Str
 const Value* APS5_VABI _ZNK3sce4Json5ValueixEm(const Value*, std::size_t);
 int APS5_VABI _ZN3sce4Json5Value9serializeERNS0_6StringE(Value*, String*);
 int APS5_VABI _ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(Value*, const char*, std::size_t);
+int APS5_VABI _ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(Value*, int (APS5_VABI*)(char&, void*), void*);
 bool APS5_VABI _ZNK3sce4Json6Object5emptyEv(const Object*);
 std::size_t APS5_VABI _ZNK3sce4Json6Object4sizeEv(const Object*);
 const Object* APS5_VABI _ZNK3sce4Json5Value9getObjectEv(const Value*);
@@ -92,11 +113,16 @@ void APS5_VABI _ZN3sce4Json14InitParameter2C1Ev(void*);
 void APS5_VABI _ZN3sce4Json14InitParameter2C2Ev(void*);
 void APS5_VABI _ZN3sce4Json14InitParameter212setAllocatorEPNS0_12MemAllocatorEPv(void*, void*, void*);
 void APS5_VABI _ZN3sce4Json14InitParameter217setFileBufferSizeEm(void*, std::size_t);
-void APS5_VABI _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(void*, std::int32_t);
-void APS5_VABI _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(void*, void*, void*);
 int APS5_VABI _ZN3sce4Json11Initializer10initializeEPKNS0_14InitParameter2E(void*, const void*);
-void APS5_VABI _ZN3sce4Json12MemAllocator11notifyErrorEimPv(void*, int, std::size_t, void*);
+void APS5_VABI _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(void*, void*, void*);
+void APS5_VABI _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(void*, std::int32_t);
 void APS5_VABI _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(void*, void*, void*, std::size_t);
+void APS5_VABI _ZN3sce4Json6Object4PairC1ERKNS0_6StringERKNS0_5ValueE(Pair*, const String*, const Value*);
+void APS5_VABI _ZN3sce4Json6Object4PairD1Ev(Pair*);
+void APS5_VABI _ZN3sce4Json5Array8iteratorC1Ev(Iterator*);
+Iterator* APS5_VABI _ZN3sce4Json5Array8iteratoraSERKS2_(Iterator*, const Iterator*);
+Iterator* APS5_VABI _ZN3sce4Json5Array8iteratorppEi(Iterator*, Iterator*, int);
+void APS5_VABI _ZN3sce4Json12MemAllocator11notifyErrorEimPv(void*, int, std::size_t, void*);
 }
 
 static void Check(bool value, int line) {
@@ -107,69 +133,8 @@ static void Check(bool value, int line) {
 }
 #define Require(value) Check((value), __LINE__)
 
-static std::string CaptureAllocatorError(void* allocator, int errorCode, std::size_t size, void* userData) {
-    auto* captured = std::tmpfile();
-    Require(captured != nullptr && std::fflush(stdout) == 0);
-#ifdef _WIN32
-    const int saved = ::_dup(::_fileno(stdout));
-    Require(saved >= 0 && ::_dup2(::_fileno(captured), ::_fileno(stdout)) == 0);
-#else
-    const int saved = ::dup(::fileno(stdout));
-    Require(saved >= 0 && ::dup2(::fileno(captured), ::fileno(stdout)) == ::fileno(stdout));
-#endif
-    const auto restore = [&] {
-        Require(std::fflush(stdout) == 0);
-#ifdef _WIN32
-        Require(::_dup2(saved, ::_fileno(stdout)) == 0 && ::_close(saved) == 0);
-#else
-        Require(::dup2(saved, ::fileno(stdout)) == ::fileno(stdout) && ::close(saved) == 0);
-#endif
-    };
-    try {
-        _ZN3sce4Json12MemAllocator11notifyErrorEimPv(allocator, errorCode, size, userData);
-    } catch (...) {
-        restore();
-        Require(std::fclose(captured) == 0);
-        throw;
-    }
-    restore();
-    Require(std::fseek(captured, 0, SEEK_SET) == 0);
-    std::string diagnostic;
-    std::array<char, 256> buffer{};
-    while (const auto count = std::fread(buffer.data(), 1, buffer.size(), captured))
-        diagnostic.append(buffer.data(), count);
-    Require(std::feof(captured) && !std::ferror(captured));
-    Require(std::fclose(captured) == 0);
-    return diagnostic;
-}
-
-static void AllocatorErrors() {
-    std::array<std::uint64_t, 2> allocator{0x0123456789abcdef, 0xfedcba9876543210};
-    std::array<std::uint64_t, 2> userData{0x13579bdf2468ace0, 0x02468ace13579bdf};
-    const auto originalAllocator = allocator;
-    const auto originalUserData = userData;
-    const struct {
-        int errorCode;
-        std::size_t size;
-        bool withUserData;
-    } cases[] = {
-        {-12345, 4096, true},
-        {67890, static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) + 1, true},
-        {std::numeric_limits<int>::min(), std::numeric_limits<std::size_t>::max(), true},
-        {std::numeric_limits<int>::max(), 1, false},
-        {0, 0, false},
-    };
-    for (const auto& test : cases) {
-        const auto diagnostic = CaptureAllocatorError(allocator.data(), test.errorCode, test.size,
-            test.withUserData ? userData.data() : nullptr);
-        Require(diagnostic.find("MemAllocator::notifyError") != std::string::npos);
-        Require(diagnostic.find("error " + std::to_string(test.errorCode)) != std::string::npos);
-        Require(diagnostic.find("requested " + std::to_string(test.size) + " bytes") != std::string::npos);
-        Require(allocator == originalAllocator && userData == originalUserData);
-    }
-}
-
 enum : std::int32_t { TypeNull, TypeBoolean, TypeInteger, TypeUInteger, TypeReal, TypeString, TypeArray, TypeObject };
+constexpr int JsonErrorParse = static_cast<int>(0x80920101);
 
 static Value fallback{};
 static int callbackCalls = 0;
@@ -255,6 +220,10 @@ static void ParseAndRoundTrip() {
         Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, invalid, std::strlen(invalid)) < 0);
         Require(_ZNK3sce4Json5Value7getTypeEv(&root) == TypeObject && _ZNK3sce4Json5Value5countEv(&root) == 8);
     }
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, nullptr, 0) == JsonErrorParse);
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, nullptr, 10) == JsonErrorParse);
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, "", 0) == JsonErrorParse);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&root) == TypeObject && _ZNK3sce4Json5Value5countEv(&root) == 8);
     for (const char* overflow : {"1e309", "[-1e309]", "{\"a\":[1,1e400]}"}) {
         bool unverified = false;
         try {
@@ -341,7 +310,185 @@ static void ObjectsAndArrays() {
     _ZNK3sce4Json5Array3endEv(&end, &array);
     for (; _ZNK3sce4Json5Array8iteratorneERKS2_(&it, &end); _ZN3sce4Json5Array8iteratorppEv(&it)) ++visited;
     Require(visited == 2);
+    Require(*_ZNK3sce4Json5Value10getBooleanEv(_ZNK3sce4Json5Array5frontEv(&array)));
+    _ZNK3sce4Json5Array5beginEv(&it, &array);
+    Require(_ZNK3sce4Json5Array8iteratorptEv(&it) == _ZNK3sce4Json5Array8iteratordeEv(&it));
+    Array copy{};
+    _ZN3sce4Json5ArrayC1ERKS1_(&copy, &array);
+    _ZN3sce4Json5Array5clearEv(&array);
+    Require(_ZNK3sce4Json5Array4sizeEv(&array) == 0);
+    bool threw = false;
+    try {
+        _ZNK3sce4Json5Array5frontEv(&array);
+    } catch (const std::out_of_range&) {
+        threw = true;
+    }
+    Require(threw);
+    Require(_ZNK3sce4Json5Array4sizeEv(&copy) == 2);
+    Require(*_ZNK3sce4Json5Value10getBooleanEv(_ZNK3sce4Json5Array5frontEv(&copy)));
+    Require(*_ZNK3sce4Json5Value7getRealEv(_ZNK3sce4Json5Array4backEv(&copy)) == 2.5);
+    _ZN3sce4Json5ArrayD1Ev(&copy);
     _ZN3sce4Json5ArrayD1Ev(&array);
+}
+
+static void ObjectPair() {
+    String key{};
+    _ZN3sce4Json6StringC1EPKc(&key, "answer");
+    Value value{};
+    _ZN3sce4Json5ValueC1Ev(&value);
+    Require(_ZN3sce4Json5Value3setEPKc(&value, "forty-two") == 0);
+
+    Pair pair{};
+    std::memset(&pair, 0x5a, sizeof(pair));
+    _ZN3sce4Json6Object4PairC1ERKNS0_6StringERKNS0_5ValueE(&pair, &key, &value);
+    Require(pair.reserved == 0);
+    Require(pair.key.text != key.text && pair.value.node != value.node);
+    Require(std::strcmp(_ZNK3sce4Json6String5c_strEv(&pair.key), "answer") == 0);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&pair.value) == TypeString);
+    Require(std::strcmp(_ZNK3sce4Json6String5c_strEv(_ZNK3sce4Json5Value9getStringEv(&pair.value)), "forty-two") == 0);
+
+    Require(_ZN3sce4Json5Value3setEl(&value, 7) == 0);
+    _ZN3sce4Json6StringD1Ev(&key);
+    _ZN3sce4Json5ValueD1Ev(&value);
+    Require(std::strcmp(_ZNK3sce4Json6String5c_strEv(&pair.key), "answer") == 0);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&pair.value) == TypeString);
+    _ZN3sce4Json6Object4PairD1Ev(&pair);
+    Require(pair.key.text == nullptr && pair.value.node == nullptr);
+}
+
+static void ArrayIteratorCopies() {
+    Array array{};
+    _ZN3sce4Json5ArrayC1Ev(&array);
+    for (std::int64_t i = 1; i <= 3; ++i) {
+        Value item{};
+        _ZN3sce4Json5ValueC1Ev(&item);
+        Require(_ZN3sce4Json5Value3setEl(&item, i) == 0);
+        _ZN3sce4Json5Array9push_backERKNS0_5ValueE(&array, &item);
+        _ZN3sce4Json5ValueD1Ev(&item);
+    }
+
+    Iterator it{};
+    std::memset(&it, 0x5a, sizeof(it));
+    _ZN3sce4Json5Array8iteratorC1Ev(&it);
+    Require(it.position == nullptr);
+
+    Iterator begin{}, end{};
+    _ZNK3sce4Json5Array5beginEv(&begin, &array);
+    _ZNK3sce4Json5Array3endEv(&end, &array);
+    Require(_ZN3sce4Json5Array8iteratoraSERKS2_(&it, &begin) == &it);
+    Require(!_ZNK3sce4Json5Array8iteratorneERKS2_(&it, &begin));
+
+    std::vector<std::int64_t> seen;
+    Iterator previous{};
+    while (_ZNK3sce4Json5Array8iteratorneERKS2_(&it, &end)) {
+        Require(_ZN3sce4Json5Array8iteratorppEi(&previous, &it, 0) == &previous);
+        seen.push_back(*_ZNK3sce4Json5Value10getIntegerEv(_ZNK3sce4Json5Array8iteratordeEv(&previous)));
+        Require(_ZNK3sce4Json5Array8iteratorneERKS2_(&previous, &it));
+    }
+    Require((seen == std::vector<std::int64_t>{1, 2, 3}));
+    Require(!_ZNK3sce4Json5Array8iteratorneERKS2_(&it, &end));
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(_ZNK3sce4Json5Array8iteratordeEv(&previous)) == 3);
+
+    _ZN3sce4Json5Array8iteratorD1Ev(&previous);
+    _ZN3sce4Json5Array8iteratorD1Ev(&it);
+    _ZN3sce4Json5Array8iteratorD1Ev(&begin);
+    _ZN3sce4Json5Array8iteratorD1Ev(&end);
+    _ZN3sce4Json5ArrayD1Ev(&array);
+}
+
+static void AllocatorNotifyError() {
+    int allocator = 0x1234;
+    int userData = 0x5678;
+    _ZN3sce4Json12MemAllocator11notifyErrorEimPv(&allocator, -1, 64, &userData);
+    Require(allocator == 0x1234 && userData == 0x5678);
+}
+
+static void ObjectFind() {
+    Object object{};
+    _ZN3sce4Json6ObjectC1Ev(&object);
+    String alpha{}, beta{}, gamma{};
+    _ZN3sce4Json6StringC1EPKc(&alpha, "alpha");
+    _ZN3sce4Json6StringC1EPKc(&beta, "beta");
+    _ZN3sce4Json6StringC1EPKc(&gamma, "gamma");
+    Iterator found{}, end{};
+    _ZNK3sce4Json6Object3endEv(&end, &object);
+    _ZNK3sce4Json6Object4findERKNS0_6StringE(&found, &object, &alpha);
+    Require(!_ZNK3sce4Json6Object8iteratorneERKS2_(&found, &end));
+    _ZN3sce4Json6Object8iteratorD1Ev(&found);
+    _ZN3sce4Json6Object8iteratorD1Ev(&end);
+
+    Require(_ZN3sce4Json5Value3setEl(_ZN3sce4Json6ObjectixERKNS0_6StringE(&object, &alpha), 1) == 0);
+    Value* second = _ZN3sce4Json6ObjectixERKNS0_6StringE(&object, &beta);
+    Require(_ZN3sce4Json5Value3setEPKc(second, "b") == 0);
+    _ZNK3sce4Json6Object3endEv(&end, &object);
+    Iterator* returned = _ZNK3sce4Json6Object4findERKNS0_6StringE(&found, &object, &beta);
+    Require(returned == &found);
+    Require(_ZNK3sce4Json6Object8iteratorneERKS2_(&found, &end));
+    const Pair* pair = _ZNK3sce4Json6Object8iteratorptEv(&found);
+    Require(pair == _ZNK3sce4Json6Object8iteratordeEv(&found));
+    Require(&pair->value == second);
+    Require(std::strcmp(_ZNK3sce4Json6String5c_strEv(&pair->key), "beta") == 0);
+    _ZN3sce4Json6Object8iteratorppEv(&found);
+    Require(!_ZNK3sce4Json6Object8iteratorneERKS2_(&found, &end));
+    _ZNK3sce4Json6Object4findERKNS0_6StringE(&found, &object, &gamma);
+    Require(!_ZNK3sce4Json6Object8iteratorneERKS2_(&found, &end));
+    Require(_ZNK3sce4Json6Object4sizeEv(&object) == 2);
+    _ZN3sce4Json6Object8iteratorD1Ev(&found);
+    _ZN3sce4Json6Object8iteratorD1Ev(&end);
+
+    Require(_ZNK3sce4Json6String7compareEPKc(&beta, "beta") == 0);
+    Require(_ZNK3sce4Json6String7compareEPKc(&beta, "betb") < 0);
+    Require(_ZNK3sce4Json6String7compareEPKc(&beta, "bet") > 0);
+    Require(_ZNK3sce4Json6String7compareEPKc(&beta, "alpha") > 0);
+    bool threw = false;
+    try {
+        static_cast<void>(_ZNK3sce4Json6String7compareEPKc(&beta, nullptr));
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+    Require(threw);
+    _ZN3sce4Json6StringD1Ev(&alpha);
+    _ZN3sce4Json6StringD1Ev(&beta);
+    _ZN3sce4Json6StringD1Ev(&gamma);
+    _ZN3sce4Json6ObjectD1Ev(&object);
+}
+
+static void StringMethods() {
+    Require(_ZN3sce4Json6String4nposE == static_cast<std::size_t>(-1));
+    const auto text = [](const String& string) { return std::string(_ZNK3sce4Json6String5c_strEv(&string), _ZNK3sce4Json6String6lengthEv(&string)); };
+    String base{};
+    String suffix{};
+    _ZN3sce4Json6StringC1EPKc(&base, "a/b/c");
+    _ZN3sce4Json6StringC1EPKc(&suffix, "-tail");
+    Require(_ZNK3sce4Json6String4findEcm(&base, '/', 0) == 1);
+    Require(_ZNK3sce4Json6String4findEcm(&base, '/', 2) == 3);
+    Require(_ZNK3sce4Json6String4findEcm(&base, 'z', 0) == _ZN3sce4Json6String4nposE);
+    Require(_ZNK3sce4Json6String5rfindEcm(&base, '/', _ZN3sce4Json6String4nposE) == 3);
+    Require(_ZNK3sce4Json6String5rfindEcm(&base, '/', 2) == 1);
+    String part{};
+    Require(_ZNK3sce4Json6String6substrEmm(&part, &base, 2, 3) == &part);
+    Require(text(part) == "b/c");
+    _ZN3sce4Json6StringD1Ev(&part);
+    Require(_ZNK3sce4Json6String6substrEmm(&part, &base, 5, _ZN3sce4Json6String4nposE) == &part);
+    Require(text(part).empty());
+    _ZN3sce4Json6StringD1Ev(&part);
+    bool refused = false;
+    try {
+        _ZNK3sce4Json6String6substrEmm(&part, &base, 6, 1);
+    } catch (const std::out_of_range&) {
+        refused = true;
+    }
+    Require(refused);
+    _ZN3sce4Json6String7reserveEm(&base, 64);
+    Require(_ZN3sce4Json6String6appendERKS1_(&base, &suffix) == &base);
+    Require(_ZN3sce4Json6String6appendEPKc(&base, "!") == &base);
+    Require(text(base) == "a/b/c-tail!");
+    _ZN3sce4Json6String6appendERKS1_(&base, &base);
+    Require(text(base) == "a/b/c-tail!a/b/c-tail!");
+    _ZN3sce4Json6String5clearEv(&base);
+    Require(text(base).empty());
+    _ZN3sce4Json6StringD1Ev(&suffix);
+    _ZN3sce4Json6StringD1Ev(&base);
 }
 
 static void NullAccess(SetNullAccessCallback setCallback) {
@@ -432,61 +579,106 @@ static void ValueAccess() {
     Require(_ZN3sce4Json11Initializer10initializeEPKNS0_14InitParameter2E(initializer, parameter) == 0);
     Require(_ZN3sce4Json11Initializer9terminateEv(initializer) == 0);
     Require(_ZN3sce4Json11InitializerD1Ev(initializer) == 0);
+}
+
+static void InitParameter2BaseConstructor() {
+    alignas(16) std::uint8_t parameter[40];
+    std::memset(parameter, 0xff, sizeof(parameter));
+    _ZN3sce4Json14InitParameter2C1Ev(parameter);
+    alignas(16) std::uint8_t baseStorage[72];
+    std::memset(baseStorage, 0xff, sizeof(baseStorage));
+    auto* baseParameter = baseStorage + 16;
+    _ZN3sce4Json14InitParameter2C2Ev(baseParameter);
+    Require(std::memcmp(parameter, baseParameter, sizeof(parameter)) == 0);
+    void* defaultAllocator;
+    void* defaultUserData;
+    std::size_t defaultFileBufferSize;
+    std::memcpy(&defaultAllocator, baseParameter, sizeof(defaultAllocator));
+    std::memcpy(&defaultUserData, baseParameter + sizeof(void*), sizeof(defaultUserData));
+    std::memcpy(&defaultFileBufferSize, baseParameter + 2 * sizeof(void*), sizeof(defaultFileBufferSize));
+    Require(defaultAllocator == nullptr && defaultUserData == nullptr && defaultFileBufferSize == 0);
+    int allocator = 0;
+    int userData = 0;
+    _ZN3sce4Json14InitParameter212setAllocatorEPNS0_12MemAllocatorEPv(baseParameter, &allocator, &userData);
+    _ZN3sce4Json14InitParameter217setFileBufferSizeEm(baseParameter, 4096);
+    void* storedAllocator;
+    void* storedUserData;
+    std::size_t storedFileBufferSize;
+    std::memcpy(&storedAllocator, baseParameter, sizeof(storedAllocator));
+    std::memcpy(&storedUserData, baseParameter + sizeof(void*), sizeof(storedUserData));
+    std::memcpy(&storedFileBufferSize, baseParameter + 2 * sizeof(void*), sizeof(storedFileBufferSize));
+    Require(storedAllocator == &allocator && storedUserData == &userData && storedFileBufferSize == 4096);
+    for (std::size_t i = 0; i < 16; ++i) Require(baseStorage[i] == 0xff);
+    for (std::size_t i = 16 + sizeof(parameter); i < sizeof(baseStorage); ++i)
+        Require(baseStorage[i] == 0xff);
+    alignas(16) std::uint8_t initializer[16]{};
+    Require(_ZN3sce4Json11InitializerC1Ev(initializer) == 0);
+    Require(_ZN3sce4Json11Initializer10initializeEPKNS0_14InitParameter2E(initializer, baseParameter) == 0);
+    Require(_ZN3sce4Json11Initializer9terminateEv(initializer) == 0);
+    Require(_ZN3sce4Json11InitializerD1Ev(initializer) == 0);
+}
+
+struct StoredInitParameter2 {
+    void* allocator;
+    void* userData;
+    std::size_t fileBufferSize;
+    std::int32_t specialFloatFormatType;
+    std::uint32_t reserved[3];
+};
+static_assert(sizeof(StoredInitParameter2) == 40);
+
+static StoredInitParameter2 Stored(const std::uint8_t* parameter) {
+    StoredInitParameter2 stored{};
+    std::memcpy(&stored, parameter, sizeof(stored));
+    return stored;
+}
+
+static bool Untouched(const std::uint8_t* parameter, std::size_t from) {
+    for (std::size_t i = from; i < 40; ++i)
+        if (parameter[i] != 0xff) return false;
+    return true;
+}
+
+static void InitParameters() {
+    using Constructor = void (APS5_VABI*)(void*);
+    for (Constructor construct : {_ZN3sce4Json14InitParameter2C1Ev, _ZN3sce4Json14InitParameter2C2Ev}) {
+        alignas(16) std::uint8_t parameter[40];
+        std::memset(parameter, 0xff, sizeof(parameter));
+        construct(parameter);
+        StoredInitParameter2 stored = Stored(parameter);
+        Require(stored.allocator == nullptr && stored.userData == nullptr && stored.fileBufferSize == 0);
+        Require(stored.specialFloatFormatType == 0);
+        Require(stored.reserved[0] == 0 && stored.reserved[1] == 0 && stored.reserved[2] == 0);
+
+        int allocParam = 0;
+        int userData = 0;
+        _ZN3sce4Json14InitParameter217setFileBufferSizeEm(parameter, 8192);
+        _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, 2);
+        _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(parameter, &allocParam, &userData);
+        stored = Stored(parameter);
+        Require(stored.allocator == &allocParam && stored.userData == &userData && stored.fileBufferSize == 8192);
+        Require(stored.specialFloatFormatType == 2);
+        Require(stored.reserved[0] == 0 && stored.reserved[1] == 0 && stored.reserved[2] == 0);
+
+        _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, 0);
+        Require(Stored(parameter).specialFloatFormatType == 0 && Stored(parameter).fileBufferSize == 8192);
+
+        alignas(16) std::uint8_t initializer[16]{};
+        Require(_ZN3sce4Json11InitializerC1Ev(initializer) == 0);
+        Require(_ZN3sce4Json11Initializer10initializeEPKNS0_14InitParameter2E(initializer, parameter) == 0);
+        Require(_ZN3sce4Json11Initializer9terminateEv(initializer) == 0);
+        Require(_ZN3sce4Json11InitializerD1Ev(initializer) == 0);
+    }
 
     alignas(16) std::uint8_t rttiParameter[40];
     std::memset(rttiParameter, 0xff, sizeof(rttiParameter));
     int allocParam = 0;
-    int rttiUserData = 0;
-    _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(rttiParameter, &allocParam, &rttiUserData, 8192);
+    int userData = 0;
+    _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(rttiParameter, &allocParam, &userData, 4096);
     void* rttiStored[3]{};
     std::memcpy(rttiStored, rttiParameter, sizeof(rttiStored));
-    Require(rttiStored[0] == &allocParam && rttiStored[1] == &rttiUserData && reinterpret_cast<std::uintptr_t>(rttiStored[2]) == 8192);
-    bool threwOnNullRtti = false;
-    try {
-        _ZN3sce4Json17InitParameterRttiC1EPNS0_14AllocParamRttiEPvm(nullptr, &allocParam, &rttiUserData, 8192);
-    } catch (const std::invalid_argument&) {
-        threwOnNullRtti = true;
-    }
-    Require(threwOnNullRtti);
-}
-
-static void InitParameters() {
-    for (const auto construct : {_ZN3sce4Json14InitParameter2C1Ev, _ZN3sce4Json14InitParameter2C2Ev}) {
-        alignas(16) std::uint8_t parameter[40];
-        std::memset(parameter, 0xff, sizeof(parameter));
-        construct(parameter);
-        void* stored[3]{};
-        std::memcpy(stored, parameter, sizeof(stored));
-        Require(stored[0] == nullptr && stored[1] == nullptr && stored[2] == nullptr);
-        std::int32_t format = -1;
-        std::memcpy(&format, parameter + 24, sizeof(format));
-        Require(format == 0);
-        int allocator = 0;
-        int userData = 0;
-        _ZN3sce4Json14InitParameter212setAllocatorEPNS0_12MemAllocatorEPv(parameter, &allocator, &userData);
-        _ZN3sce4Json14InitParameter217setFileBufferSizeEm(parameter, 8192);
-        _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, 0);
-        for (const auto unsupported : {-1, 1}) {
-            bool rejected = false;
-            try { _ZN3sce4Json14InitParameter225setSpecialFloatFormatTypeENS0_22SpecialFloatFormatTypeE(parameter, unsupported); }
-            catch (const std::invalid_argument&) { rejected = true; }
-            Require(rejected);
-        }
-        std::memcpy(stored, parameter, sizeof(stored));
-        Require(stored[0] == &allocator && stored[1] == &userData && reinterpret_cast<std::uintptr_t>(stored[2]) == 8192);
-        std::memcpy(&format, parameter + 24, sizeof(format));
-        Require(format == 0);
-        for (std::size_t i = 32; i < sizeof(parameter); ++i) Require(parameter[i] == 0xff);
-    }
-    alignas(16) std::uint8_t rtti[32];
-    std::memset(rtti, 0xff, sizeof(rtti));
-    int allocator = 0;
-    int userData = 0;
-    _ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv(rtti, &allocator, &userData);
-    void* stored[2]{};
-    std::memcpy(stored, rtti, sizeof(stored));
-    Require(stored[0] == &allocator && stored[1] == &userData);
-    for (std::size_t i = sizeof(stored); i < sizeof(rtti); ++i) Require(rtti[i] == 0xff);
+    Require(rttiStored[0] == &allocParam && rttiStored[1] == &userData && reinterpret_cast<std::uintptr_t>(rttiStored[2]) == 4096);
+    Require(Untouched(rttiParameter, sizeof(rttiStored)));
 }
 
 static void ValueClear() {
@@ -512,6 +704,7 @@ static void ValueClear() {
     _ZN3sce4Json6StringC1EPKc(&key, "prop");
     Value* item = _ZN3sce4Json6ObjectixERKNS0_6StringE(&obj, &key);
     _ZN3sce4Json5Value3setEl(item, 999);
+    _ZN3sce4Json5ValueD1Ev(&value);
     _ZN3sce4Json5ValueC1ERKNS0_6ObjectE(&value, &obj);
     Require(_ZNK3sce4Json5Value7getTypeEv(&value) == TypeObject);
     _ZN3sce4Json5Value5clearEv(&value);
@@ -526,14 +719,236 @@ static void ValueClear() {
     _ZN3sce4Json5ValueD1Ev(&value);
 }
 
+struct ReadState {
+    const char* text;
+    std::size_t position;
+    int calls;
+};
+
+static int APS5_VABI ReadNext(char& ch, void* context) {
+    auto* state = static_cast<ReadState*>(context);
+    ++state->calls;
+    if (state->text[state->position] == '\0') {
+        ch = '\0';
+        return -1;
+    }
+    ch = state->text[state->position++];
+    return 0;
+}
+
+static void StreamParse() {
+    Value root{};
+    _ZN3sce4Json5ValueC1Ev(&root);
+    ReadState valid{"{\"list\": [1, 2.5, true]}", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &valid) == 0);
+    Require(valid.calls == static_cast<int>(std::strlen(valid.text)) + 1);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&root) == TypeObject);
+    ReadState invalid{"{\"list\": [1, 2.5", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &invalid) < 0);
+    ReadState trailing{"[1] 2", 0, 0};
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPFiRcPvES5_(&root, ReadNext, &trailing) < 0);
+    _ZN3sce4Json5ValueD1Ev(&root);
+}
+
+static void StaticNullAccess() {
+    callbackCalls = 0;
+    lastRequested = -1;
+    lastParent = nullptr;
+    lastContext = nullptr;
+    int context = 0;
+    _ZN3sce4Json5Value21setNullAccessCallBackEPFRKS1_NS0_9ValueTypeEPS2_PvES6_(OnNullAccess, &context);
+    _ZN3sce4Json5ValueC1Ev(&fallback);
+    Require(_ZN3sce4Json5Value3setEl(&fallback, 99) == 0);
+
+    Value root{};
+    _ZN3sce4Json5ValueC1Ev(&root);
+    const char text[] = "{\"present\":\"text\"}";
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, text, sizeof(text) - 1) == 0);
+    Require(&Member(root, "missing") == &fallback);
+    Require(callbackCalls == 1 && lastRequested == TypeNull && lastParent == &root && lastContext == &context);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&Member(root, "present")) == 99);
+    Require(callbackCalls == 2 && lastRequested == TypeInteger);
+
+    _ZN3sce4Json5Value21setNullAccessCallBackEPFRKS1_NS0_9ValueTypeEPS2_PvES6_(nullptr, nullptr);
+    const Value& unhandled = Member(root, "missing");
+    Require(&unhandled != &fallback && _ZNK3sce4Json5Value7getTypeEv(&unhandled) == TypeNull);
+    Require(callbackCalls == 2);
+    _ZN3sce4Json5ValueD1Ev(&root);
+    _ZN3sce4Json5ValueD1Ev(&fallback);
+}
+
+static Value replacement{};
+static int mismatchCalls = 0;
+static std::int32_t mismatchRequested = -1;
+static const Value* mismatchValue = nullptr;
+static const Value* mismatchSecond = nullptr;
+static void* mismatchContext = nullptr;
+
+static const Value& APS5_VABI OnTypeMismatch(std::int32_t requested, const Value* value, const Value* second, void* context) {
+    ++mismatchCalls;
+    mismatchRequested = requested;
+    mismatchValue = value;
+    mismatchSecond = second;
+    mismatchContext = context;
+    return replacement;
+}
+
+static void RequireMismatch(int calls, std::int32_t requested, const Value* value, void* context) {
+    Require(mismatchCalls == calls && mismatchRequested == requested && mismatchValue == value);
+    Require(mismatchSecond == nullptr && mismatchContext == context);
+}
+
+static void ValueTypeMismatchHandler() {
+    _ZN3sce4Json5ValueC1Ev(&replacement);
+    Require(_ZN3sce4Json5Value3setEl(&replacement, 42) == 0);
+    int context = 0;
+    Value root{};
+    _ZN3sce4Json5ValueC1Ev(&root);
+    Require(_ZN3sce4Json5Value22setTypeMismatchHandlerEPFRKS1_NS0_9ValueTypeEPS2_S5_PvES6_(&root, OnTypeMismatch, &context) == 0);
+    const char text[] = "{\"name\":\"text\",\"none\":null,\"list\":[true]}";
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, text, sizeof(text) - 1) == 0);
+
+    const Value& name = Member(root, "name");
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&name) == 42);
+    RequireMismatch(1, TypeInteger, &name, &context);
+    Require(!*_ZNK3sce4Json5Value10getBooleanEv(&name));
+    RequireMismatch(2, TypeBoolean, &name, &context);
+    Require(std::strcmp(_ZNK3sce4Json6String5c_strEv(_ZNK3sce4Json5Value9getStringEv(&name)), "text") == 0);
+    Require(mismatchCalls == 2);
+    Require(_ZNK3sce4Json5Array4sizeEv(_ZNK3sce4Json5Value8getArrayEv(&root)) == 0);
+    RequireMismatch(3, TypeArray, &root, &context);
+    const Value* element = _ZNK3sce4Json5ValueixEm(&Member(root, "list"), 0);
+    Require(*_ZNK3sce4Json5Value7getRealEv(element) == 0.0);
+    RequireMismatch(4, TypeReal, element, &context);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&Member(root, "none")) == 0);
+    Require(mismatchCalls == 4);
+
+    Value later{};
+    _ZN3sce4Json5ValueC1Ev(&later);
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&later, text, sizeof(text) - 1) == 0);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&Member(later, "name")) == 0);
+    Require(mismatchCalls == 4);
+    int laterContext = 0;
+    Require(_ZN3sce4Json5Value22setTypeMismatchHandlerEPFRKS1_NS0_9ValueTypeEPS2_S5_PvES6_(&later, OnTypeMismatch, &laterContext) == 0);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&Member(later, "name")) == 42);
+    RequireMismatch(5, TypeInteger, &Member(later, "name"), &laterContext);
+
+    Value other{};
+    _ZN3sce4Json5ValueC1Ev(&other);
+    Require(_ZN3sce4Json5Value3setEPKc(&other, "other") == 0);
+    Require(_ZN3sce4Json5ValueaSERKS1_(&root, &other) == &root);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&root) == 42);
+    RequireMismatch(6, TypeInteger, &root, &context);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&other) == 0);
+    Require(mismatchCalls == 6);
+    Require(_ZN3sce4Json5Value3setEd(&other, 1.5) == 0);
+    Require(_ZN3sce4Json5Value3setERKS1_(&root, &other) == 0);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&root) == 42);
+    RequireMismatch(7, TypeInteger, &root, &context);
+    _ZN3sce4Json5Value5clearEv(&root);
+    Require(_ZN3sce4Json5Value3setEPKc(&root, "cleared") == 0);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&root) == 42);
+    RequireMismatch(8, TypeInteger, &root, &context);
+    Value copy{};
+    _ZN3sce4Json5ValueC1ERKS1_(&copy, &root);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&copy) == 0);
+    Require(mismatchCalls == 8);
+
+    Require(_ZN3sce4Json5Value22setTypeMismatchHandlerEPFRKS1_NS0_9ValueTypeEPS2_S5_PvES6_(&root, nullptr, nullptr) == 0);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&root) == 0);
+    Require(mismatchCalls == 8);
+    _ZN3sce4Json5ValueD1Ev(&copy);
+    _ZN3sce4Json5ValueD1Ev(&other);
+    _ZN3sce4Json5ValueD1Ev(&later);
+    _ZN3sce4Json5ValueD1Ev(&root);
+    _ZN3sce4Json5ValueD1Ev(&replacement);
+}
+
+static int failureCalls = 0;
+
+static void APS5_VABI OnElementAccessFailure(std::int32_t, const String*, const std::size_t*, const Value*, const Value*, void*) {
+    ++failureCalls;
+}
+
+template <typename TAccess>
+static bool ThrowsUnverified(const TAccess& access) {
+    try {
+        access();
+    } catch (const std::runtime_error& error) {
+        return std::string(error.what()).find("unverified") != std::string::npos;
+    }
+    return false;
+}
+
+static void ValueElementAccessFailureHandler() {
+    Value root{};
+    _ZN3sce4Json5ValueC1Ev(&root);
+    const char text[] = "{\"list\":[1],\"key\":2}";
+    Require(_ZN3sce4Json6Parser5parseERNS0_5ValueEPKcm(&root, text, sizeof(text) - 1) == 0);
+    int context = 0;
+    Require(_ZN3sce4Json5Value30setElementAccessFailureHandlerEPFviPKNS0_6StringEPKmPKS1_S8_PvES9_(&root, OnElementAccessFailure, &context) == 0);
+
+    const Value& list = Member(root, "list");
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(&Member(root, "key")) == 2);
+    Require(*_ZNK3sce4Json5Value10getIntegerEv(_ZNK3sce4Json5Value8getValueEm(&list, 0)) == 1);
+    String missing{};
+    _ZN3sce4Json6StringC1EPKc(&missing, "missing");
+    Require(ThrowsUnverified([&] { _ZNK3sce4Json5ValueixEPKc(&root, "missing"); }));
+    Require(ThrowsUnverified([&] { _ZNK3sce4Json5Value8getValueERKNS0_6StringE(&root, &missing); }));
+    Require(ThrowsUnverified([&] { _ZNK3sce4Json5ValueixEm(&root, 0); }));
+    Require(ThrowsUnverified([&] { _ZNK3sce4Json5Value8getValueEm(&list, 1); }));
+    Require(failureCalls == 0);
+
+    Require(_ZN3sce4Json5Value30setElementAccessFailureHandlerEPFviPKNS0_6StringEPKmPKS1_S8_PvES9_(&root, nullptr, nullptr) == 0);
+    Require(_ZNK3sce4Json5Value7getTypeEv(&Member(root, "missing")) == TypeNull);
+    Require(_ZNK3sce4Json5Value7getTypeEv(_ZNK3sce4Json5Value8getValueEm(&list, 1)) == TypeNull);
+    _ZN3sce4Json6StringD1Ev(&missing);
+    _ZN3sce4Json5ValueD1Ev(&root);
+}
+
+static int specialFloatCalls = 0;
+
+static Value* APS5_VABI OnSpecialFloat(Value* result, std::int32_t, double, const Value*, void*, bool*) {
+    ++specialFloatCalls;
+    _ZN3sce4Json5ValueC1Ev(result);
+    return result;
+}
+
+static void ValueSpecialFloatHandler() {
+    Value real{};
+    _ZN3sce4Json5ValueC1Ed(&real, std::numeric_limits<double>::quiet_NaN());
+    int context = 0;
+    Require(_ZN3sce4Json5Value22setSpecialFloatHandlerEPFKS1_NS0_12FunctionTypeEdPS2_PvPbES5_(&real, OnSpecialFloat, &context) == 0);
+    String out{};
+    _ZN3sce4Json6StringC1Ev(&out);
+    Require(ThrowsUnverified([&] { _ZN3sce4Json5Value9serializeERNS0_6StringE(&real, &out); }));
+    Require(_ZN3sce4Json5Value3setEd(&real, std::numeric_limits<double>::infinity()) == 0);
+    Require(ThrowsUnverified([&] { _ZN3sce4Json5Value9serializeERNS0_6StringE(&real, &out); }));
+    _ZN3sce4Json6StringD1Ev(&out);
+    Require(_ZN3sce4Json5Value3setEd(&real, 2.5) == 0);
+    Require(Serialize(real) == "2.5");
+    Require(specialFloatCalls == 0);
+    _ZN3sce4Json5ValueD1Ev(&real);
+}
+
 int main() {
-    AllocatorErrors();
     ParseAndRoundTrip();
     NestingDepth();
     ObjectsAndArrays();
+    ObjectFind();
+    ObjectPair();
+    ArrayIteratorCopies();
+    AllocatorNotifyError();
+    StringMethods();
     NullAccess(_ZN3sce4Json11Initializer27setGlobalNullAccessCallBackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_);
     NullAccess(_ZN3sce4Json11Initializer27setGlobalNullAccessCallbackEPFRKNS0_5ValueENS0_9ValueTypeEPS3_PvES7_);
+    StaticNullAccess();
+    ValueTypeMismatchHandler();
+    ValueElementAccessFailureHandler();
+    ValueSpecialFloatHandler();
     ValueAccess();
+    InitParameter2BaseConstructor();
     InitParameters();
     ValueClear();
+    StreamParse();
 }

@@ -1,182 +1,219 @@
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#else
-#include <csignal>
-#include <fcntl.h>
-#include <filesystem>
-#include <unistd.h>
-#endif
-
-#include "prx/libSceSystemService/LoadExec.hpp"
-#include "prx/libc/include/Shutdown.hpp"
-#include "SceTypes.hpp"
+#include "LoadExec.hpp"
 #include "prx/libc/include/General.hpp"
-#include <cerrno>
+#include "prx/libc/include/Shutdown.hpp"
+#include <array>
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cerrno>
 #include <cstdio>
-#include <cstdlib>
-#include <iterator>
+#include <filesystem>
 #include <limits>
+#include <memory>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#elif defined(__linux__)
+#include <fcntl.h>
+#include <unistd.h>
+extern char** environ;
+#elif defined(__APPLE__)
+#include <crt_externs.h>
+#include <fcntl.h>
+#include <mach-o/loader.h>
+#include <spawn.h>
+#include <unistd.h>
+#endif
+
+namespace {
 
 #ifdef _WIN32
+using Handle = std::unique_ptr<void, decltype(&CloseHandle)>;
 
-namespace {
-
-constexpr wchar_t PreviousProcessVariable[] = L"ANYPS5_LOAD_EXEC_PREVIOUS_PROCESS";
-constexpr std::size_t CommandLineCapacity = 32767;
-
-std::wstring Widen(const std::string& text) {
-    if (text.empty()) return {};
+std::wstring Wide(const std::string& text) {
     if (text.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-        throw std::length_error("sceSystemServiceLoadExec: argument too long");
-    const auto size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    if (size == 0) throw std::invalid_argument("sceSystemServiceLoadExec: argument is not UTF-8");
-    std::wstring result(static_cast<std::size_t>(size), L'\0');
-    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), result.data(), size);
-    return result;
+        throw std::runtime_error("LoadExec: argument is too long");
+    if (text.empty()) return {};
+    const int size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
+    if (!size) throw std::runtime_error("LoadExec: argument is not valid UTF-8");
+    std::wstring wide(size, L'\0');
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), wide.data(), size) != size)
+        throw std::runtime_error("LoadExec: cannot convert argument to UTF-16");
+    return wide;
 }
 
-void AppendArgument(std::wstring& commandLine, const std::wstring& argument) {
-    if (!commandLine.empty()) commandLine += L' ';
-    if (!argument.empty() && argument.find_first_of(L" \t\n\v\"") == std::wstring::npos) {
-        commandLine += argument;
-        return;
+std::wstring Quote(const std::wstring& text) {
+    std::wstring result = L"\"";
+    std::size_t slashes = 0;
+    for (const wchar_t character : text) {
+        if (character == L'\\') { ++slashes; continue; }
+        result.append(character == L'"' ? slashes * 2 + 1 : slashes, L'\\');
+        result += character;
+        slashes = 0;
     }
-    commandLine += L'"';
-    std::size_t backslashes = 0;
-    for (const auto character : argument) {
-        if (character == L'\\') {
-            ++backslashes;
-            continue;
+    result.append(slashes * 2, L'\\');
+    return result + L'"';
+}
+
+Handle Duplicate(HANDLE source, DWORD access) {
+    HANDLE handle = nullptr;
+    if (!DuplicateHandle(GetCurrentProcess(), source, GetCurrentProcess(), &handle, access, TRUE,
+                         access ? 0 : DUPLICATE_SAME_ACCESS))
+        throw std::system_error(GetLastError(), std::system_category(), "LoadExec: duplicating a process handle");
+    return Handle(handle, CloseHandle);
+}
+
+[[noreturn]] void Replace(const std::filesystem::path& target, const std::vector<std::string>& arguments) {
+    std::wstring command = Quote(target.wstring());
+    for (const auto& argument : arguments) {
+        if (!command.empty()) command += L' ';
+        command += Quote(Wide(argument));
+    }
+    if (command.size() >= 32767) throw std::runtime_error("LoadExec: command line is too long");
+    auto parent = Duplicate(GetCurrentProcess(), SYNCHRONIZE);
+    std::vector<Handle> standard;
+    std::vector<HANDLE> handles{parent.get()};
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    HANDLE* outputs[] = {&startup.StartupInfo.hStdInput, &startup.StartupInfo.hStdOutput, &startup.StartupInfo.hStdError};
+    const DWORD identifiers[] = {STD_INPUT_HANDLE, STD_OUTPUT_HANDLE, STD_ERROR_HANDLE};
+    for (std::size_t index = 0; index < 3; ++index) {
+        const HANDLE source = GetStdHandle(identifiers[index]);
+        if (source && source != INVALID_HANDLE_VALUE) {
+            standard.push_back(Duplicate(source, 0));
+            *outputs[index] = standard.back().get();
+            handles.push_back(*outputs[index]);
         }
-        commandLine.append(character == L'"' ? backslashes * 2 + 1 : backslashes, L'\\');
-        commandLine += character;
-        backslashes = 0;
     }
-    commandLine.append(backslashes * 2, L'\\');
-    commandLine += L'"';
-}
-
-std::wstring ExecutablePath() {
-    std::wstring path(CommandLineCapacity, L'\0');
-    const auto size = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
-    if (size == 0) throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "sceSystemServiceLoadExec: executable path");
-    if (size >= path.size()) throw std::length_error("sceSystemServiceLoadExec: executable path too long");
-    path.resize(size);
-    return path;
-}
-
-class PreviousProcessWait final {
-public:
-    PreviousProcessWait() {
-        wchar_t value[32]{};
-        const auto length = GetEnvironmentVariableW(PreviousProcessVariable, value, static_cast<DWORD>(std::size(value)));
-        if (length == 0) return;
-        if (_wputenv_s(PreviousProcessVariable, L"") != 0)
-            throw std::runtime_error("sceSystemServiceLoadExec: cannot clear the previous process variable");
-        if (length >= std::size(value)) throw std::runtime_error("sceSystemServiceLoadExec: invalid previous process handle");
-        wchar_t* end = nullptr;
-        const auto handle = reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(std::wcstoull(value, &end, 10)));
-        if (end == value || *end != L'\0') throw std::runtime_error("sceSystemServiceLoadExec: invalid previous process handle");
-        const auto waited = WaitForSingleObject(handle, INFINITE);
-        CloseHandle(handle);
-        if (waited != WAIT_OBJECT_0) throw std::runtime_error("sceSystemServiceLoadExec: waiting for the previous process failed");
+    SIZE_T bytes = 0;
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
+    std::vector<std::max_align_t> storage((bytes + sizeof(std::max_align_t) - 1) / sizeof(std::max_align_t));
+    auto* attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+    if (!InitializeProcThreadAttributeList(attributes, 1, 0, &bytes))
+        throw std::system_error(GetLastError(), std::system_category(), "LoadExec: creating process attributes");
+    const std::unique_ptr<_PROC_THREAD_ATTRIBUTE_LIST, decltype(&DeleteProcThreadAttributeList)> cleanup(attributes, DeleteProcThreadAttributeList);
+    if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, handles.data(), handles.size() * sizeof(HANDLE), nullptr, nullptr))
+        throw std::system_error(GetLastError(), std::system_category(), "LoadExec: selecting inherited handles");
+    startup.lpAttributeList = attributes;
+    const std::unique_ptr<wchar_t, decltype(&FreeEnvironmentStringsW)> inherited(GetEnvironmentStringsW(), FreeEnvironmentStringsW);
+    if (!inherited) throw std::runtime_error("LoadExec: cannot read process environment");
+    constexpr wchar_t Variable[] = L"ANYPS5_LOADEXEC_PARENT=";
+    constexpr wchar_t Skip[] = L"ANYPS5_LOADEXEC_ARGV_SKIP=";
+    std::vector<std::wstring> entries;
+    for (const wchar_t* at = inherited.get(); *at;) {
+        const std::wstring entry(at);
+        if (_wcsnicmp(entry.c_str(), Variable, std::size(Variable) - 1) != 0 &&
+            _wcsnicmp(entry.c_str(), Skip, std::size(Skip) - 1) != 0) {
+            entries.push_back(entry);
+        }
+        at += entry.size() + 1;
     }
-};
-
-const PreviousProcessWait previousProcessWait;
-
-}
-
-[[noreturn]] void SystemService::RestartProcess(const std::vector<std::string>& arguments) {
-    const auto executable = ExecutablePath();
-    std::wstring commandLine;
-    AppendArgument(commandLine, executable);
-    for (const auto& argument : arguments) AppendArgument(commandLine, Widen(argument));
-    if (commandLine.size() >= CommandLineCapacity) throw std::length_error("sceSystemServiceLoadExec: command line too long");
-
-    HANDLE self = nullptr;
-    if (!DuplicateHandle(GetCurrentProcess(), GetCurrentProcess(), GetCurrentProcess(), &self, SYNCHRONIZE, TRUE, 0))
-        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "sceSystemServiceLoadExec: process handle");
-    const auto value = std::to_wstring(reinterpret_cast<std::uintptr_t>(self));
-    if (!SetEnvironmentVariableW(PreviousProcessVariable, value.c_str())) {
-        const auto error = GetLastError();
-        CloseHandle(self);
-        throw std::system_error(static_cast<int>(error), std::system_category(), "sceSystemServiceLoadExec: previous process variable");
+    std::wostringstream value;
+    value << Variable << std::hex << reinterpret_cast<std::uintptr_t>(parent.get());
+    entries.push_back(value.str());
+    entries.push_back(std::wstring(Skip) + L"1");
+    std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) { return _wcsicmp(left.c_str(), right.c_str()) < 0; });
+    std::vector<wchar_t> environment;
+    for (const auto& entry : entries) {
+        environment.insert(environment.end(), entry.begin(), entry.end());
+        environment.push_back(0);
     }
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
+    environment.push_back(0);
     PROCESS_INFORMATION process{};
-    const auto created = CreateProcessW(executable.c_str(), commandLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup, &process);
-    const auto error = GetLastError();
-    SetEnvironmentVariableW(PreviousProcessVariable, nullptr);
-    if (!created) {
-        CloseHandle(self);
-        throw std::system_error(static_cast<int>(error), std::system_category(), "sceSystemServiceLoadExec: starting the title");
+    if (!CreateProcessW(target.c_str(), command.data(), nullptr, nullptr, TRUE,
+                        CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                        environment.data(), target.parent_path().c_str(), &startup.StartupInfo, &process))
+        throw std::system_error(GetLastError(), std::system_category(), "LoadExec: creating the converted executable");
+    Handle child(process.hProcess, CloseHandle), thread(process.hThread, CloseHandle);
+    try {
+        LibcStartExit_nid_postfix();
+        LibcRunShutdown_nid_postfix();
+        std::fflush(nullptr);
+        if (ResumeThread(thread.get()) == static_cast<DWORD>(-1))
+            throw std::system_error(GetLastError(), std::system_category(), "LoadExec: starting the converted executable");
+    } catch (...) {
+        TerminateProcess(child.get(), 1);
+        throw;
     }
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
-
+    thread.reset();
+    child.reset();
+    parent.reset();
+    LibcTerminate_nid_no_patch(0);
+}
+#elif defined(__linux__)
+[[noreturn]] void Replace(const std::filesystem::path& target, const std::vector<std::string>& arguments) {
+    const int descriptor = open(target.c_str(), O_RDONLY | O_CLOEXEC);
+    if (descriptor < 0) throw std::system_error(errno, std::generic_category(), "LoadExec: opening the converted executable");
+    const auto close = [](int* fd) { ::close(*fd); delete fd; };
+    const std::unique_ptr<int, decltype(close)> file(new int(descriptor), close);
+    std::array<unsigned char, 20> header{};
+    if (pread(descriptor, header.data(), header.size(), 0) != static_cast<ssize_t>(header.size()) ||
+        header[0] != 0x7f || header[1] != 'E' || header[2] != 'L' || header[3] != 'F' ||
+        header[4] != 2 || header[5] != 1 || (header[7] != 0 && header[7] != 3) || header[17] != 0 || (header[16] != 2 && header[16] != 3) || header[18] != 62 || header[19] != 0 || access(target.c_str(), X_OK) != 0)
+        throw std::runtime_error("LoadExec: target is not an executable x86-64 Linux ELF");
+    std::vector<char*> pointers;
+    for (const auto& argument : arguments) pointers.push_back(const_cast<char*>(argument.c_str()));
+    pointers.push_back(nullptr);
+    LibcStartExit_nid_postfix();
     LibcRunShutdown_nid_postfix();
     std::fflush(nullptr);
-    TerminateProcess(GetCurrentProcess(), 0);
-    std::_Exit(0);
+    if (const int host = HostStandardError_nid_no_patch(); host >= 0 && dup2(host, 2) != 2)
+        throw std::system_error(errno, std::generic_category(), "LoadExec: giving the host standard error back to descriptor 2");
+    std::filesystem::current_path(target.parent_path());
+    if ((descriptor > 3 && close_range(3, static_cast<unsigned>(descriptor - 1), 0) != 0) ||
+        close_range(static_cast<unsigned>(std::max(3, descriptor + 1)), ~0u, 0) != 0)
+        throw std::system_error(errno, std::generic_category(), "LoadExec: closing the old executable's descriptors");
+    fexecve(descriptor, pointers.data(), environ);
+    throw std::system_error(errno, std::generic_category(), "LoadExec: replacing the executable");
 }
-
-#else
-
-extern "C" const char** APS5_VABI getargv_nid_postfix(void);
-
-namespace {
-
-void ResetSignals() {
-    sigset_t none;
-    sigemptyset(&none);
-    if (pthread_sigmask(SIG_SETMASK, &none, nullptr) != 0)
-        throw std::runtime_error("sceSystemServiceLoadExec: cannot unblock signals");
-    for (int number = 1; number < NSIG; ++number) {
-        struct sigaction action {};
-        if (sigaction(number, nullptr, &action) != 0 || action.sa_handler != SIG_IGN) continue;
-        action.sa_handler = SIG_DFL;
-        sigaction(number, &action, nullptr);
-    }
-}
-
-void CloseDescriptorsOnExec() {
-    std::vector<int> descriptors;
-    for (const auto& entry : std::filesystem::directory_iterator("/proc/self/fd")) {
-        const auto descriptor = std::stoi(entry.path().filename().string());
-        if (descriptor > STDERR_FILENO) descriptors.push_back(descriptor);
-    }
-    for (const auto descriptor : descriptors) {
-        const auto flags = fcntl(descriptor, F_GETFD);
-        if (flags >= 0) fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC);
-    }
-}
-
-}
-
-[[noreturn]] void SystemService::RestartProcess(const std::vector<std::string>& arguments) {
-    const auto current = getargv_nid_postfix();
-    if (current == nullptr || current[0] == nullptr) throw std::runtime_error("sceSystemServiceLoadExec: no program name");
-    std::vector<char*> argv;
-    argv.push_back(const_cast<char*>(current[0]));
-    for (const auto& argument : arguments) argv.push_back(const_cast<char*>(argument.c_str()));
-    argv.push_back(nullptr);
-
+#elif defined(__APPLE__)
+[[noreturn]] void Replace(const std::filesystem::path& target, const std::vector<std::string>& arguments) {
+    const int descriptor = open(target.c_str(), O_RDONLY | O_CLOEXEC);
+    if (descriptor < 0) throw std::system_error(errno, std::generic_category(), "LoadExec: opening the converted executable");
+    mach_header_64 header{};
+    const auto read = pread(descriptor, &header, sizeof(header), 0);
+    ::close(descriptor);
+    if (read != static_cast<ssize_t>(sizeof(header)) || header.magic != MH_MAGIC_64 || header.cputype != CPU_TYPE_X86_64 || header.filetype != MH_EXECUTE || access(target.c_str(), X_OK) != 0)
+        throw std::runtime_error("LoadExec: target is not an executable x86-64 Mach-O");
+    std::vector<char*> pointers;
+    for (const auto& argument : arguments) pointers.push_back(const_cast<char*>(argument.c_str()));
+    pointers.push_back(nullptr);
+    posix_spawnattr_t attributes;
+    posix_spawn_file_actions_t actions;
+    if (posix_spawnattr_init(&attributes) != 0 || posix_spawn_file_actions_init(&actions) != 0 ||
+        posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETEXEC | POSIX_SPAWN_CLOEXEC_DEFAULT) != 0)
+        throw std::runtime_error("LoadExec: preparing the replacement");
+    LibcStartExit_nid_postfix();
     LibcRunShutdown_nid_postfix();
     std::fflush(nullptr);
-    CloseDescriptorsOnExec();
-    ResetSignals();
-    execv("/proc/self/exe", argv.data());
-    throw std::system_error(errno, std::generic_category(), "sceSystemServiceLoadExec: starting the title");
+    if (const int host = HostStandardError_nid_no_patch(); host >= 0 && dup2(host, 2) != 2)
+        throw std::system_error(errno, std::generic_category(), "LoadExec: giving the host standard error back to descriptor 2");
+    for (const int standard : {STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO}) {
+        if (fcntl(standard, F_GETFD) != -1 && posix_spawn_file_actions_addinherit_np(&actions, standard) != 0)
+            throw std::runtime_error("LoadExec: keeping the standard streams");
+    }
+    std::filesystem::current_path(target.parent_path());
+    const int error = posix_spawn(nullptr, target.c_str(), &actions, &attributes, pointers.data(), *_NSGetEnviron());
+    throw std::system_error(error, std::generic_category(), "LoadExec: replacing the executable");
 }
-
 #endif
+
+}
+
+extern "C" bool LoadConvertedExecutable_nid_no_patch(const std::filesystem::path& target, const char* const* arguments) {
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
+    if (!arguments || !arguments[0]) return false;
+    std::vector<std::string> copied;
+    for (std::size_t index = 0; arguments[index]; ++index) copied.emplace_back(arguments[index]);
+    Replace(target, copied);
+#else
+    (void)target;
+    (void)arguments;
+    return false;
+#endif
+}

@@ -1,13 +1,8 @@
 #ifndef CORE_LIBS_PRX_LIBSCESYSTEMSERVICE_LOADEXEC_HPP
 #define CORE_LIBS_PRX_LIBSCESYSTEMSERVICE_LOADEXEC_HPP
 
-#include <string>
-#include <vector>
+#include <filesystem>
 
-namespace SystemService {
-
-[[noreturn]] void RestartProcess(const std::vector<std::string>& arguments);
-
-}  // namespace SystemService
+extern "C" bool LoadConvertedExecutable_nid_no_patch(const std::filesystem::path& target, const char* const* arguments);
 
 #endif

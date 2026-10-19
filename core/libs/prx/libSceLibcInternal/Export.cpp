@@ -4,7 +4,6 @@
 #include "prx/libc/include/HostThreadLocal.hpp"
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -16,6 +15,7 @@
 
 extern "C" void APS5_VABI sceKernelSetThreadDtors(thread_dtors_func_t dtors);
 extern "C" int APS5_VABI sceKernelGetModuleInfoFromAddr(std::uint64_t address, int flags, ModuleInfoEx* info);
+extern "C" const char* __progname_nid_postfix;
 
 namespace {
 
@@ -105,8 +105,8 @@ extern "C" {
 
 int Need_sceLibcInternal_nid_postfix = 1;
 
-long long APS5_VABI atoll_nid_postfix(const char* string) {
-    return std::atoll(string);
+const char* APS5_VABI getprogname_nid_postfix() {
+    return __progname_nid_postfix;
 }
 
 void APS5_VABI __cxa_finalize_nid_postfix(void* dsoHandle) {
@@ -140,5 +140,4 @@ unsigned int APS5_VABI GuestAlarm_nid_no_patch(unsigned int seconds);
 unsigned int APS5_VABI alarm_nid_postfix(unsigned int seconds) {
     return GuestAlarm_nid_no_patch(seconds);
 }
-
 }

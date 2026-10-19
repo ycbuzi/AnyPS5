@@ -1,21 +1,26 @@
 #include "prx/libkernel/File/include/NativeStat.hpp"
-#include "prx/libkernel/File/include/DirectoryDescriptor.hpp"
+#include "prx/libkernel/File/include/ArchivedFile.hpp"
 #include "prx/libc/include/General.hpp"
 
 #include <algorithm>
+#include <cerrno>
 #include <stdexcept>
 #include <string>
 
 #ifdef _WIN32
 #include "prx/libkernel/File/include/WindowsFileTime.hpp"
+#include "prx/libkernel/File/include/WindowsSymbolicLink.hpp"
+#include "prx/libc/include/WindowsDescriptor.hpp"
 #include <io.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+constexpr unsigned short SymbolicLinkMode = 0120777;
 struct NativeStat : __stat64 {
     FILE_BASIC_INFO times{};
     BY_HANDLE_FILE_INFORMATION identity{};
     bool hasTimes = false;
     bool hasIdentity = false;
+    bool isSymbolicLink = false;
 };
 static int ReadHandleInfo(HANDLE handle, NativeStat* st) {
     if (GetFileType(handle) != FILE_TYPE_DISK) return 0;
@@ -30,7 +35,10 @@ static std::uint32_t FoldFileIndex(const BY_HANDLE_FILE_INFORMATION& identity) {
     return folded == 0 ? 1 : folded;
 }
 static int DoStat(const std::filesystem::path& p, NativeStat* st) {
-    if (_wstat64(p.c_str(), st) != 0) return -1;
+    if (_wstat64(p.c_str(), st) != 0) {
+        if (_doserrno == ERROR_CANT_RESOLVE_FILENAME) File::WindowsFileTime::Failure(_doserrno);
+        return -1;
+    }
     const auto handle = CreateFileW(p.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (handle == INVALID_HANDLE_VALUE) return File::WindowsFileTime::Failure(GetLastError());
@@ -39,15 +47,29 @@ static int DoStat(const std::filesystem::path& p, NativeStat* st) {
     return result;
 }
 static int DoFstat(int fd, NativeStat* st) {
-    if (const auto directory = File::DirectoryDescriptorPath(fd)) return DoStat(*directory, st);
+    if (WindowsDescriptorHandle_nid_no_patch(fd) == INVALID_HANDLE_VALUE) {
+        errno = EBADF;
+        return -1;
+    }
     if (_fstat64(fd, st) != 0) return -1;
     return ReadHandleInfo(reinterpret_cast<HANDLE>(::_get_osfhandle(fd)), st);
 }
 static int DoLstat(const std::filesystem::path& p, NativeStat* st) {
     const auto attributes = GetFileAttributesW(p.c_str());
-    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
-        NotImplemented_nid_no_patch("lstat of a Windows symbolic link");
-    return DoStat(p, st);
+    if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0) return DoStat(p, st);
+    std::string target;
+    if (!File::WindowsSymbolicLink::Read(p, target, "lstat") && !File::WindowsSymbolicLink::ReadJunction(p, target, "lstat"))
+        NotImplemented_nid_no_patch("lstat of a Windows reparse point other than a symbolic link");
+    const auto handle = CreateFileW(p.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return File::WindowsFileTime::Failure(GetLastError());
+    const int result = ReadHandleInfo(handle, st);
+    CloseHandle(handle);
+    if (result != 0) return result;
+    st->st_mode = SymbolicLinkMode;
+    st->st_size = static_cast<__int64>(target.size());
+    st->isSymbolicLink = true;
+    return 0;
 }
 #else
 #include <sys/stat.h>
@@ -68,6 +90,7 @@ static void CopyNativeStat(const NativeStat& st, FileStat* sb) {
     sb->st_mode = static_cast<std::uint16_t>(st.st_mode);
     sb->st_size = static_cast<std::int64_t>(st.st_size);
 #ifdef _WIN32
+    if (st.hasIdentity && !st.isSymbolicLink) sb->st_size = static_cast<std::int64_t>((static_cast<std::uint64_t>(st.identity.nFileSizeHigh) << 32u) | st.identity.nFileSizeLow);
     sb->st_dev = static_cast<std::uint32_t>(st.st_dev);
     sb->st_ino = static_cast<std::uint32_t>(st.st_ino);
     sb->st_nlink = static_cast<std::uint16_t>(st.st_nlink);
@@ -125,11 +148,16 @@ static void CopyNativeStat(const NativeStat& st, FileStat* sb) {
 namespace File {
 
 void FillFileStat(const std::filesystem::path& nativePath, FileStat* sb) {
-    NativeStat st{};
-    if (DoStat(nativePath, &st) != 0) {
+    if (!TryFillFileStat(nativePath, sb)) {
         throw std::runtime_error(std::string("FillFileStat: stat failed for ") + nativePath.string());
     }
+}
+
+bool TryFillFileStat(const std::filesystem::path& nativePath, FileStat* sb) {
+    NativeStat st{};
+    if (DoStat(nativePath, &st) != 0) return false;
     CopyNativeStat(st, sb);
+    return true;
 }
 
 void FillFileStat(int nativeDescriptor, FileStat* sb) {
@@ -141,6 +169,7 @@ void FillFileStat(int nativeDescriptor, FileStat* sb) {
 }
 
 bool FillFileStatFromDescriptor(int fd, FileStat* sb) {
+    if (FillArchivedStatFromDescriptor(fd, sb)) return true;
     NativeStat st{};
     if (DoFstat(fd, &st) != 0) return false;
     CopyNativeStat(st, sb);

@@ -54,19 +54,21 @@ struct SlabSlot {
 class BufferPool {
 public:
     explicit BufferPool(const Context& context);
-    static VkDeviceSize DeviceBudget(const VkPhysicalDeviceMemoryProperties& memory);
+    static VkDeviceSize DeviceBudget(const VkPhysicalDeviceMemoryProperties& memory, const VkPhysicalDeviceMemoryBudgetPropertiesEXT* reported = nullptr);
+    static VkDeviceSize ReclaimTarget(VkDeviceSize bytes);
     ~BufferPool();
     BufferPool(const BufferPool&) = delete;
     BufferPool& operator=(const BufferPool&) = delete;
     // The size a buffer for `bytes` is created with: its size class, or `bytes` itself when large.
     static std::size_t Capacity(std::size_t bytes, VkMemoryPropertyFlags properties);
     static VkBufferUsageFlags Usage(VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+    VkDeviceMemory AllocateMemory(const VkMemoryAllocateInfo& allocation, const char* operation, std::optional<std::uint32_t> hostType = std::nullopt, std::uint32_t* allocatedType = nullptr);
     std::optional<BufferAllocation> Take(std::size_t bytes, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     void Put(const BufferAllocation& allocation) noexcept;
     static bool SlabEligible(std::size_t capacity, VkDeviceSize alignment, VkDeviceSize size, VkDeviceSize atom);
     static VkDeviceSize SlabBlockBytes(std::size_t capacity);
     SlabSlot TakeSlot(const Context& context, std::uint32_t memoryType, std::size_t capacity, bool addressable);
-    void PutSlot(VkDeviceMemory memory, VkDeviceSize offset) noexcept;
+    VkDeviceSize PutSlot(VkDeviceMemory memory, VkDeviceSize offset) noexcept;
     std::size_t SlabBlocks();
 
 private:
@@ -80,6 +82,7 @@ private:
     };
     struct Slab {
         std::vector<SlabBlock*> available;
+        std::size_t blocks = 0;
         std::size_t emptyBlocks = 0;
     };
     static std::uint64_t SlabKey(std::uint32_t memoryType, std::size_t capacity, bool addressable);
@@ -115,9 +118,11 @@ private:
     // when shared; the device tier for device-local memory while it has a budget).
     Tier& tierFor(std::size_t capacity, VkMemoryPropertyFlags properties);
     static bool DeviceTierEnabled();
+    static VkDeviceSize deviceBudget(const Context& context);
     static bool DeviceTiered(VkMemoryPropertyFlags properties);
     static std::size_t NextCapacity(std::size_t capacity);
-    void destroy(const BufferAllocation& allocation) noexcept;
+    VkDeviceSize destroy(const BufferAllocation& allocation) noexcept;
+    VkDeviceSize trim();
     // Moves the tier's least recently used slot (the oldest front of its lists) to `evicted`; the
     // caller destroys those after releasing the mutex, so builds taking buffers on other threads
     // do not wait behind the Vulkan destroy calls. Nothing changes when the vector cannot grow.
@@ -125,12 +130,16 @@ private:
     // The retained-slot bound of each tier (APS5_BUFFER_POOL_SLOTS, default `defaultSlots`), read once.
     static std::size_t MaxSlots();
     std::size_t maxSlots;
+    VkDeviceSize (*cacheReclaim)(VkDeviceSize bytes);
     VkDevice device;
     PFN_vkUnmapMemory unmap;
     PFN_vkDestroyBuffer destroyBuffer;
     PFN_vkFreeMemory freeMemory;
     PFN_vkAllocateMemory allocateMemory;
     PFN_vkMapMemory mapMemory;
+    VkPhysicalDevice physical;
+    VkPhysicalDeviceMemoryProperties memoryProperties;
+    PFN_vkGetPhysicalDeviceMemoryProperties2 memoryProperties2;
     std::mutex mutex;
     // Not `small`/`large`: <rpcndr.h> (via <windows.h>) defines `small` as a macro.
     Tier smallTier;
@@ -151,6 +160,7 @@ private:
 };
 
 std::shared_ptr<BufferPool> GetBufferPool(const Context& context);
+VkDeviceMemory AllocateImageMemory(const Context& context, const VkMemoryAllocateInfo& allocation, std::uint32_t mask, const char* operation);
 
 }
 

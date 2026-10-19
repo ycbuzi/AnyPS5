@@ -2,6 +2,7 @@
 #include "prx/libkernel/Pthread/include/Mutex.hpp"
 #include "prx/libkernel/Pthread/include/Cond.hpp"
 #include "prx/libkernel/Pthread/include/Cancel.hpp"
+#include "prx/libkernel/Pthread/include/ThreadLifecycle.hpp"
 #include "prx/libkernel/Pthread/Posix/Common.hpp"
 #include "prx/libkernel/KernelErrors.hpp"
 #include "prx/libkernel/Time/include/Time.hpp"
@@ -13,6 +14,7 @@
 #include <optional>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -31,21 +33,20 @@ PthreadMutex adaptiveInitializer() {
     return reinterpret_cast<PthreadMutex>(std::uintptr_t{1});
 }
 
-PthreadCond resolveCond(PthreadCond* cond) {
+std::shared_ptr<TimedWait::Condition> resolveCond(PthreadCond* cond, int* clockId = nullptr) {
     if (!cond)
         throw std::invalid_argument("Condition variable pointer is null");
-    std::atomic_ref<PthreadCond> slot(*cond);
-    if (const auto current = slot.load(std::memory_order_acquire); current && current != destroyedCond())
-        return current;
     std::lock_guard lock(condInitializationMutex);
-    const auto current = slot.load(std::memory_order_acquire);
+    std::atomic_ref<PthreadCond> slot(*cond);
+    auto current = slot.load(std::memory_order_acquire);
     if (current == destroyedCond())
-        throw std::runtime_error("Condition variable has been destroyed");
-    if (current)
-        return current;
-    auto* created = new PthreadCondPrivate();
-    slot.store(created, std::memory_order_release);
-    return created;
+        return nullptr;
+    if (!current) {
+        current = new PthreadCondPrivate();
+        slot.store(current, std::memory_order_release);
+    }
+    if (clockId) *clockId = current->_clockid;
+    return current->_cv;
 }
 
 int mutexOwnership(PthreadMutex* mutex, PthreadMutex* owned) {
@@ -60,8 +61,31 @@ int mutexOwnership(PthreadMutex* mutex, PthreadMutex* owned) {
     return 0;
 }
 
-int waitUntil(PthreadCond* cond, PthreadMutex* mutex, std::optional<std::uint64_t> deadlineNanos, const void* caller) {
-    auto* c = resolveCond(cond);
+template <class TNative>
+struct WakingLock {
+    PthreadMutex mutex;
+    TNative& native;
+    void lock() { native.lock(); }
+    void unlock() {
+        native.unlock();
+#ifdef _WIN32
+        TimedWait::Unpark(mutex);
+#endif
+    }
+};
+
+int finishWait(std::shared_ptr<TimedWait::Condition>& condition, bool timedOut) {
+    if (ThreadCancel::Requested()) {
+        condition->NotifyOne();
+        condition.reset();
+        scePthreadExit(GUEST_CANCELED);
+    }
+    return timedOut ? sceTimedOut : 0;
+}
+
+int waitUntil(std::shared_ptr<TimedWait::Condition> condition, PthreadMutex* mutex, std::optional<std::uint64_t> deadlineNanos, const void* caller) {
+    if (!condition)
+        return SCE_KERNEL_ERROR_EINVAL;
     PthreadMutex m = nullptr;
     if (const int error = mutexOwnership(mutex, &m))
         return error;
@@ -72,37 +96,41 @@ int waitUntil(PthreadCond* cond, PthreadMutex* mutex, std::optional<std::uint64_
         ~Trace() { KernelTraceWait_nid_postfix("cond", caller, static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count()), timedOut); }
     } trace{caller, timedOut, waitStart};
     if (m->_type == MutexType::Recursive) {
-        std::unique_lock<std::recursive_timed_mutex> lock(m->_rmtx, std::adopt_lock);
+        WakingLock<std::recursive_timed_mutex> waking{m, m->_rmtx};
+        std::unique_lock lock(waking, std::adopt_lock);
         const auto previousCount = m->_count;
         m->_count = 0;
         m->_owner.store(std::thread::id{}, std::memory_order_release);
         for (int level = 1; level < previousCount; ++level)
             m->_rmtx.unlock();
-        timedOut = !ThreadCancel::Wait(c->_cv, lock, deadlineNanos);
+        timedOut = !ThreadCancel::Wait(*condition, lock, deadlineNanos);
         for (int level = 1; level < previousCount; ++level)
             m->_rmtx.lock();
         m->_owner.store(std::this_thread::get_id(), std::memory_order_release);
         m->_count = previousCount;
         lock.release();
-        ThreadCancel::Check();
-        return timedOut ? sceTimedOut : 0;
+        return finishWait(condition, timedOut);
     }
-    std::unique_lock<std::timed_mutex> lock(m->_mtx, std::adopt_lock);
+    WakingLock<std::timed_mutex> waking{m, m->_mtx};
+    std::unique_lock lock(waking, std::adopt_lock);
     m->_owner.store(std::thread::id{}, std::memory_order_release);
-    timedOut = !ThreadCancel::Wait(c->_cv, lock, deadlineNanos);
+    timedOut = !ThreadCancel::Wait(*condition, lock, deadlineNanos);
     m->_owner.store(std::this_thread::get_id(), std::memory_order_release);
     lock.release();
-    ThreadCancel::Check();
-    return timedOut ? sceTimedOut : 0;
+    return finishWait(condition, timedOut);
 }
 
 }
 
 int CondOperations::AbsoluteTimedwait(PthreadCond* cond, PthreadMutex* mutex, const KernelTimespec* abstime) {
     KernelUseconds usec = 0;
-    if (!PosixThread::RelativeMicroseconds(resolveCond(cond)->_clockid, abstime, &usec))
+    int clockId = 0;
+    auto condition = resolveCond(cond, &clockId);
+    if (!condition)
+        return SCE_KERNEL_ERROR_EINVAL;
+    if (!PosixThread::RelativeMicroseconds(clockId, abstime, &usec))
         throw std::invalid_argument("Invalid absolute condition variable timeout");
-    return waitUntil(cond, mutex, TimedWait::DeadlineNanos(usec), __builtin_return_address(0));
+    return waitUntil(std::move(condition), mutex, TimedWait::DeadlineNanos(usec), __builtin_return_address(0));
 }
 
 extern "C" {
@@ -115,16 +143,14 @@ int APS5_VABI scePthreadCondattrInit(PthreadCondattr* attr) {
 }
 
 int APS5_VABI scePthreadCondattrDestroy(PthreadCondattr* attr) {
-    if (!attr || !*attr)
-        throw std::invalid_argument("Condition attributes are not initialized");
+    if (!attr || !*attr) return SCE_KERNEL_ERROR_EINVAL;
     delete *attr;
     *attr = nullptr;
     return 0;
 }
 
 int APS5_VABI scePthreadCondattrSetclock(PthreadCondattr* attr, KernelClockid clockId) {
-    if (!attr || !*attr)
-        throw std::invalid_argument("Condition attributes are not initialized");
+    if (!attr || !*attr) return SCE_KERNEL_ERROR_EINVAL;
     (*attr)->_clockid = static_cast<int>(clockId);
     return 0;
 }
@@ -132,10 +158,8 @@ int APS5_VABI scePthreadCondattrSetclock(PthreadCondattr* attr, KernelClockid cl
 int APS5_VABI scePthreadCondInit(PthreadCond* cond, const PthreadCondattr* attr, const char*) {
     if (!cond)
         throw std::invalid_argument("Condition variable pointer is null");
-    if (attr && !*attr)
-        throw std::invalid_argument("Condition attributes are not initialized");
     auto replacement = std::make_unique<PthreadCondPrivate>();
-    if (attr)
+    if (attr && *attr)
         replacement->_clockid = (*attr)->_clockid;
     std::lock_guard lock(condInitializationMutex);
     std::atomic_ref<PthreadCond>(*cond).store(replacement.release(), std::memory_order_release);
@@ -147,34 +171,43 @@ int APS5_VABI scePthreadCondDestroy(PthreadCond* cond) {
         throw std::invalid_argument("Condition variable pointer is null");
     std::lock_guard lock(condInitializationMutex);
     if (*cond == destroyedCond())
-        throw std::runtime_error("Condition variable has already been destroyed");
+        return SCE_KERNEL_ERROR_EINVAL;
     delete *cond;
     std::atomic_ref<PthreadCond>(*cond).store(destroyedCond(), std::memory_order_release);
     return 0;
 }
 
 int APS5_VABI scePthreadCondSignal(PthreadCond* cond) {
-    resolveCond(cond)->_cv.NotifyOne();
+    const auto resolved = resolveCond(cond);
+    if (!resolved)
+        return SCE_KERNEL_ERROR_EINVAL;
+    resolved->NotifyOne();
     return 0;
 }
 
 int APS5_VABI scePthreadCondBroadcast(PthreadCond* cond) {
-    resolveCond(cond)->_cv.NotifyAll();
+    const auto resolved = resolveCond(cond);
+    if (!resolved)
+        return SCE_KERNEL_ERROR_EINVAL;
+    resolved->NotifyAll();
     return 0;
 }
 
 int APS5_VABI scePthreadCondSignalto(PthreadCond* cond, Pthread thread) {
     (void)thread;
-    resolveCond(cond)->_cv.NotifyAll();
+    const auto resolved = resolveCond(cond);
+    if (!resolved)
+        return SCE_KERNEL_ERROR_EINVAL;
+    resolved->NotifyAll();
     return 0;
 }
 
 int APS5_VABI scePthreadCondWait(PthreadCond* cond, PthreadMutex* mutex) {
-    return waitUntil(cond, mutex, std::nullopt, __builtin_return_address(0));
+    return waitUntil(resolveCond(cond), mutex, std::nullopt, __builtin_return_address(0));
 }
 
 int APS5_VABI scePthreadCondTimedwait(PthreadCond* cond, PthreadMutex* mutex, KernelUseconds usec) {
-    return waitUntil(cond, mutex, TimedWait::DeadlineNanos(usec), __builtin_return_address(0));
+    return waitUntil(resolveCond(cond), mutex, TimedWait::DeadlineNanos(usec), __builtin_return_address(0));
 }
 
 }

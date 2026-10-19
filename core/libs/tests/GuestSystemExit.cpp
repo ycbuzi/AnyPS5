@@ -1,39 +1,61 @@
-#ifdef _WIN32
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#include <shellapi.h>
-#else
-#include <csignal>
-#include <pthread.h>
-#include <unistd.h>
-#endif
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include "prx/libc/include/Shutdown.hpp"
 #include "prx/libSceSystemService/SystemService.hpp"
+#include <atomic>
 #include <chrono>
-#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <stdexcept>
 #include <cstring>
 #include <string>
 #include <thread>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
 #include <vector>
+#endif
 extern "C" int APS5_VABI sceSystemServiceLoadExec(const char*, const char* const*);
+extern "C" int APS5_VABI __cxa_atexit_nid_postfix(void (APS5_VABI *func)(void*), void* arg, void* dsoHandle);
 extern "C" void APS5_VABI _Exit_nid_postfix(int);
+extern "C" void APS5_VABI exit_nid_postfix(int);
 extern "C" void APS5_VABI catchReturnFromMain_nid_postfix(int);
 using GuestQuickExitCallback = void (APS5_VABI*)();
 extern "C" int APS5_VABI at_quick_exit_nid_postfix(GuestQuickExitCallback);
 extern "C" void APS5_VABI quick_exit_nid_postfix(int);
 namespace {
-bool cleaned = false;
-void Cleanup() { cleaned = true; }
-void VerifyExit() {
-    if (!cleaned) std::_Exit(1);
-    std::puts("Guest shutdown and atexit completed");
+std::atomic<bool> awaiting{false};
+void AwaitExit() {
+    awaiting = true;
+    awaiting.notify_one();
+    try {
+        LibcAwaitExit_nid_postfix();
+    } catch (const ProcessShutdown&) {
+        std::puts("Guest thread resumed during exit");
+        std::fflush(stdout);
+        std::_Exit(6);
+    }
 }
+void Cleanup() {
+    std::thread(AwaitExit).detach();
+    awaiting.wait(false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::puts("Guest shutdown completed");
+    std::fflush(stdout);
+}
+void ExitHandlerRan() {
+    std::puts("Guest exit handler ran");
+    std::fflush(stdout);
+    std::_Exit(5);
+}
+void APS5_VABI UnexpectedFinalizer(void*) { ExitHandlerRan(); }
 int quickOrder = 0;
 void APS5_VABI QuickSecond() { quickOrder = 1; }
 void APS5_VABI QuickFirst() {
@@ -43,101 +65,142 @@ void APS5_VABI QuickFirst() {
 }
 void Require(bool value) { if (!value) std::abort(); }
 void UnexpectedCleanup() { std::_Exit(3); }
-void ReportShutdown() {
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    std::puts("Guest shut down before the restart");
-    std::fflush(stdout);
-}
-const std::vector<std::string> restartArguments{"--load-exec-restarted", "two words", "quote\"d", "trailing\\", "back\\\\\"slash", "\xc3\xbc", ""};
-std::uint64_t ProcessId() {
-#ifdef _WIN32
-    return GetCurrentProcessId();
-#else
-    return static_cast<std::uint64_t>(getpid());
-#endif
-}
-std::vector<std::string> Arguments(int argc, char** argv) {
-#ifdef _WIN32
-    (void)argc;
-    (void)argv;
-    int count = 0;
-    const auto wide = CommandLineToArgvW(GetCommandLineW(), &count);
-    Require(wide != nullptr);
-    std::vector<std::string> result;
-    for (int index = 0; index < count; ++index) {
-        const auto size = WideCharToMultiByte(CP_UTF8, 0, wide[index], -1, nullptr, 0, nullptr, nullptr);
-        Require(size > 0);
-        std::string text(static_cast<std::size_t>(size), '\0');
-        WideCharToMultiByte(CP_UTF8, 0, wide[index], -1, text.data(), size, nullptr, nullptr);
-        text.pop_back();
-        result.push_back(text);
-    }
-    LocalFree(wide);
-    return result;
-#else
-    return {argv, argv + argc};
-#endif
-}
-void ChangeSignals() {
-#ifndef _WIN32
-    struct sigaction ignore {};
-    ignore.sa_handler = SIG_IGN;
-    Require(sigaction(SIGPIPE, &ignore, nullptr) == 0);
-    sigset_t blocked;
-    sigemptyset(&blocked);
-    sigaddset(&blocked, SIGUSR1);
-    Require(pthread_sigmask(SIG_BLOCK, &blocked, nullptr) == 0);
-#endif
-}
-bool SignalsReset() {
-#ifdef _WIN32
-    return true;
-#else
-    struct sigaction action {};
-    if (sigaction(SIGPIPE, nullptr, &action) != 0 || action.sa_handler != SIG_DFL) return false;
-    sigset_t blocked;
-    if (pthread_sigmask(SIG_BLOCK, nullptr, &blocked) != 0) return false;
-    return sigismember(&blocked, SIGUSR1) == 0;
-#endif
-}
-bool PreviousProcessEnded(std::uint64_t id) {
-#ifdef _WIN32
-    if (GetEnvironmentVariableW(L"ANYPS5_LOAD_EXEC_PREVIOUS_PROCESS", nullptr, 0) != 0) return false;
-    const auto process = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(id));
-    if (process == nullptr) return true;
-    const auto ended = WaitForSingleObject(process, 0) == WAIT_OBJECT_0;
-    CloseHandle(process);
-    return ended;
-#else
-    return id == ProcessId();
-#endif
-}
 #ifdef _WIN32
 void WINAPI UnexpectedDetach(PVOID) { TerminateProcess(GetCurrentProcess(), 4); }
 #endif
+constexpr char RelaunchMarker[] = "ANYPS5_TEST_RELAUNCH_MARKER";
+constexpr char MainExecutable[] = "ANYPS5_TEST_MAIN_EXECUTABLE";
+void SetVariable(const char* name, const char* value) {
+#ifdef _WIN32
+    Require(SetEnvironmentVariableA(name, value) != 0);
+    Require(_putenv_s(name, value) == 0);
+#else
+    Require(setenv(name, value, 1) == 0);
+#endif
+}
+std::filesystem::path OwnExecutable() {
+#ifdef _WIN32
+    std::wstring executable(32768, L'\0');
+    executable.resize(GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size())));
+    return executable;
+#elif defined(__APPLE__)
+    std::uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::vector<char> executable(size);
+    Require(_NSGetExecutablePath(executable.data(), &size) == 0);
+    return std::filesystem::canonical(executable.data());
+#else
+    return std::filesystem::read_symlink("/proc/self/exe");
+#endif
+}
+void AppendMarker(const std::string& line) {
+    const char* marker = std::getenv(RelaunchMarker);
+    Require(marker != nullptr);
+    std::ofstream(marker, std::ios::app) << line << '\n';
+}
+void MainShutdown() {
+    AppendMarker("shutdown");
+    std::thread(AwaitExit).detach();
+    awaiting.wait(false);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+void SecondaryShutdown() { AppendMarker("secondary shutdown"); }
+void APS5_VABI RemainingHandler(void*) { AppendMarker("remaining handler"); }
+void APS5_VABI ExitingHandler(void*) { exit_nid_postfix(7); }
+void GuestExitShutdown() { AppendMarker("shutdown"); }
+void APS5_VABI CheckShutdownStillRunning(void*) {
+    if (LibcShutdownToken_nid_postfix().stop_requested()) std::_Exit(8);
+    AppendMarker("guest finalizer");
+}
+int RunChild(const std::filesystem::path& self, const char* mode) {
+#ifdef _WIN32
+    std::wstring commandLine = L"\"" + self.wstring() + L"\" " + std::wstring(mode, mode + std::strlen(mode));
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    Require(CreateProcessW(self.c_str(), commandLine.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup, &process) != 0);
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return static_cast<int>(code);
+#else
+    const pid_t child = fork();
+    Require(child >= 0);
+    if (child == 0) {
+        execl(self.c_str(), self.c_str(), mode, static_cast<char*>(nullptr));
+        std::_Exit(127);
+    }
+    int status = 0;
+    Require(waitpid(child, &status, 0) == child);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+#endif
+}
+int DriveNestedExit() {
+    const auto self = OwnExecutable();
+    const auto marker = std::filesystem::temp_directory_path() / ("anyps5-nested-exit-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+    SetVariable(RelaunchMarker, marker.string().c_str());
+    const int code = RunChild(self, "--nested-exit");
+    std::string text;
+    {
+        std::ifstream file(marker);
+        text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    std::error_code ignored;
+    std::filesystem::remove(marker, ignored);
+    Require(code == 7);
+    Require(text == "guest finalizer\nremaining handler\nshutdown\n");
+    std::puts("Guest nested exit completed");
+    return 0;
+}
+int DriveExitOrder() {
+    const auto self = OwnExecutable();
+    const auto marker = std::filesystem::temp_directory_path() / ("anyps5-exit-order-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+    SetVariable(RelaunchMarker, marker.string().c_str());
+    const int code = RunChild(self, "--exit-order");
+    std::string text;
+    {
+        std::ifstream file(marker);
+        text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    std::error_code ignored;
+    std::filesystem::remove(marker, ignored);
+    Require(code == 0);
+    Require(text == "guest finalizer\nshutdown\n");
+    std::puts("Guest finalizers ran before shutdown");
+    return 0;
+}
+int DriveRelaunch() {
+    const auto self = OwnExecutable();
+    const auto secondary = self.parent_path() / ("picker.picker.bin" + self.extension().string());
+    std::filesystem::copy_file(self, secondary, std::filesystem::copy_options::overwrite_existing);
+    const auto marker = std::filesystem::temp_directory_path() / ("anyps5-relaunch-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
+    SetVariable(RelaunchMarker, marker.string().c_str());
+    SetVariable(MainExecutable, self.string().c_str());
+    Require(RunChild(self, "--relaunch") == 0);
+    std::string text;
+    for (int attempt = 0; attempt < 200 && text.find("relaunched") == std::string::npos; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::ifstream file(marker);
+        text.assign(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    }
+    std::error_code ignored;
+    std::filesystem::remove(marker, ignored);
+    for (int attempt = 0; attempt < 100 && std::filesystem::exists(secondary) && !std::filesystem::remove(secondary, ignored); ++attempt)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    Require(text == "shutdown\narguments: --secondary|two words|quote\"d\\|\nsecondary shutdown\nrelaunched\n");
+    std::puts("Guest relaunch completed");
+    return 0;
+}
 }
 int main(int argc, char** argv) {
-    if (argc > 1 && std::strcmp(argv[1], "--load-exec") == 0) {
-        LibcRegisterShutdown_nid_postfix(ReportShutdown);
-        ChangeSignals();
-        const auto previous = std::to_string(ProcessId());
-        std::vector<const char*> arguments;
-        for (const auto& argument : restartArguments) arguments.push_back(argument.c_str());
-        arguments.push_back(previous.c_str());
-        arguments.push_back(nullptr);
-        sceSystemServiceLoadExec("/app0/eboot.bin", arguments.data());
-        return 2;
-    }
-    if (argc > 1 && std::strcmp(argv[1], "--load-exec-restarted") == 0) {
-        const auto received = Arguments(argc, argv);
-        Require(received.size() == restartArguments.size() + 2);
-        Require(std::vector<std::string>(received.begin() + 1, received.end() - 1) == restartArguments);
-        Require(PreviousProcessEnded(std::stoull(received.back())));
-        Require(SignalsReset());
-        std::puts("Guest restarted with its arguments");
+    const int firstArgument = argc > 0 && std::strncmp(argv[0], "--", 2) == 0 ? 0 : 1;
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--requested-exit-driver") == 0) {
+        Require(RunChild(OwnExecutable(), "--requested-exit") == 0);
         return 0;
     }
-    if (argc > 1 && std::strcmp(argv[1], "--immediate") == 0) {
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--immediate") == 0) {
         LibcRegisterShutdown_nid_postfix(UnexpectedCleanup);
         Require(std::atexit(UnexpectedCleanup) == 0);
 #ifdef _WIN32
@@ -147,33 +210,84 @@ int main(int argc, char** argv) {
         _Exit_nid_postfix(0);
         return 2;
     }
-    if (argc > 1 && std::strcmp(argv[1], "--return-from-main") == 0) {
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--return-from-main") == 0) {
         catchReturnFromMain_nid_postfix(0);
         return 2;
     }
-    if (argc > 1 && std::strcmp(argv[1], "--quick-exit") == 0) {
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--quick-exit") == 0) {
         Require(at_quick_exit_nid_postfix(QuickFirst) == 0);
         Require(at_quick_exit_nid_postfix(QuickSecond) == 0);
         quick_exit_nid_postfix(0);
         return 2;
     }
-    if (argc > 1) {
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--nested-exit-driver") == 0) {
+        return DriveNestedExit();
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--nested-exit") == 0) {
+        LibcRegisterShutdown_nid_postfix(GuestExitShutdown);
+        Require(__cxa_atexit_nid_postfix(RemainingHandler, nullptr, nullptr) == 0);
+        Require(__cxa_atexit_nid_postfix(CheckShutdownStillRunning, nullptr, nullptr) == 0);
+        Require(__cxa_atexit_nid_postfix(ExitingHandler, nullptr, nullptr) == 0);
+        exit_nid_postfix(0);
+        return 2;
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--exit-order-driver") == 0) {
+        return DriveExitOrder();
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--exit-order") == 0) {
+        LibcRegisterShutdown_nid_postfix(GuestExitShutdown);
+        Require(__cxa_atexit_nid_postfix(CheckShutdownStillRunning, nullptr, nullptr) == 0);
+        exit_nid_postfix(0);
+        return 2;
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--relaunch-driver") == 0) {
+        return DriveRelaunch();
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--relaunch") == 0) {
+        LibcRegisterShutdown_nid_postfix(MainShutdown);
+        const char* const arguments[] = {"--secondary", "two words", "quote\"d\\", "", nullptr};
+        sceSystemServiceLoadExec("/app0/picker/picker.bin", arguments);
+        return 2;
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--secondary") == 0) {
+        Require(OwnExecutable().filename().string().starts_with("picker.picker.bin"));
+        std::string received = "arguments:";
+        for (int index = firstArgument; index < argc; ++index) received += std::string(index == firstArgument ? " " : "|") + argv[index];
+        AppendMarker(received);
+        LibcRegisterShutdown_nid_postfix(SecondaryShutdown);
+        const char* const arguments[] = {"--relaunched", nullptr};
+        sceSystemServiceLoadExec("/app0/eboot.bin", arguments);
+        return 2;
+    }
+    if (argc > firstArgument && std::strcmp(argv[firstArgument], "--relaunched") == 0) {
+        const char* main = std::getenv(MainExecutable);
+        Require(main != nullptr && std::filesystem::equivalent(OwnExecutable(), main));
+        AppendMarker("relaunched");
+        return 0;
+    }
+    if (argc > firstArgument) {
         LibcRegisterShutdown_nid_postfix(Cleanup);
-        Require(std::atexit(VerifyExit) == 0);
+        Require(__cxa_atexit_nid_postfix(UnexpectedFinalizer, nullptr, nullptr) == 0);
+        Require(std::atexit(ExitHandlerRan) == 0);
+        if (std::strcmp(argv[firstArgument], "--requested-exit") == 0) {
+            LibcRequestExit_nid_postfix(0);
+            LibcRequestExit_nid_postfix(7);
+            LibcAwaitExit_nid_postfix();
+        }
         sceSystemServiceLoadExec("exit", nullptr);
         return 2;
     }
     Require(sceSystemServiceLoadExec(nullptr, nullptr) == SYSTEM_SERVICE_ERROR_PARAMETER);
     Require(sceSystemServiceLoadExec("", nullptr) == SYSTEM_SERVICE_ERROR_PARAMETER);
-    bool rejected = false;
-    try { sceSystemServiceLoadExec("/app0/another.bin", nullptr); }
-    catch (const std::runtime_error&) { rejected = true; }
-    Require(rejected);
+    for (const char* path : {"/app0/another.bin", "/data/eboot.bin", "/app0/../eboot.bin", "/app0//eboot.bin"}) {
+        bool rejected = false;
+        try { sceSystemServiceLoadExec(path, nullptr); }
+        catch (const std::runtime_error& error) { rejected = std::string(error.what()).find(path) != std::string::npos; }
+        Require(rejected);
+    }
 #ifdef _WIN32
-    const char* const invalid[] = {"\xff", nullptr};
-    bool invalidRejected = false;
-    try { sceSystemServiceLoadExec("/app0/eboot.bin", invalid); }
-    catch (const std::invalid_argument&) { invalidRejected = true; }
-    Require(invalidRejected);
+    Require(GetEnvironmentVariableA("APS5_EBOOT", nullptr, 0) == 0);
+#else
+    Require(std::getenv("APS5_EBOOT") == nullptr);
 #endif
 }

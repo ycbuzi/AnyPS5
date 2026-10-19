@@ -27,6 +27,7 @@ constexpr int UMTX_OP_WAKE = 3;
 constexpr int UMTX_OP_WAIT_UINT = 11;
 constexpr int UMTX_OP_WAIT_UINT_PRIVATE = 15;
 constexpr int UMTX_OP_WAKE_PRIVATE = 16;
+constexpr int UMTX_OP_NWAKE_PRIVATE = 21;
 constexpr int UMTX_OP_MAX = 27;
 constexpr std::uint32_t UMTX_ABSTIME = 1;
 constexpr int GUEST_CLOCK_REALTIME = 0;
@@ -58,12 +59,26 @@ bool IsAlignedAddress(std::uintptr_t address) {
     return address != 0 && address % alignof(TValue) == 0;
 }
 
+template <class TFunction>
+void DeferringDelivery(TFunction function) {
+#ifdef _WIN32
+    {
+        TimedWait::DeliveryDeferral deferral;
+        function();
+    }
+    TimedWait::DeliverDeferred();
+#else
+    function();
+#endif
+}
+
 template <class TValue>
-bool WaitOnAddressUntil(TValue* address, TValue expected, std::optional<std::uint64_t> deadlineNanos, const void* caller) {
+std::optional<std::chrono::nanoseconds> WaitOnAddressLocked(TValue* address, TValue expected, std::optional<std::uint64_t> deadlineNanos, bool& woken) {
     const auto key = reinterpret_cast<std::uintptr_t>(address);
     std::unique_lock<std::mutex> lock(g_waitersLock);
     if (std::atomic_ref<TValue>(*address).load() != expected) {
-        return true;
+        woken = true;
+        return std::nullopt;
     }
 
     AddressWaiter waiter;
@@ -78,15 +93,24 @@ bool WaitOnAddressUntil(TValue* address, TValue expected, std::optional<std::uin
     }
     const auto waited = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - waitStart);
 
-    const bool woken = waiter.woken;
+    woken = waiter.woken;
     if (!woken) {
         queue.erase(position);
         if (queue.empty()) {
             g_waiters.erase(key);
         }
     }
-    lock.unlock();
-    KernelTraceWait_nid_postfix("addr", caller, static_cast<std::uint64_t>(waited.count()), !woken);
+    return waited;
+}
+
+template <class TValue>
+bool WaitOnAddressUntil(TValue* address, TValue expected, std::optional<std::uint64_t> deadlineNanos, const void* caller) {
+    bool woken = false;
+    std::optional<std::chrono::nanoseconds> waited;
+    DeferringDelivery([&] { waited = WaitOnAddressLocked(address, expected, deadlineNanos, woken); });
+    if (waited) {
+        KernelTraceWait_nid_postfix("addr", caller, static_cast<std::uint64_t>(waited->count()), !woken);
+    }
     return woken;
 }
 
@@ -96,7 +120,7 @@ int WaitOnAddress(TValue* address, TValue expected, const KernelUseconds* timeou
     return WaitOnAddressUntil(address, expected, deadline, caller) ? SYNC_ON_ADDRESS_OK : SCE_KERNEL_ERROR_ETIMEDOUT;
 }
 
-void WakeAddress(std::uintptr_t key, std::int32_t count, bool wakesAtLeastOne) {
+void WakeAddressLocked(std::uintptr_t key, std::int32_t count, bool wakesAtLeastOne) {
     std::lock_guard<std::mutex> lock(g_waitersLock);
     const auto entry = g_waiters.find(key);
     if (entry == g_waiters.end()) {
@@ -114,6 +138,10 @@ void WakeAddress(std::uintptr_t key, std::int32_t count, bool wakesAtLeastOne) {
     }
 }
 
+void WakeAddress(std::uintptr_t key, std::int32_t count, bool wakesAtLeastOne) {
+    DeferringDelivery([&] { WakeAddressLocked(key, count, wakesAtLeastOne); });
+}
+
 std::uint64_t SaturatingNanos(std::int64_t seconds, std::int64_t nanos) {
     if (seconds < 0) {
         return 0;
@@ -128,6 +156,11 @@ std::uint64_t SaturatingNanos(std::int64_t seconds, std::int64_t nanos) {
 int UmtxDeadline(const void* sizeArgument, const void* timeArgument, std::optional<std::uint64_t>& deadlineNanos) {
     deadlineNanos.reset();
     if (timeArgument == nullptr) {
+        return 0;
+    }
+    if (sizeArgument == nullptr) {
+        const auto usecs = *static_cast<const std::uint32_t*>(timeArgument);
+        deadlineNanos = TimedWait::DeadlineNanos(usecs);
         return 0;
     }
     UmtxTime time{{0, 0}, 0, GUEST_CLOCK_REALTIME};
@@ -155,7 +188,7 @@ int UmtxDeadline(const void* sizeArgument, const void* timeArgument, std::option
 }
 
 template <class TValue>
-int UmtxWait(void* object, TValue expected, const void* sizeArgument, const void* timeArgument, const void* caller) {
+int UmtxWait(void* object, std::uint64_t expected, const void* sizeArgument, const void* timeArgument, const void* caller) {
     std::optional<std::uint64_t> deadline;
     if (const int error = UmtxDeadline(sizeArgument, timeArgument, deadline); error != 0) {
         return error;
@@ -166,7 +199,10 @@ int UmtxWait(void* object, TValue expected, const void* sizeArgument, const void
     if (!IsAlignedAddress<TValue>(reinterpret_cast<std::uintptr_t>(object))) {
         APS5_INVALID_ARG_EX;
     }
-    return WaitOnAddressUntil(static_cast<TValue*>(object), expected, deadline, caller) ? 0 : GUEST_ETIMEDOUT;
+    if (expected > std::numeric_limits<TValue>::max()) {
+        return 0;
+    }
+    return WaitOnAddressUntil(static_cast<TValue*>(object), static_cast<TValue>(expected), deadline, caller) ? 0 : GUEST_ETIMEDOUT;
 }
 
 int UmtxWake(void* object, std::uint64_t count, bool isPrivate) {
@@ -174,6 +210,21 @@ int UmtxWake(void* object, std::uint64_t count, bool isPrivate) {
         return isPrivate ? 0 : GUEST_EFAULT;
     }
     WakeAddress(reinterpret_cast<std::uintptr_t>(object), static_cast<std::int32_t>(count), true);
+    return 0;
+}
+
+int UmtxNwakePrivate(void* object, std::uint64_t value) {
+    const auto count = static_cast<std::int32_t>(value);
+    if (count <= 0) {
+        return 0;
+    }
+    if (object == nullptr) {
+        return GUEST_EFAULT;
+    }
+    const auto* addresses = static_cast<void* const*>(object);
+    for (std::int32_t index = 0; index < count; ++index) {
+        WakeAddress(reinterpret_cast<std::uintptr_t>(addresses[index]), std::numeric_limits<std::int32_t>::max(), true);
+    }
     return 0;
 }
 
@@ -240,11 +291,14 @@ int APS5_VABI _umtx_op_nid_postfix(void* object, int operation, std::uint64_t va
             break;
         case UMTX_OP_WAIT_UINT:
         case UMTX_OP_WAIT_UINT_PRIVATE:
-            error = UmtxWait<std::uint32_t>(object, static_cast<std::uint32_t>(value), sizeArgument, timeArgument, caller);
+            error = UmtxWait<std::uint32_t>(object, value, sizeArgument, timeArgument, caller);
             break;
         case UMTX_OP_WAKE:
         case UMTX_OP_WAKE_PRIVATE:
             error = UmtxWake(object, value, operation == UMTX_OP_WAKE_PRIVATE);
+            break;
+        case UMTX_OP_NWAKE_PRIVATE:
+            error = UmtxNwakePrivate(object, value);
             break;
         default:
             if (operation < 0 || operation >= UMTX_OP_MAX) {

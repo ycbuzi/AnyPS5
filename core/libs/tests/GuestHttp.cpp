@@ -1,14 +1,22 @@
 #include "SceTypes.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
+#include <atomic>
+#include <chrono>
+#include <clocale>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
+#include <thread>
 
 extern "C" {
 int APS5_VABI sceHttpUriParse(SceHttpUriElement*, const char*, void*, std::size_t*, std::size_t);
+int APS5_VABI sceHttpUriCopy(SceHttpUriElement*, const SceHttpUriElement*, void*, std::size_t, std::size_t*);
 int APS5_VABI sceHttpUriMerge(char*, const char*, const char*, std::size_t*, std::size_t, std::uint32_t);
 int APS5_VABI sceHttpSetInflateGZIPEnabled(int, int);
+int APS5_VABI sceHttpSetRequestStatusCallback(int, void (APS5_VABI *)(int, int, void*), void*);
+int APS5_VABI sceHttpSendRequest(int, const void*, std::size_t);
 int APS5_VABI sceHttpUriBuild(char*, std::size_t*, std::size_t, const SceHttpUriElement*, std::uint32_t);
 int APS5_VABI sceHttpUriEscape(char*, std::size_t*, std::size_t, const char*);
 int APS5_VABI sceHttpUriUnescape(char*, std::size_t*, std::size_t, const char*);
@@ -16,6 +24,11 @@ int APS5_VABI sceHttpUriSweepPath(char*, const char*, std::size_t);
 int APS5_VABI sceHttpCreateEpoll(int, HttpEpollHandle*);
 int APS5_VABI sceHttpDestroyEpoll(int, HttpEpollHandle);
 int APS5_VABI sceHttpWaitRequest(HttpEpollHandle, HttpNBEvent*, int, int);
+int APS5_VABI sceHttpAbortWaitRequest(HttpEpollHandle);
+int APS5_VABI sceHttpInit_nid_postfix(int, int, std::uint64_t);
+int APS5_VABI sceHttpTerm_nid_postfix(int);
+int APS5_VABI sceHttpAuthCacheFlush(int);
+int APS5_VABI sceHttpCookieFlush(int);
 int APS5_VABI sceHttpReadData(int, void*, std::size_t);
 int APS5_VABI sceHttpCreateRequest2(int, const char*, const char*, std::uint64_t);
 int APS5_VABI sceHttpsEnableOption(int, std::uint32_t);
@@ -37,9 +50,40 @@ static void Require(bool value) { if (!value) std::abort(); }
 
 static bool Equal(const char* left, const char* right) { return std::strcmp(left, right) == 0; }
 
+static void CheckUriEscapeBytes() {
+    constexpr char unreserved[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+    constexpr char hex[] = "0123456789ABCDEF";
+    for (unsigned value = 1; value <= 255; ++value) {
+        const char input[] = {static_cast<char>(value), '\0'};
+        char expected[] = {'%', hex[value >> 4], hex[value & 15], '\0'};
+        if (std::strchr(unreserved, input[0])) {
+            expected[0] = input[0];
+            expected[1] = '\0';
+        }
+        const auto size = std::strlen(expected) + 1;
+        std::size_t required = 0;
+        Require(sceHttpUriEscape(nullptr, &required, 0, input) == 0 && required == size);
+        char output[5] = {'Z', 'Z', 'Z', 'Z', 'Z'};
+        Require(sceHttpUriEscape(output, &required, size - 1, input) == static_cast<int>(0x80431022));
+        for (char byte : output) Require(byte == 'Z');
+        Require(sceHttpUriEscape(output, &required, size, input) == 0 && required == size);
+        Require(Equal(output, expected) && output[size] == 'Z');
+    }
+}
+
 static int AuthInfo(int, int, const char*, char*, char*, int, std::uint8_t**, std::uint64_t*, int*, void*) { std::abort(); }
+static void APS5_VABI RequestStatusCallback(int, int, void* argument) {
+    ++*static_cast<int*>(argument);
+}
 
 int main() {
+    int callbackCount = 0;
+    const auto request = sceHttpCreateRequest2(1, "GET", "/", 0);
+    Require(sceHttpSetRequestStatusCallback(request, RequestStatusCallback, &callbackCount) == 0);
+    Require(sceHttpSendRequest(request, nullptr, 0) == static_cast<int>(0x80431063u));
+    Require(callbackCount == 0);
+    Require(sceHttpSetRequestStatusCallback(request, nullptr, nullptr) == 0);
+    Require(sceHttpSetRequestStatusCallback(-1, RequestStatusCallback, &callbackCount) == static_cast<int>(0x80431100u));
     constexpr int outOfMemory = static_cast<int>(0x80431022);
     constexpr int invalidValue = static_cast<int>(0x804311FE);
     constexpr int invalidUrl = static_cast<int>(0x80433060);
@@ -66,8 +110,19 @@ int main() {
     Require(sceHttpUriBuild(built, nullptr, required - 1, &element, buildAll) == outOfMemory);
     Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, buildAll) == 0);
     Require(Equal(built, "https://user:secret@example.com:8443/a/c?x=1&y=2#top"));
+    Require(sceHttpUriBuild(nullptr, &required, 0, &element, 0x01) == 0);
+    Require(required == sizeof("https://"));
+    std::memset(built, 'Z', sizeof(built));
+    Require(sceHttpUriBuild(built, nullptr, required - 1, &element, 0x01) == outOfMemory);
+    for (char c : built) Require(c == 'Z');
+    Require(sceHttpUriBuild(built, nullptr, required, &element, 0x01) == 0);
+    Require(Equal(built, "https://") && built[required] == 'Z');
+    Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, 0) == 0);
+    Require(Equal(built, "//"));
+    Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, 0x02) == 0);
+    Require(Equal(built, "//example.com"));
     Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, 0x08 | 0x40) == 0);
-    Require(Equal(built, "/a/c?x=1&y=2"));
+    Require(Equal(built, "///a/c?x=1&y=2"));
 
     Require(sceHttpUriParse(&element, "HTTP://Example.com/", pool, nullptr, sizeof(pool)) == 0);
     Require(element.port == 80 && Equal(element.username, "") && Equal(element.query, ""));
@@ -84,6 +139,10 @@ int main() {
     Require(Equal(element.username, "someone") && Equal(element.hostname, "example.com"));
     Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, buildAll) == 0);
     Require(Equal(built, "mailto:someone@example.com"));
+    Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, 0x01) == 0);
+    Require(Equal(built, "mailto:"));
+    Require(sceHttpUriBuild(built, nullptr, sizeof(built), &element, 0) == 0);
+    Require(Equal(built, ""));
 
     Require(sceHttpUriParse(&element, "/path/only?q", pool, nullptr, sizeof(pool)) == 0);
     Require(Equal(element.scheme, "") && Equal(element.hostname, "") && Equal(element.path, "/path/only"));
@@ -104,6 +163,13 @@ int main() {
     Require(sceHttpUriEscape(escaped, nullptr, sizeof(escaped), "a b/~\xC3\xA9") == 0);
     Require(Equal(escaped, "a%20b%2F~%C3%A9"));
     Require(sceHttpUriEscape(escaped, nullptr, sizeof(escaped), nullptr) == invalidValue);
+    CheckUriEscapeBytes();
+#ifdef _WIN32
+    const std::string previousCtype = std::setlocale(LC_CTYPE, nullptr);
+    Require(std::setlocale(LC_CTYPE, ".1252") != nullptr);
+    CheckUriEscapeBytes();
+    Require(std::setlocale(LC_CTYPE, previousCtype.c_str()) != nullptr);
+#endif
 
     constexpr const char* unescapeCases[][2] = {
         {"", ""}, {"plain+text", "plain+text"}, {"a%20b%2F~%c3%a9", "a b/~\xC3\xA9"},
@@ -187,16 +253,89 @@ int main() {
     Require(sceHttpUriMerge(merged, base, "http://bad host/", &required, sizeof(merged), 0) == invalidUrl);
     Require(required == 123);
 
+    constexpr int beforeInit = static_cast<int>(0x80431001);
+    constexpr int aborted = static_cast<int>(0x80431080);
+    constexpr int invalidId = static_cast<int>(0x80431100);
+    const auto flushCaches = [](int id, int expected) {
+        Require(sceHttpAuthCacheFlush(id) == expected);
+        Require(sceHttpCookieFlush(id) == expected);
+    };
+    flushCaches(0, beforeInit);
+    flushCaches(-1, beforeInit);
+    flushCaches(request, beforeInit);
     HttpEpollHandle epoll = nullptr;
-    Require(sceHttpCreateEpoll(1, nullptr) == invalidValue);
-    Require(sceHttpCreateEpoll(1, &epoll) == 0 && epoll != nullptr);
     HttpNBEvent events[2]{};
+    Require(sceHttpCreateEpoll(1, &epoll) == beforeInit);
+    Require(sceHttpAbortWaitRequest(nullptr) == beforeInit);
+    Require(sceHttpTerm_nid_postfix(1) == beforeInit);
+    const int context = sceHttpInit_nid_postfix(0, 0, 0x10000);
+    Require(context > 0);
+    flushCaches(context, 0);
+    flushCaches(context, 0);
+    flushCaches(0, invalidId);
+    flushCaches(-1, invalidId);
+    flushCaches(INT32_MAX, invalidId);
+    flushCaches(request, invalidId);
+    Require(sceHttpCreateEpoll(-1, &epoll) == invalidId);
+    Require(sceHttpCreateEpoll(context, nullptr) == invalidValue);
+    Require(sceHttpCreateEpoll(context, &epoll) == 0 && epoll != nullptr);
     Require(sceHttpWaitRequest(epoll, events, 2, 0) == 0);
     Require(sceHttpWaitRequest(epoll, events, 2, 1000) == 0);
     Require(sceHttpWaitRequest(epoll, nullptr, 2, 0) == invalidValue);
     Require(sceHttpWaitRequest(epoll, events, 0, 0) == invalidValue);
     Require(sceHttpWaitRequest(nullptr, events, 2, 0) == invalidValue);
-    Require(sceHttpDestroyEpoll(1, epoll) == 0);
+    const auto unknownEpoll = reinterpret_cast<HttpEpollHandle>(&events);
+    Require(sceHttpAbortWaitRequest(nullptr) == invalidValue);
+    Require(sceHttpAbortWaitRequest(unknownEpoll) == invalidId);
+    Require(sceHttpWaitRequest(unknownEpoll, events, 2, -1) == invalidId);
+    Require(sceHttpDestroyEpoll(context, nullptr) == invalidValue);
+    Require(sceHttpDestroyEpoll(context, unknownEpoll) == invalidId);
+    Require(sceHttpDestroyEpoll(-1, epoll) == invalidId);
+
+    auto waitWokenBy = [&](auto wake) {
+        std::atomic<bool> started{false};
+        std::atomic<int> result{1};
+        std::thread waiter([&] {
+            started = true;
+            result = sceHttpWaitRequest(epoll, events, 2, -1);
+        });
+        while (!started) std::this_thread::yield();
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        Require(result == 1);
+        wake();
+        waiter.join();
+        return result.load();
+    };
+    Require(waitWokenBy([&] { Require(sceHttpAbortWaitRequest(epoll) == 0); }) == aborted);
+    Require(sceHttpWaitRequest(epoll, events, 2, 0) == aborted);
+    Require(sceHttpWaitRequest(epoll, events, 2, -1) == aborted);
+    Require(sceHttpDestroyEpoll(context, epoll) == 0);
+    Require(sceHttpAbortWaitRequest(epoll) == invalidId);
+    Require(sceHttpDestroyEpoll(context, epoll) == invalidId);
+
+    Require(sceHttpCreateEpoll(context, &epoll) == 0);
+    Require(waitWokenBy([&] { Require(sceHttpDestroyEpoll(context, epoll) == 0); }) == 0);
+
+    Require(sceHttpCreateEpoll(context, &epoll) == 0);
+    const int otherContext = sceHttpInit_nid_postfix(0, 0, 0x10000);
+    Require(otherContext > 0 && otherContext != context);
+    flushCaches(otherContext, 0);
+    Require(sceHttpTerm_nid_postfix(otherContext) == 0);
+    flushCaches(otherContext, invalidId);
+    flushCaches(context, 0);
+    Require(sceHttpTerm_nid_postfix(otherContext) == invalidId);
+    Require(sceHttpWaitRequest(epoll, events, 2, 0) == 0);
+    Require(waitWokenBy([&] { Require(sceHttpTerm_nid_postfix(context) == 0); }) == 0);
+    Require(sceHttpWaitRequest(epoll, events, 2, 0) == beforeInit);
+    Require(sceHttpTerm_nid_postfix(context) == beforeInit);
+    flushCaches(context, beforeInit);
+    const int newContext = sceHttpInit_nid_postfix(0, 0, 0x10000);
+    Require(newContext > 0 && newContext != context && newContext != otherContext);
+    flushCaches(context, invalidId);
+    flushCaches(otherContext, invalidId);
+    flushCaches(newContext, 0);
+    Require(sceHttpTerm_nid_postfix(newContext) == 0);
+    flushCaches(newContext, beforeInit);
 
     char data[16];
     Require(sceHttpReadData(1, data, sizeof(data)) == network);
@@ -301,4 +440,25 @@ int main() {
     Require(sceHttpUriSweepPath(sweptPath, "/a/b/../c", 8) == 0 && Equal(sweptPath, "/a/b/.."));
     char sweptByte[2] = {'x', 'x'};
     Require(sceHttpUriSweepPath(sweptByte, "/", 1) == 0 && sweptByte[0] == '\0' && sweptByte[1] == 'x');
+
+    {
+        SceHttpUriElement source{};
+        char parsedPool[256];
+        Require(sceHttpUriParse(&source, "http://user:pw@example.com:8080/a/b?q=1#frag", parsedPool, nullptr, sizeof(parsedPool)) == 0);
+        SceHttpUriElement copy{};
+        char pool[256];
+        std::size_t needed = 0;
+        Require(sceHttpUriCopy(nullptr, &source, nullptr, 0, &needed) == 0 && needed == 5 + 12 + 5 + 5 + 3);
+        Require(sceHttpUriCopy(&copy, &source, pool, sizeof(pool), nullptr) == 0);
+        Require(std::strcmp(copy.scheme, "http") == 0 && std::strcmp(copy.hostname, "example.com") == 0 && std::strcmp(copy.path, "/a/b") == 0);
+        Require(std::strcmp(copy.username, "user") == 0 && std::strcmp(copy.password, "pw") == 0 && copy.port == 8080);
+        Require(copy.query == nullptr && copy.fragment == nullptr && copy.opaque == 0);
+        Require(sceHttpUriCopy(&copy, &source, pool, needed - 1, nullptr) == static_cast<int>(0x80431022));
+        Require(copy.scheme == nullptr && copy.hostname == nullptr && pool[0] == 0);
+        Require(sceHttpUriCopy(&copy, &source, pool, needed, &needed) == 0 && needed == 30);
+        Require(sceHttpUriCopy(&copy, nullptr, pool, sizeof(pool), nullptr) == static_cast<int>(0x80433060));
+        Require(sceHttpUriCopy(nullptr, &source, nullptr, 0, nullptr) == static_cast<int>(0x804311FE));
+        SceHttpUriElement empty{};
+        Require(sceHttpUriCopy(&copy, &empty, pool, sizeof(pool), &needed) == 0 && needed == 5 && copy.scheme != nullptr && copy.scheme[0] == 0);
+    }
 }

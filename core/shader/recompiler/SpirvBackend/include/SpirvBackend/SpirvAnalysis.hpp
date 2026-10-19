@@ -15,9 +15,11 @@ struct SpirvRequirements {
     bool subgroupShuffle = false;
     bool subgroupLocalInvocationId = false;
     bool computeDerivatives = false;
+    bool neighbourLaneReads = false;
     bool imageGatherExtended = false;
     bool functionLds = false;
     bool ldsLock = false;
+    bool ldsBufferInt64Atomics = false;
     std::uint32_t functionLdsDwords = 0;
     std::unordered_map<const IrValue*, std::uint32_t> functionLdsAddresses;
     bool functionScratch = false;
@@ -26,7 +28,9 @@ struct SpirvRequirements {
     bool imageInt64Atomics = false;
     bool sharedInt64Atomics = false;
     bool float64 = false;
+    bool float64Interpolation = false;
     bool coherentBuffers = false;
+    bool coherentBufferAlias = false;
     std::vector<std::uint32_t> capabilities;
     std::vector<std::string> extensions;
 };

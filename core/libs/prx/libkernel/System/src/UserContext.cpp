@@ -1,7 +1,7 @@
 #include "prx/libc/include/GuestStacks.hpp"
 #include "prx/libc/include/general/AsmMacros.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
-#include "prx/libkernel/System/include/GuestContext.hpp"
+#include "prx/libkernel/System/include/UserContext.hpp"
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -107,7 +107,7 @@ asm(".text\n"
     "    mov %rax, 0x98(%rsp)\n"
     "    fxsave64 0xa0(%rsp)\n"
     "    mov %rsp, %rsi\n"
-    "    call Aps5GetcontextFinish_nid_no_patch\n"
+    "    call " APS5_ASM_SYMBOL("Aps5GetcontextFinish_nid_no_patch") "\n"
     "    mov %rbp, %rsp\n"
     "    pop %rbp\n"
     "    lea 8(%rsp), %rsp\n"
@@ -153,9 +153,9 @@ asm(".text\n"
 
 extern "C" {
 
-int APS5_VABI Aps5GetcontextFinish_nid_no_patch(GuestUcontext* context, const RegisterFrame* frame) {
+int APS5_VABI Aps5GetcontextFinish_nid_no_patch(UserUcontext* context, const RegisterFrame* frame) {
     if (context == nullptr) return Fail(GuestEinval);
-    GuestUcontext captured{};
+    UserUcontext captured{};
     sigprocmask_nid_postfix(GuestSigBlock, nullptr, captured.sigmask);
     auto& machine = captured.mcontext;
     machine.rdi = frame->rdi;
@@ -176,18 +176,18 @@ int APS5_VABI Aps5GetcontextFinish_nid_no_patch(GuestUcontext* context, const Re
     machine.rflags = frame->rflags & ~CarryFlag;
     machine.rsp = frame->rsp;
     machine.ss = frame->ss;
-    machine.len = sizeof(GuestMcontext);
+    machine.len = sizeof(UserMcontext);
     machine.fpformat = FpFormatXmm;
     machine.ownedfp = FpOwnedFpu;
     std::memcpy(machine.fpstate, frame->fxsave, sizeof(frame->fxsave));
-    std::memcpy(context, &captured, offsetof(GuestUcontext, link));
+    std::memcpy(context, &captured, offsetof(UserUcontext, link));
     return 0;
 }
 
-int APS5_VABI setcontext_nid_postfix(const GuestUcontext* context) {
+int APS5_VABI setcontext_nid_postfix(const UserUcontext* context) {
     if (context == nullptr) return Fail(GuestEinval);
     const auto& machine = context->mcontext;
-    if (machine.len != sizeof(GuestMcontext) || (machine.flags & ~McontextFlagMask) != 0) return Fail(GuestEinval);
+    if (machine.len != sizeof(UserMcontext) || (machine.flags & ~McontextFlagMask) != 0) return Fail(GuestEinval);
     RegisterFrame frame{};
     frame.rax = machine.rax;
     frame.rbx = machine.rbx;

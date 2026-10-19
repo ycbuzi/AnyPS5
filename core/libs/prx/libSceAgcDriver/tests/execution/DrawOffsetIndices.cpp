@@ -69,6 +69,15 @@ alignas(256) constexpr std::array<std::uint32_t, 30> PostAddCode{
     0xbf810000,
 };
 
+alignas(256) constexpr auto NoCarryCode = [] {
+    auto code = PostAddCode;
+    code[2] = 0x4a0a0a10u;
+    code[3] = 0xbf800000u;
+    code[4] = 0x4a101011u;
+    code[5] = 0xbf800000u;
+    return code;
+}();
+
 alignas(256) constexpr std::array<std::uint32_t, 30> CarryCode{
     0x7e020280, 0x7e040280,
     0xd70f7d05, 0x00020a10,
@@ -262,14 +271,15 @@ public:
         return result;
     }
 
-    AgcDriver::Graphics::State State() const {
+    AgcDriver::Graphics::State State(bool rectList = false) const {
         AgcDriver::Graphics::State state{};
         state.stages = {AgcDriver::Graphics::ShaderPath::Vertex, 0u, 32u, 32u, std::nullopt, std::nullopt};
         state.color = {reinterpret_cast<std::uintptr_t>(Pixels.data()), {Width, Height}, VK_FORMAT_R8G8B8A8_UNORM, Pixels.size(), 0xe4u};
         state.colors = {state.color};
         state.hasColorTarget = true;
         state.renderExtent = {Width, Height};
-        state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        state.topology = rectList ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        state.rectList = rectList;
         state.viewport = {0.0f, static_cast<float>(Height), static_cast<float>(Width), -static_cast<float>(Height), 0.0f, 1.0f};
         state.scissor = {{0, 0}, {Width, Height}};
         state.cullMode = VK_CULL_MODE_NONE;
@@ -346,8 +356,8 @@ std::string PathName(const std::optional<Path>& path) {
     return path ? "the CPU path (" + std::string(AgcDriver::Graphics::IndirectDrawPathName(*path)) + ")" : std::string("the GPU");
 }
 
-std::string Classified(Fixture& fixture, const std::string& what, const ShaderRecompiler::RecompileResult& vertex, const std::vector<std::uint32_t>& userData, AgcDriver::Pm4::DrawParameters& draw, std::optional<Path> expectedPath, Rule expectedRule) {
-    const auto path = AgcDriver::DriverDetail::Driver::ClassifyIndirectDraw(vertex, fixture.State(), Program(userData), fixture.device, draw, false);
+std::string Classified(Fixture& fixture, const std::string& what, const ShaderRecompiler::RecompileResult& vertex, const std::vector<std::uint32_t>& userData, AgcDriver::Pm4::DrawParameters& draw, std::optional<Path> expectedPath, Rule expectedRule, bool rectList = false) {
+    const auto path = AgcDriver::DriverDetail::Driver::ClassifyIndirectDraw(vertex, fixture.State(rectList), Program(userData), fixture.device, draw, false);
     const auto& indirect = *draw.indirect;
     const bool rules = expectedPath || (indirect.vertexRule == expectedRule && indirect.instanceRule == expectedRule);
     std::cout << what << ": classified to " << PathName(path) << '\n';
@@ -451,15 +461,16 @@ std::string Run(Fixture& fixture) {
         failures += fixture.Check(what + ", on the CPU path", autoIndices, arguments.firstVertexOrIndex, arguments.firstInstance, true);
     }
     if (fixture.device->DrawIndirectSupport().firstInstance) {
-        {
-            const std::string what = "indexed indirect record whose fetch adds are the only readers of v5/v8, user data s16 0x51, s17 0x62";
-            const auto vertex = fixture.Vertex(PostAddCode, staleUserData);
+        for (const auto* code : {&PostAddCode, &NoCarryCode}) {
+            const std::string what = std::string(code == &NoCarryCode ? "no-carry " : "carry ") + "indexed indirect record whose fetch adds are the only readers of v5/v8, user data s16 0x51, s17 0x62";
+            const auto vertex = fixture.Vertex(*code, staleUserData);
             AgcDriver::Pm4::DrawParameters draw{indexAddress, static_cast<std::uint32_t>(Indices.size()), 2, 0, 0, true, 0, 0};
             draw.indirect = indexedIndirect;
             failures += Classified(fixture, what, vertex, staleUserData, draw, std::nullopt, Rule::InPlace);
             fixture.Place(indexedRecord[3], bufferIndices, indexedRecord[4]);
             fixture.Draw(vertex, draw);
             failures += fixture.Check(what + ", drawn in place on the GPU", bufferIndices, indexedRecord[3], indexedRecord[4], false);
+            if (code == &NoCarryCode) std::cout << "no-carry indexed indirect GPU readback checked\n";
         }
         {
             const std::string what = "indexed indirect record whose packet names no register for its offsets, user data s16 0x51, s17 0x62";
@@ -474,6 +485,15 @@ std::string Run(Fixture& fixture) {
             fixture.Place(0x51u, bufferIndices, 0x62u);
             fixture.Draw(vertex, draw);
             failures += fixture.Check(what + ", drawn on the GPU", bufferIndices, 0x51u, 0x62u, true);
+        }
+        {
+            const std::string what = "auto indirect rect-list record whose packet names no register for its offsets, user data s16 0x51, s17 0x62";
+            const std::array<std::uint32_t, 4> record{Vertices, Instances, 300, 7};
+            std::copy(record.begin(), record.end(), fixture.Records() + 32);
+            const auto vertex = fixture.Vertex(VertexCode, staleUserData);
+            AgcDriver::Pm4::DrawParameters draw{0, 0, 0, 0, 0, false, 0, 0};
+            draw.indirect = AgcDriver::Pm4::DrawParameters::IndirectDraw{reinterpret_cast<std::uintptr_t>(fixture.Records() + 32), 0x24u, 16u, 16u, 1u, false, 0u, NoLocation, NoLocation, NoLocation, false, 0u};
+            failures += Classified(fixture, what, vertex, staleUserData, draw, std::nullopt, Rule::Constant, true);
         }
     }
     return failures;

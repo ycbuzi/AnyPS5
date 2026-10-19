@@ -58,32 +58,7 @@ static_assert(sizeof(long double) == 16 && std::numeric_limits<long double>::dig
 
 extern "C" {
 
-float APS5_VABI sqrtf_nid_postfix(float value) { return std::sqrt(value); }
-float APS5_VABI truncf_nid_postfix(float value) { return std::trunc(value); }
-double APS5_VABI nearbyint_nid_postfix(double value) { return std::nearbyint(value); }
-
-double APS5_VABI remquo_nid_postfix(double x, double y, int* quotient) { return std::remquo(x, y, quotient); }
-float APS5_VABI remquof_nid_postfix(float x, float y, int* quotient) { return std::remquo(x, y, quotient); }
-double APS5_VABI copysign_nid_postfix(double magnitude, double sign) { return std::copysign(magnitude, sign); }
-float APS5_VABI copysignf_nid_postfix(float magnitude, float sign) { return std::copysign(magnitude, sign); }
-
-double APS5_VABI nan_nid_postfix(const char* tag) { return std::nan(tag); }
-float APS5_VABI nanf_nid_postfix(const char* tag) { return std::nanf(tag); }
-long double APS5_VABI nanl_nid_postfix(const char* tag) { return std::nanl(tag); }
-
-double APS5_VABI nextafter_nid_postfix(double from, double to) { return CheckNeighbor_nid_no_patch(from, to, std::nextafter(from, to)); }
 double APS5_VABI nexttoward_nid_postfix(double from, long double to) { return CheckNeighbor_nid_no_patch(from, to, std::nexttoward(from, to)); }
 float APS5_VABI nexttowardf_nid_postfix(float from, long double to) { return CheckNeighbor_nid_no_patch(from, to, std::nexttoward(from, to)); }
-
-double APS5_VABI fdim_nid_postfix(double x, double y) { return std::fdim(x, y); }
-float APS5_VABI fdimf_nid_postfix(float x, float y) { return std::fdim(x, y); }
-double APS5_VABI fmax_nid_postfix(double x, double y) { return Extremum_nid_no_patch(x, y, true); }
-float APS5_VABI fmaxf_nid_postfix(float x, float y) { return Extremum_nid_no_patch(x, y, true); }
-double APS5_VABI fmin_nid_postfix(double x, double y) { return Extremum_nid_no_patch(x, y, false); }
-float APS5_VABI fminf_nid_postfix(float x, float y) { return Extremum_nid_no_patch(x, y, false); }
-float APS5_VABI fmaf_nid_postfix(float x, float y, float z) { return std::fma(x, y, z); }
-
-double APS5_VABI scalbln_nid_postfix(double value, std::int64_t exponent) { return std::scalbn(value, BoundExponent_nid_no_patch(exponent)); }
-float APS5_VABI scalblnf_nid_postfix(float value, std::int64_t exponent) { return std::scalbn(value, BoundExponent_nid_no_patch(exponent)); }
 
 }

@@ -1,4 +1,5 @@
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
+#include "ThreadOwned.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Synchronization/DeferredLabels.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Pm4.hpp"
@@ -10,8 +11,8 @@
 namespace AgcDriver::DriverDetail {
 
 std::map<std::size_t, Driver::ResolvedDispatch>& Driver::resolvedAhead() {
-    static thread_local std::map<std::size_t, ResolvedDispatch> resolved;
-    return resolved;
+    static thread_local std::map<std::size_t, ResolvedDispatch>* resolved = nullptr;
+    return ShaderRecompiler::ThreadOwned(resolved);
 }
 
 Driver::GroupCaptureStats& Driver::groupCaptureStats() {
@@ -32,6 +33,10 @@ bool& Driver::resolvingAhead() {
 bool& Driver::gateOpened() {
     static thread_local bool opened = false;
     return opened;
+}
+
+std::uint64_t Driver::DispatchesAdoptedAhead() const {
+    return dispatchesAdoptedAhead.load(std::memory_order_relaxed);
 }
 
 void Driver::clearResolvedAhead() {
@@ -145,7 +150,7 @@ void Driver::resolveGroupAhead(const Submission& submission, const QueueState& l
                 const auto argumentsEnd = arguments + 3u * sizeof(std::uint32_t);
                 const bool written = std::any_of(writes.begin(), writes.end(), [&](const auto& range) { return range.first < argumentsEnd && arguments < range.second; })
                     || std::any_of(labels.begin(), labels.end(), [&](const RunLabel& label) { return label.address < argumentsEnd && arguments < label.address + label.size; });
-                if (unknownWrites || written) {
+                if ((unknownWrites || written) && indirectArgumentsPath(packet, arguments) != IndirectGpu) {
                     ++stats.writtenBefore;
                     break;
                 }
@@ -154,6 +159,7 @@ void Driver::resolveGroupAhead(const Submission& submission, const QueueState& l
             try {
                 if (opcode == 0x15) dispatch(scratch, packet, submission);
                 else dispatchIndirect(scratch, packet, submission);
+                Pm4::NoteDispatchRegisters(packet, scratch);
             } catch (const std::exception&) {
                 ++stats.failures;
                 break;
@@ -178,6 +184,7 @@ void Driver::resolveGroupAhead(const Submission& submission, const QueueState& l
             const auto label = Pm4::DecodeLabelWrite(packet);
             if (!label) break;
             NoteLabel(labels, label->address, label->Bytes());
+            writes.emplace_back(label->address, label->address + label->Bytes().size());
         } else if (opcode != 0x3f && opcode != 0x42 && opcode != 0x46 && opcode != 0x58) {
             if (Pm4::AccessesMemory(header)) break;
             try {
@@ -200,10 +207,10 @@ void Driver::reportGroupCapture(std::uint32_t queue) {
     auto& stats = groupCaptureStats();
     const auto now = std::chrono::steady_clock::now();
     if (now - stats.reported < std::chrono::seconds(10)) return;
-    AgcDriver::ProfilePrint_nid_no_patch("[groupcap] queue 0x%x (10 s): %llu runs resolved %llu dispatches (%llu cache hits) in %.1f ms (max %.2f ms); %llu adopted %.2f ms after the resolve on average, max %.2f ms; mismatches: address %llu key %llu; %llu resolve failures, %llu stale, %llu label overlaps, %llu read an earlier dispatch's output, %llu rejected by the device\n",
+    AgcDriver::ProfilePrint_nid_no_patch("[groupcap] queue 0x%x (10 s): %llu runs resolved %llu dispatches (%llu cache hits) in %.1f ms (max %.2f ms); %llu adopted %.2f ms after the resolve on average, max %.2f ms; mismatches: address %llu key %llu; %llu resolve failures, %llu stale, %llu label overlaps, %llu read an earlier dispatch's output, %llu rejected by the device, %llu dropped because the argument re-read differed\n",
                                          queue, static_cast<unsigned long long>(stats.runs), static_cast<unsigned long long>(stats.resolved), static_cast<unsigned long long>(stats.resolvedHits), stats.resolveMs, stats.resolveMaxMs,
                                          static_cast<unsigned long long>(stats.adopted), stats.adopted != 0 ? stats.ageMs / static_cast<double>(stats.adopted) : 0.0, stats.ageMaxMs, static_cast<unsigned long long>(stats.addressMismatches), static_cast<unsigned long long>(stats.keyMismatches),
-                                         static_cast<unsigned long long>(stats.failures), static_cast<unsigned long long>(stats.stale), static_cast<unsigned long long>(stats.labelOverlaps), static_cast<unsigned long long>(stats.writtenBefore), static_cast<unsigned long long>(stats.deviceRejects));
+                                         static_cast<unsigned long long>(stats.failures), static_cast<unsigned long long>(stats.stale), static_cast<unsigned long long>(stats.labelOverlaps), static_cast<unsigned long long>(stats.writtenBefore), static_cast<unsigned long long>(stats.deviceRejects), static_cast<unsigned long long>(stats.argumentMismatches));
     stats = GroupCaptureStats{};
     stats.reported = now;
 }

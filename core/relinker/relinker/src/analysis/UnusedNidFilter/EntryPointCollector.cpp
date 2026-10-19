@@ -1,4 +1,5 @@
 #include <relinker/analysis/UnusedNidFilter/IEntryPointCollector.hpp>
+#include <relinker/parsing/ElfReader.hpp>
 #include <elfpatcher/general/ElfConstants.hpp>
 #include <cstring>
 #include <limits>
@@ -38,7 +39,7 @@ struct LoadSegment {
 };
 
 bool inText(VirtualAddress va, VirtualAddress textVaddr, std::size_t textSize) {
-    return va >= textVaddr && va < textVaddr + static_cast<VirtualAddress>(textSize);
+    return va >= textVaddr && va - textVaddr < static_cast<VirtualAddress>(textSize);
 }
 
 }
@@ -51,6 +52,9 @@ public:
         std::size_t textSize,
         const IRelativeRelocationIndex& relativeRelocations
     ) const override {
+        if (textSize > std::numeric_limits<VirtualAddress>::max() - textVaddr) {
+            throw RelinkerException("Text section range exceeds the address space");
+        }
         if (elfBytes.size() < 64) throw RelinkerException("ELF too small for header");
         if (elfBytes[0] != 0x7f || elfBytes[1] != 'E' ||
             elfBytes[2] != 'L' || elfBytes[3] != 'F') {
@@ -75,11 +79,9 @@ public:
         if (phEntSize < 56) throw RelinkerException("ELF program header entry too small");
 
         std::vector<LoadSegment> loads;
-        for (std::uint16_t i = 0; i < phCount; ++i) {
-            std::size_t phPos = static_cast<std::size_t>(phOff) + i * phEntSize;
-            if (phPos + 56 > elfBytes.size()) throw RelinkerException("Program header out of bounds");
-            if (read32(elfBytes, phPos) != PT_LOAD) continue;
-            loads.push_back({read64(elfBytes, phPos + 16), read64(elfBytes, phPos + 8), read64(elfBytes, phPos + 32)});
+        for (const auto& header : ElfReader(elfBytes).ReadProgramHeaders()) {
+            if (header.Type != PT_LOAD) continue;
+            loads.push_back({header.MappedAddress, header.Offset, header.FileSize});
         }
 
         for (std::uint16_t i = 0; i < phCount; ++i) {

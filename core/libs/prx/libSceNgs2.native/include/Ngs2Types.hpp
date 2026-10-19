@@ -9,16 +9,20 @@
 static constexpr int SCE_NGS2_OK = 0;
 static constexpr int SCE_NGS2_ERROR_INVALID_OUT_ADDRESS = static_cast<int>(0x804A8010);
 static constexpr int SCE_NGS2_ERROR_INVALID_OUT_SIZE = static_cast<int>(0x804A8011);
-static constexpr int SCE_NGS2_ERROR_INVALID_SYSTEM_HANDLE = static_cast<int>(0x804A0230);
-static constexpr int SCE_NGS2_ERROR_INVALID_RACK_HANDLE = static_cast<int>(0x804A0261);
+static constexpr int SCE_NGS2_ERROR_INVALID_SYSTEM_HANDLE = static_cast<int>(0x804A8201);
+static constexpr int SCE_NGS2_ERROR_INVALID_RACK_HANDLE = static_cast<int>(0x804A8202);
+static constexpr int SCE_NGS2_ERROR_INVALID_VOICE_INDEX = static_cast<int>(0x804A8305);
 static constexpr int SCE_NGS2_ERROR_INVALID_WAVEFORM_DATA = static_cast<int>(0x804A8430);
 static constexpr int SCE_NGS2_ERROR_INVALID_WAVEFORM_FORMAT = static_cast<int>(0x804A8431);
 static constexpr int SCE_NGS2_ERROR_UNKNOWN_WAVEFORM_FORMAT = static_cast<int>(0x804A8432);
+static constexpr int SCE_NGS2_ERROR_INVALID_VOICE_HANDLE = static_cast<int>(0x804A8203);
+static constexpr int SCE_NGS2_ERROR_NULL_PARAM_LIST = static_cast<int>(0x804A8360);
 
 static constexpr std::uint32_t SCE_NGS2_RACK_ID_SAMPLER = 0x1000;
 static constexpr std::uint32_t SCE_NGS2_RACK_ID_SUBMIXER = 0x2000;
 static constexpr std::uint32_t SCE_NGS2_RACK_ID_REVERB = 0x2001;
 static constexpr std::uint32_t SCE_NGS2_RACK_ID_MASTERING = 0x3000;
+static constexpr std::uint32_t SCE_NGS2_RACK_ID_CUSTOM_SAMPLER = 0x4001;
 static constexpr std::uint32_t SCE_NGS2_RACK_ID_CUSTOM_SUBMIXER = 0x4002;
 
 static constexpr std::uint32_t SCE_NGS2_WAVEFORM_TYPE_PCM_I16L = 0x12;
@@ -36,6 +40,7 @@ static constexpr std::uint32_t SCE_NGS2_VOICE_STATE_FLAG_INUSE = 1;
 static constexpr std::uint32_t SCE_NGS2_VOICE_STATE_FLAG_PLAYING = 2;
 static constexpr std::uint32_t SCE_NGS2_VOICE_STATE_FLAG_PAUSED = 4;
 static constexpr std::uint32_t SCE_NGS2_VOICE_STATE_FLAG_STOPPED = 8;
+static constexpr std::uint32_t SCE_NGS2_VOICE_STATE_FLAG_EMPTY = 0x20;
 
 static constexpr std::uint32_t SCE_NGS2_VOICE_PARAM_MATRIX_LEVELS = 0x0001;
 static constexpr std::uint32_t SCE_NGS2_VOICE_PARAM_PORT_VOLUME = 0x0002;
@@ -56,11 +61,19 @@ static constexpr std::uint32_t SCE_NGS2_REVERB_VOICE_PARAM_I3DL2 = 0x20010001;
 static constexpr std::uint32_t SCE_NGS2_MASTERING_VOICE_PARAM_SETUP = 0x30000000;
 static constexpr std::uint32_t SCE_NGS2_MASTERING_VOICE_PARAM_GAIN = 0x30000004;
 static constexpr std::uint32_t SCE_NGS2_MASTERING_VOICE_PARAM_OUTPUT = 0x30000005;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_SAMPLER_VOICE_PARAM_SETUP = 0x40010000;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_SAMPLER_VOICE_PARAM_ADD_WAVEFORM_BLOCKS = 0x40010001;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_SAMPLER_VOICE_PARAM_EXIT_LOOP = 0x40010004;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_SAMPLER_VOICE_PARAM_PITCH = 0x40010005;
 static constexpr std::uint32_t SCE_NGS2_CUSTOM_SUBMIXER_VOICE_PARAM_SETUP = 0x40020000;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_VOICE_PARAM_FILTER = 0x40001300;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_VOICE_PARAM_USER_FX = 0x40001d00;
 static constexpr std::uint32_t SCE_NGS2_CUSTOM_VOICE_PARAM_USER_FX2 = 0x40001f00;
 
 static constexpr std::uint32_t SCE_NGS2_CUSTOM_MAX_MODULES = 24;
 static constexpr std::uint32_t SCE_NGS2_CUSTOM_MAX_PORTS = 16;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_MODULE_ID_FILTER = 0x13;
+static constexpr std::uint32_t SCE_NGS2_CUSTOM_MODULE_ID_USER_FX = 0x1d;
 static constexpr std::uint32_t SCE_NGS2_CUSTOM_MODULE_ID_USER_FX2 = 0x1f;
 
 static constexpr std::uint32_t SCE_NGS2_WAVEFORM_BLOCKS_FLAG_CONTINUE = 1;
@@ -274,6 +287,17 @@ struct Ngs2CustomRackOption {
 };
 static_assert(sizeof(Ngs2CustomRackOption) == 1280);
 
+struct Ngs2CustomSamplerRackOption {
+    Ngs2CustomRackOption custom_rack_option;
+    std::uint32_t max_channel_works;
+    std::uint32_t max_waveform_blocks;
+    std::uint32_t max_atrac9_decoders;
+    std::uint32_t max_atrac9_channel_works;
+    std::uint32_t max_ajm_atrac9_decoders;
+    std::uint32_t max_codec_caches;
+};
+static_assert(sizeof(Ngs2CustomSamplerRackOption) == 1304);
+
 struct Ngs2CustomSubmixerRackOption {
     Ngs2CustomRackOption custom_rack_option;
     std::uint32_t max_channels;
@@ -483,12 +507,48 @@ struct Ngs2CustomSubmixerVoiceSetupParam {
 };
 static_assert(sizeof(Ngs2CustomSubmixerVoiceSetupParam) == 24);
 
+struct Ngs2CustomVoiceUserFxParam {
+    Ngs2VoiceParamHeader header;
+    Ngs2UserFxProcessHandler handler;
+    std::uintptr_t user_data0;
+    std::uintptr_t user_data1;
+    std::uintptr_t user_data2;
+};
+static_assert(sizeof(Ngs2CustomVoiceUserFxParam) == 40);
+
 struct Ngs2CustomVoiceUserFx2Param {
     Ngs2VoiceParamHeader header;
     const void* data;
     std::size_t data_size;
 };
 static_assert(sizeof(Ngs2CustomVoiceUserFx2Param) == 24);
+
+struct Ngs2CustomVoiceFilterParam {
+    Ngs2VoiceParamHeader header;
+    std::uint32_t type;
+    std::uint32_t channel_mask;
+    union {
+        struct {
+            float i0;
+            float i1;
+            float i2;
+            float o1;
+            float o2;
+        } direct;
+        struct {
+            float frequency;
+            float q;
+            float level;
+            std::uint32_t reserved;
+            std::uint32_t reserved2;
+        } fcq;
+    } param;
+    std::uint32_t reserved3;
+};
+static_assert(sizeof(Ngs2CustomVoiceFilterParam) == 40);
+static_assert(offsetof(Ngs2CustomVoiceFilterParam, type) == 8);
+static_assert(offsetof(Ngs2CustomVoiceFilterParam, channel_mask) == 12);
+static_assert(offsetof(Ngs2CustomVoiceFilterParam, param) == 16);
 
 struct Ngs2MasteringVoiceSetupParam {
     Ngs2VoiceParamHeader header;
@@ -573,6 +633,15 @@ struct Ngs2SamplerVoiceState {
 };
 static_assert(sizeof(Ngs2SamplerVoiceState) == 56);
 
+struct Ngs2CustomSamplerVoiceState {
+    Ngs2VoiceState voice_state;
+    std::uint32_t reserved[2];
+    std::uint64_t num_decoded_samples;
+    std::uint64_t reserved2[3];
+};
+static_assert(sizeof(Ngs2CustomSamplerVoiceState) == 48);
+static_assert(offsetof(Ngs2CustomSamplerVoiceState, num_decoded_samples) == 16);
+
 struct Ngs2WaveformInfo {
     Ngs2WaveformFormat format;
     std::uint32_t data_offset;
@@ -638,11 +707,15 @@ struct Ngs2GeomListenerParam {
     std::uint32_t reserved[2];
 };
 static_assert(sizeof(Ngs2GeomListenerParam) == 60);
-static_assert(offsetof(Ngs2GeomListenerParam, sound_speed) == 48);
 
 struct Ngs2GeomListenerWork {
-    std::uint32_t reserved[64];
+    float matrix[4][4];
+    Ngs2GeomVector velocity;
+    float sound_speed;
+    std::uint32_t coordinate;
+    std::uint32_t reserved[3];
 };
+static_assert(sizeof(Ngs2GeomListenerWork) == 96);
 
 struct Ngs2GeomSourceParam {
     Ngs2GeomVector position;
@@ -661,12 +734,20 @@ struct Ngs2GeomSourceParam {
     std::uint32_t reserved[2];
 };
 static_assert(sizeof(Ngs2GeomSourceParam) == 108);
-static_assert(offsetof(Ngs2GeomSourceParam, cone) == 36);
-static_assert(offsetof(Ngs2GeomSourceParam, rolloff) == 52);
-static_assert(offsetof(Ngs2GeomSourceParam, num_speakers) == 92);
+
+struct Ngs2GeomA3dAttribute {
+    Ngs2GeomVector position;
+    float volume;
+    std::uint32_t reserved[4];
+};
+static_assert(sizeof(Ngs2GeomA3dAttribute) == 32);
 
 struct Ngs2GeomAttribute {
-    std::uint32_t reserved[32];
+    float pitch_ratio;
+    float level[64];
+    Ngs2GeomA3dAttribute a3d_attrib;
+    std::uint32_t reserved[4];
 };
+static_assert(sizeof(Ngs2GeomAttribute) == 308);
 
 #endif

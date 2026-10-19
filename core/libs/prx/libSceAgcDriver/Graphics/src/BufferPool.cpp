@@ -1,10 +1,12 @@
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/BufferPool.hpp"
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <limits>
 
 namespace AgcDriver::Graphics {
@@ -22,14 +24,24 @@ bool exactSizes() {
     return exact;
 }
 
+bool systemMemoryHeap(const VkPhysicalDeviceMemoryProperties& memory, std::uint32_t heap) {
+    bool typed = false;
+    for (std::uint32_t type = 0; type < std::min<std::uint32_t>(memory.memoryTypeCount, VK_MAX_MEMORY_TYPES); ++type) {
+        if (memory.memoryTypes[type].heapIndex != heap) continue;
+        if ((memory.memoryTypes[type].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) return false;
+        typed = true;
+    }
+    return typed;
+}
+
 constexpr VkBufferUsageFlags deviceUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 
 }
 
-BufferPool::BufferPool(const Context& context) : device(context.device), unmap(context.Function<PFN_vkUnmapMemory>("vkUnmapMemory")), destroyBuffer(context.Function<PFN_vkDestroyBuffer>("vkDestroyBuffer")), freeMemory(context.Function<PFN_vkFreeMemory>("vkFreeMemory")), allocateMemory(context.Function<PFN_vkAllocateMemory>("vkAllocateMemory")), mapMemory(context.Function<PFN_vkMapMemory>("vkMapMemory")), maxSlots(std::max<std::size_t>(1, std::min<std::size_t>(MaxSlots(), context.limits.maxMemoryAllocationCount / 6u))) {
+BufferPool::BufferPool(const Context& context) : maxSlots(std::max<std::size_t>(1, std::min<std::size_t>(MaxSlots(), context.limits.maxMemoryAllocationCount / 6u))), cacheReclaim(context.cacheReclaim), device(context.device), unmap(context.Function<PFN_vkUnmapMemory>("vkUnmapMemory")), destroyBuffer(context.Function<PFN_vkDestroyBuffer>("vkDestroyBuffer")), freeMemory(context.Function<PFN_vkFreeMemory>("vkFreeMemory")), allocateMemory(context.Function<PFN_vkAllocateMemory>("vkAllocateMemory")), mapMemory(context.Function<PFN_vkMapMemory>("vkMapMemory")), physical(context.physical), memoryProperties(context.memory), memoryProperties2(context.memoryProperties2) {
     smallTier.budget = smallBudget;
     largeTier.budget = budget;
-    deviceTier.budget = DeviceTierEnabled() ? DeviceBudget(context.memory) : 0;
+    deviceTier.budget = deviceBudget(context);
 }
 
 BufferPool::~BufferPool() {
@@ -39,6 +51,72 @@ BufferPool::~BufferPool() {
         }
     }
     for (auto& [memory, block] : slabBlocks) freeBlock(*block);
+}
+
+VkDeviceMemory BufferPool::AllocateMemory(const VkMemoryAllocateInfo& allocation, const char* operation, std::optional<std::uint32_t> hostType, std::uint32_t* allocatedType) {
+    if (allocatedType != nullptr) *allocatedType = allocation.memoryTypeIndex;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    auto result = allocateMemory(device, &allocation, nullptr, &memory);
+    const auto initialResult = result;
+    unsigned attempts = 1;
+    VkDeviceSize reclaimed = 0;
+    VkDeviceSize released = 0;
+    const auto exhausted = [](VkResult value) { return value == VK_ERROR_OUT_OF_DEVICE_MEMORY || value == VK_ERROR_OUT_OF_HOST_MEMORY; };
+    if (exhausted(result)) {
+        reclaimed = trim();
+        if (reclaimed != 0) {
+            memory = VK_NULL_HANDLE;
+            result = allocateMemory(device, &allocation, nullptr, &memory);
+            ++attempts;
+        }
+    }
+    if (exhausted(result)) {
+        if (cacheReclaim != nullptr) released = cacheReclaim(ReclaimTarget(allocation.allocationSize));
+        if (released != 0) {
+            memory = VK_NULL_HANDLE;
+            result = allocateMemory(device, &allocation, nullptr, &memory);
+            ++attempts;
+        }
+    }
+    if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY && hostType.has_value() && *hostType != allocation.memoryTypeIndex) {
+        auto host = allocation;
+        host.memoryTypeIndex = *hostType;
+        memory = VK_NULL_HANDLE;
+        result = allocateMemory(device, &host, nullptr, &memory);
+        ++attempts;
+        if (result == VK_SUCCESS) {
+            if (allocatedType != nullptr) *allocatedType = *hostType;
+            static std::atomic<std::uint64_t> placements{0}, placedBytes{0};
+            const auto count = placements.fetch_add(1, std::memory_order_relaxed) + 1;
+            const auto total = placedBytes.fetch_add(allocation.allocationSize, std::memory_order_relaxed) + allocation.allocationSize;
+            if (count <= 5 || (count & (count - 1)) == 0) std::fprintf(stderr, "[bufferpool] %s: memory type %u is out of device memory for %llu bytes after reclaiming %llu and releasing %llu; placed in host memory type %u until it is released; %llu such allocations, %llu MiB\n", operation, allocation.memoryTypeIndex, static_cast<unsigned long long>(allocation.allocationSize), static_cast<unsigned long long>(reclaimed), static_cast<unsigned long long>(released), *hostType, static_cast<unsigned long long>(count), static_cast<unsigned long long>(total >> 20u));
+            return memory;
+        }
+    }
+    if (result == VK_SUCCESS) {
+        if (attempts > 1) std::fprintf(stderr, "[bufferpool] %s recovered: allocation=%llu reclaimed=%llu released=%llu initialResult=%d attempts=%u\n", operation, static_cast<unsigned long long>(allocation.allocationSize), static_cast<unsigned long long>(reclaimed), static_cast<unsigned long long>(released), static_cast<int>(initialResult), attempts);
+        return memory;
+    }
+    char details[1536];
+    std::snprintf(details, sizeof(details), "%s: allocation=%llu memoryType=%u reclaimed=%llu released=%llu initialResult=%d attempts=%u", operation, static_cast<unsigned long long>(allocation.allocationSize), allocation.memoryTypeIndex, static_cast<unsigned long long>(reclaimed), static_cast<unsigned long long>(released), static_cast<int>(initialResult), attempts);
+    if (memoryProperties2 != nullptr && physical != VK_NULL_HANDLE) {
+        VkPhysicalDeviceMemoryBudgetPropertiesEXT budget{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+        VkPhysicalDeviceMemoryProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2, &budget};
+        memoryProperties2(physical, &properties);
+        auto used = std::strlen(details);
+        for (std::uint32_t heap = 0; heap < memoryProperties.memoryHeapCount && heap < VK_MAX_MEMORY_HEAPS; ++heap) {
+            const auto remaining = sizeof(details) - used;
+            const auto appended = std::snprintf(details + used, remaining, "; heap %u %llu/%llu MiB", heap, static_cast<unsigned long long>(budget.heapUsage[heap] >> 20u), static_cast<unsigned long long>(budget.heapBudget[heap] >> 20u));
+            if (appended < 0 || static_cast<std::size_t>(appended) >= remaining) break;
+            used += static_cast<std::size_t>(appended);
+        }
+    }
+    Check(result, details);
+    return VK_NULL_HANDLE;
+}
+
+VkDeviceSize BufferPool::ReclaimTarget(VkDeviceSize bytes) {
+    return bytes + std::max<VkDeviceSize>(bytes, VkDeviceSize{256} << 20u);
 }
 
 bool BufferPool::SlabEligible(std::size_t capacity, VkDeviceSize alignment, VkDeviceSize size, VkDeviceSize atom) {
@@ -72,7 +150,11 @@ SlabSlot BufferPool::TakeSlot(const Context& context, std::uint32_t memoryType, 
         if (!slab.available.empty()) return takeFrom(*slab.available.back(), slab);
     }
     const auto blockBytes = SlabBlockBytes(capacity);
-    auto block = std::make_unique<SlabBlock>();
+    const auto release = [this](SlabBlock* block) noexcept {
+        if (block->memory != VK_NULL_HANDLE) freeBlock(*block);
+        delete block;
+    };
+    std::unique_ptr<SlabBlock, decltype(release)> block(new SlabBlock, release);
     block->slotBytes = capacity;
     block->slab = key;
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
@@ -80,11 +162,10 @@ SlabSlot BufferPool::TakeSlot(const Context& context, std::uint32_t memoryType, 
     if (addressable) allocation.pNext = &flags;
     allocation.allocationSize = blockBytes;
     allocation.memoryTypeIndex = memoryType;
-    Check(allocateMemory(device, &allocation, nullptr, &block->memory), "vkAllocateMemory buffer slab");
+    block->memory = AllocateMemory(allocation, "vkAllocateMemory buffer slab");
     if ((context.memory.memoryTypes[memoryType].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
         void* mapping = nullptr;
         const auto mapped = mapMemory(device, block->memory, 0, VK_WHOLE_SIZE, 0, &mapping);
-        if (mapped != VK_SUCCESS) freeMemory(device, block->memory, nullptr);
         Check(mapped, "vkMapMemory buffer slab");
         block->mapping = static_cast<std::byte*>(mapping);
     }
@@ -93,9 +174,12 @@ SlabSlot BufferPool::TakeSlot(const Context& context, std::uint32_t memoryType, 
     for (std::uint32_t index = slots; index-- != 0;) block->free.push_back(index);
     std::lock_guard lock(slabMutex);
     auto& slab = slabs[key];
+    if (slab.blocks == slab.available.capacity()) slab.available.reserve(std::max<std::size_t>(1, slab.available.capacity() * 2));
     auto& inserted = *block;
-    slabBlocks.emplace(inserted.memory, std::move(block));
+    const auto owner = slabBlocks.try_emplace(inserted.memory).first;
+    owner->second.reset(block.release());
     slab.available.push_back(&inserted);
+    ++slab.blocks;
     ++slab.emptyBlocks;
     return takeFrom(*slab.available.back(), slab);
 }
@@ -105,26 +189,28 @@ void BufferPool::freeBlock(SlabBlock& block) noexcept {
     freeMemory(device, block.memory, nullptr);
 }
 
-void BufferPool::PutSlot(VkDeviceMemory memory, VkDeviceSize offset) noexcept {
+VkDeviceSize BufferPool::PutSlot(VkDeviceMemory memory, VkDeviceSize offset) noexcept {
     std::unique_ptr<SlabBlock> released;
     {
         std::lock_guard lock(slabMutex);
         const auto found = slabBlocks.find(memory);
-        if (found == slabBlocks.end()) return;
+        if (found == slabBlocks.end()) return 0;
         auto& block = *found->second;
         auto& slab = slabs[block.slab];
         if (block.free.empty()) slab.available.push_back(&block);
         block.free.push_back(static_cast<std::uint32_t>(offset / block.slotBytes));
-        if (--block.used != 0) return;
+        if (--block.used != 0) return 0;
         if (slab.emptyBlocks == 0) {
             ++slab.emptyBlocks;
-            return;
+            return 0;
         }
         slab.available.erase(std::find(slab.available.begin(), slab.available.end(), &block));
+        --slab.blocks;
         released = std::move(found->second);
         slabBlocks.erase(found);
     }
     freeBlock(*released);
+    return SlabBlockBytes(released->slotBytes);
 }
 
 std::size_t BufferPool::SlabBlocks() {
@@ -140,26 +226,39 @@ bool BufferPool::DeviceTierEnabled() {
     return enabled;
 }
 
-VkDeviceSize BufferPool::DeviceBudget(const VkPhysicalDeviceMemoryProperties& memory) {
+VkDeviceSize BufferPool::DeviceBudget(const VkPhysicalDeviceMemoryProperties& memory, const VkPhysicalDeviceMemoryBudgetPropertiesEXT* reported) {
     static const char* value = std::getenv("APS5_STAGING_POOL_MIB");
     if (value != nullptr) return static_cast<VkDeviceSize>(std::strtoull(value, nullptr, 10)) << 20u;
-    VkDeviceSize largest = 0;
+    std::optional<std::uint32_t> largest;
     for (std::uint32_t heap = 0; heap < memory.memoryHeapCount && heap < VK_MAX_MEMORY_HEAPS; ++heap) {
-        if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0) largest = std::max(largest, memory.memoryHeaps[heap].size);
+        if ((memory.memoryHeaps[heap].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0 && (!largest || memory.memoryHeaps[heap].size > memory.memoryHeaps[*largest].size)) largest = heap;
     }
-    return std::max<VkDeviceSize>(VkDeviceSize{512} << 20u, largest / 8u);
+    VkDeviceSize size = largest ? memory.memoryHeaps[*largest].size : 0;
+    if (largest && reported != nullptr && reported->heapBudget[*largest] != 0) size = std::min(size, reported->heapBudget[*largest]);
+    if (largest && systemMemoryHeap(memory, *largest)) return std::max<VkDeviceSize>(VkDeviceSize{128} << 20u, size / 64u);
+    return std::max<VkDeviceSize>(VkDeviceSize{512} << 20u, size / 8u);
 }
 
-void BufferPool::destroy(const BufferAllocation& allocation) noexcept {
+VkDeviceSize BufferPool::deviceBudget(const Context& context) {
+    if (!DeviceTierEnabled()) return 0;
+    if (context.memoryProperties2 == nullptr || context.physical == VK_NULL_HANDLE) return DeviceBudget(context.memory);
+    VkPhysicalDeviceMemoryBudgetPropertiesEXT reported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT};
+    VkPhysicalDeviceMemoryProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2};
+    properties.pNext = &reported;
+    context.memoryProperties2(context.physical, &properties);
+    return DeviceBudget(context.memory, &reported);
+}
+
+VkDeviceSize BufferPool::destroy(const BufferAllocation& allocation) noexcept {
     if (allocation.slab) {
         destroyBuffer(device, allocation.buffer, nullptr);
-        PutSlot(allocation.memory, allocation.offset);
-        return;
+        return PutSlot(allocation.memory, allocation.offset);
     }
     // Device-local allocations (see DeviceBuffer) are never mapped.
     if (allocation.mapping != nullptr) unmap(device, allocation.memory);
     destroyBuffer(device, allocation.buffer, nullptr);
     freeMemory(device, allocation.memory, nullptr);
+    return allocation.allocationBytes;
 }
 
 bool BufferPool::DeviceTiered(VkMemoryPropertyFlags properties) {
@@ -184,7 +283,7 @@ VkBufferUsageFlags BufferPool::Usage(VkBufferUsageFlags usage, VkMemoryPropertyF
 }
 
 BufferPool::Tier& BufferPool::tierFor(std::size_t capacity, VkMemoryPropertyFlags properties) {
-    if (DeviceTiered(properties)) return deviceTier;
+    if (DeviceTiered(properties) && (sharedTiers() || capacity >= classLimit)) return deviceTier;
     return !sharedTiers() && capacity < classLimit ? smallTier : largeTier;
 }
 
@@ -240,6 +339,44 @@ std::size_t BufferPool::MaxSlots() {
     return slots;
 }
 
+VkDeviceSize BufferPool::trim() {
+    Tier retiredSmall;
+    Tier retiredLarge;
+    Tier retiredDevice;
+    {
+        std::lock_guard lock(mutex);
+        for (const auto& [tier, retired] : {std::pair{&smallTier, &retiredSmall}, std::pair{&largeTier, &retiredLarge}, std::pair{&deviceTier, &retiredDevice}}) {
+            tier->free.swap(retired->free);
+            tier->evictions += tier->slots;
+            tier->retainedBytes = 0;
+            tier->slots = 0;
+        }
+    }
+    VkDeviceSize bytes = 0;
+    for (const auto* tier : {&retiredSmall, &retiredLarge, &retiredDevice}) {
+        for (const auto& [key, slots] : tier->free) {
+            for (const auto& slot : slots) bytes += destroy(slot.allocation);
+        }
+    }
+    for (;;) {
+        std::unique_ptr<SlabBlock> released;
+        {
+            std::lock_guard lock(slabMutex);
+            const auto found = std::find_if(slabBlocks.begin(), slabBlocks.end(), [](const auto& entry) { return entry.second->used == 0; });
+            if (found == slabBlocks.end()) break;
+            auto& slab = slabs.at(found->second->slab);
+            slab.available.erase(std::find(slab.available.begin(), slab.available.end(), found->second.get()));
+            --slab.blocks;
+            --slab.emptyBlocks;
+            released = std::move(found->second);
+            slabBlocks.erase(found);
+        }
+        freeBlock(*released);
+        bytes += SlabBlockBytes(released->slotBytes);
+    }
+    return bytes;
+}
+
 void BufferPool::Put(const BufferAllocation& allocation) noexcept {
     // Evicted allocations are destroyed after the mutex is released (see evictOldest). The vector
     // may throw on growth; a Put that cannot retain simply destroys, as noexcept requires.
@@ -264,6 +401,10 @@ void BufferPool::Put(const BufferAllocation& allocation) noexcept {
 std::shared_ptr<BufferPool> GetBufferPool(const Context& context) {
     if (!context.bufferPool) context.bufferPool = std::make_shared<BufferPool>(context);
     return context.bufferPool;
+}
+
+VkDeviceMemory AllocateImageMemory(const Context& context, const VkMemoryAllocateInfo& allocation, std::uint32_t mask, const char* operation) {
+    return GetBufferPool(context)->AllocateMemory(allocation, operation, context.RefusedDeviceMemoryFallback(mask, allocation.memoryTypeIndex));
 }
 
 }
