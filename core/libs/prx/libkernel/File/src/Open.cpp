@@ -212,6 +212,17 @@ static int OpenNative(const std::filesystem::path& native, int flags, std::uint1
         const auto status = std::filesystem::status(native, error);
         if (std::filesystem::exists(status) && !std::filesystem::is_directory(status)) return SceErrorFromErrno(ENOTDIR);
     }
+    if (!native.has_filename()) {
+        auto named = native;
+        while (!named.has_filename() && named.has_relative_path()) named = named.parent_path();
+        std::error_code error;
+        const auto status = std::filesystem::status(named, error);
+        if (!std::filesystem::exists(status)) {
+            if ((flags & SCE_KERNEL_O_CREAT) != 0) return SceErrorFromErrno(ENOENT);
+        } else if (!std::filesystem::is_directory(status)) {
+            return SceErrorFromErrno(ENOTDIR);
+        }
+    }
 #endif
     if ((flags & SCE_KERNEL_O_NOFOLLOW) != 0 && (flags & (SCE_KERNEL_O_CREAT | SCE_KERNEL_O_EXCL)) != (SCE_KERNEL_O_CREAT | SCE_KERNEL_O_EXCL)) {
         constexpr int GuestEmlink = 31;

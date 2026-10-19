@@ -1090,6 +1090,19 @@ int main() {
     Require(creat_nid_postfix(rootName.c_str(), 0644) == -1 && *__error_nid_postfix() == 21);
     Require(creat_nid_postfix("", 0644) == -1 && *__error_nid_postfix() == 2);
     Require(creat_nid_postfix(nullptr, 0644) == -1 && *__error_nid_postfix() == 14);
+    const auto presentSize = std::filesystem::file_size(present);
+    for (const char* suffix : {"/", "//", "/.", "/./"}) {
+        const auto name = present.generic_string() + suffix;
+        Require(sceKernelOpen(name.c_str(), 0, 0) == static_cast<int>(0x80020014u));
+        Require(open_nid_postfix(name.c_str(), 0, 0) == -1 && *__error_nid_postfix() == 20);
+        Require(sceKernelOpen(name.c_str(), 0x401, 0) == static_cast<int>(0x80020014u));
+        Require(sceKernelOpen(name.c_str(), 0x601, 0644) < 0 && creat_nid_postfix(name.c_str(), 0644) == -1);
+        Require(std::filesystem::file_size(present) == presentSize);
+    }
+    Require(sceKernelOpen((missing.generic_string() + "/").c_str(), 0x201, 0644) < 0 && !std::filesystem::exists(missing));
+    Require(creat_nid_postfix((missing.generic_string() + "/").c_str(), 0644) == -1 && !std::filesystem::exists(missing));
+    const int slashedDirectory = sceKernelOpen((root.generic_string() + "/").c_str(), 0, 0);
+    Require(slashedDirectory >= 0 && sceKernelClose(slashedDirectory) == 0);
     Require(rmdir_nid_postfix(rootName.c_str()) == -1 && *__error_nid_postfix() == 66);
     Require(sceKernelRmdir(rootName.c_str()) == static_cast<int>(0x80020042u));
     Require(rmdir_nid_postfix(presentName.c_str()) == -1 && *__error_nid_postfix() == 20);
