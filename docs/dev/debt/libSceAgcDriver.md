@@ -6,6 +6,7 @@
 
 ### Unknown function info
 
+- [sceAgcDriverUserDataGetPacketSize](../../../core/libs/prx/libSceAgcDriver/Submit/src/UserData.cpp) (libSceAgcDriver) - the 3, 4 and payload+7 dword sizes, and the widening of the byte count to 64 bits, are [OpenAGC](https://github.com/OpenAGC/OpenAGC/blob/main/src/game_compat.c)'s; what the console reports for a payload size OpenAGC never exercised is unknown
 - [sceAgcDriverSubmitCommandBuffer, sceAgcDriverSubmitMultiCommandBuffers](../../../core/libs/prx/libSceAgcDriver/Submit/src/CommandBuffer.cpp) (libSceAgcDriver) - `queue_context` is treated as a pointer to context whose queue identifier is stored 4 bytes in, matching KytyPS5 (`src/libs/agc.cpp` `AgcDriverSubmitCommandBuffer` / `get_driver_queue`). A null context returns `EINVAL` (22). Whether the console validates other context fields before queue dispatch is unverified
 
 - [Initial point context](../../../core/libs/prx/libSceAgcDriver/Execution/include/QueueState.hpp) - new queues and CLEAR_STATE seed PA_SU_POINT_SIZE 0x00080008 and PA_SU_POINT_MINMAX 0xffff0000, matching every public context table in libSceAgc/Command/include/RegisterDefaultsData.hpp. Cocoon (PPSA08766) reaches geometry point output without writing these registers in the observed startup. Applying the SDK context defaults to initial/CLEAR_STATE driver context is inferred; GPU power-on reset state is not measured and is not the source of these values. Explicit writes and pushed/restored contexts retain their own values.
