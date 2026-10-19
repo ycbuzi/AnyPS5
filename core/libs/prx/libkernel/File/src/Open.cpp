@@ -409,6 +409,15 @@ int APS5_VABI sceKernelUnlink(const char* path) {
     constexpr int GuestEperm = 1;
     std::error_code error;
     if (std::filesystem::is_directory(std::filesystem::symlink_status(native, error))) return SceErrorFromErrno(GuestEperm);
+#ifdef _WIN32
+    if (!native.has_filename()) {
+        constexpr int GuestEnotdir = 20;
+        auto named = native;
+        while (!named.has_filename() && named.has_relative_path()) named = named.parent_path();
+        const auto status = std::filesystem::symlink_status(named, error);
+        if (std::filesystem::exists(status) && !std::filesystem::is_directory(status)) return SceErrorFromErrno(GuestEnotdir);
+    }
+#endif
     if (NativeUnlink(native) != 0) {
         return SceErrorFromErrno(errno);
     }

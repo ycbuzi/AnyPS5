@@ -1117,6 +1117,18 @@ int main() {
     Require(unlink_nid_postfix(lockedPosix.string().c_str()) == 0 && !std::filesystem::exists(lockedPosix));
     const auto lockedKernel = lockedFile("locked-kernel");
     Require(sceKernelUnlink(lockedKernel.string().c_str()) == 0 && !std::filesystem::exists(lockedKernel));
+    const auto slashed = root / "slashed";
+    { std::ofstream stream(slashed); stream << "kept"; }
+    for (const char* suffix : {"/", "//", "/.", "/./"}) {
+        const auto name = slashed.generic_string() + suffix;
+        Require(sceKernelUnlink(name.c_str()) == static_cast<int>(0x80020014u));
+        Require(unlink_nid_postfix(name.c_str()) == -1 && *__error_nid_postfix() == 20);
+        Require(std::filesystem::file_size(slashed) == 4);
+    }
+    Require(sceKernelUnlink((presentName + "/").c_str()) == static_cast<int>(0x80020014u) && std::filesystem::exists(present));
+    Require(sceKernelUnlink((rootName + "/").c_str()) == static_cast<int>(0x80020001u));
+    Require(sceKernelUnlink((missingName + "/").c_str()) == static_cast<int>(0x80020002u));
+    Require(sceKernelUnlink(slashed.generic_string().c_str()) == 0 && !std::filesystem::exists(slashed));
     const auto lockedDirectory = [&](const char* name) {
         const auto locked = root / name;
         Require(mkdir_nid_postfix(locked.string().c_str(), 0700) == 0);
