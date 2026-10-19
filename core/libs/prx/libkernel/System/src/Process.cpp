@@ -718,6 +718,12 @@ int APS5_VABI setuid_nid_postfix(std::uint32_t uid) {
     return 0;
 }
 
+int APS5_VABI setgid_nid_postfix(std::uint32_t gid) {
+    if (gid != 0)
+        throw std::runtime_error("setgid: unsupported group id " + std::to_string(gid));
+    return 0;
+}
+
 int APS5_VABI setreuid_nid_postfix(std::uint32_t ruid, std::uint32_t euid) {
     constexpr std::uint32_t unchanged = 0xffffffffu;
     if (ruid != 0 && ruid != unchanged)
