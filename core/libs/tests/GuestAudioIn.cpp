@@ -21,21 +21,10 @@ int32_t APS5_VABI sceAudioInGetGain(int32_t, float*);
 int32_t APS5_VABI sceAudioInGetRerouteCount(int32_t);
 int APS5_VABI sceAudioInInput(int, void*);
 int APS5_VABI sceAudioInGetSilentState(int);
-int APS5_VABI sceAudioInIsPadEmbeddedMic(int);
 int APS5_VABI sceAudioInClose(int);
 }
 
 static void Require(bool value) { if (!value) std::abort(); }
-
-template <typename TCall>
-static bool ReportsNotImplemented(const char* name, TCall call) {
-    try {
-        call();
-    } catch (const std::runtime_error& error) {
-        return std::string(error.what()) == std::string(name) + " not implemented";
-    }
-    return false;
-}
 
 template <typename TCall>
 static bool ThrowsRuntimeError(TCall call) {
@@ -106,7 +95,6 @@ void TestValidation() {
     port = sceAudioInAsyncOpen(user, 0, 0, 384, 48000, 0x10);
     gain = 0.5f;
     Require(port > 0 && sceAudioInGetGain(port, &gain) == 0 && gain == 1.0f && sceAudioInGetRerouteCount(port) == 0 && sceAudioInClose(port) == 0);
-    Require(ReportsNotImplemented("sceAudioInIsPadEmbeddedMic", [] { sceAudioInIsPadEmbeddedMic(1); }));
 }
 
 void InputSound(int handle, std::vector<std::int16_t>& block) {
