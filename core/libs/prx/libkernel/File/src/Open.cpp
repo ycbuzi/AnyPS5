@@ -29,6 +29,7 @@
 #include <io.h>
 #include <sys/stat.h>
 #include <windows.h>
+#include "prx/libkernel/File/include/WindowsSymbolicLink.hpp"
 static int NativeOpen(const std::filesystem::path& p, int nativeFlags, std::uint16_t mode) {
     const int access = nativeFlags & (_O_RDONLY | _O_WRONLY | _O_RDWR);
     const DWORD desired = access == _O_RDONLY ? GENERIC_READ : access == _O_WRONLY ? GENERIC_WRITE : GENERIC_READ | GENERIC_WRITE;
@@ -216,6 +217,13 @@ static int OpenNative(const std::filesystem::path& native, int flags, std::uint1
         constexpr int GuestEmlink = 31;
         std::error_code error;
         if (std::filesystem::is_symlink(native, error)) return SceErrorFromErrno(GuestEmlink);
+#ifdef _WIN32
+        const DWORD attributes = GetFileAttributesW(native.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+            std::string junctionTarget;
+            if (File::WindowsSymbolicLink::ReadJunction(native, junctionTarget, "open")) return SceErrorFromErrno(GuestEmlink);
+        }
+#endif
     }
     int fd = NativeOpen(native, MapFlags(flags), mode);
 #ifdef _WIN32
