@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 
 extern "C" {
 long double APS5_VABI fdiml_nid_postfix(long double, long double);
@@ -53,6 +54,18 @@ static void CheckSignalingNanPassThrough() {
     Require(SameBits(modfl_nid_postfix(signaling, &integral), signaling) && SameBits(integral, signaling));
     Require(SameBits(fmal_nid_postfix(1.0L, 1.0L, signaling), signaling));
     Require(SameBits(nanl_nid_postfix("123"), Extended(0x7fff, 0xc000000000000000ull)));
+}
+
+static void CheckModflSigns() {
+    for (const long double value : {-static_cast<long double>(INFINITY), -3.0L, -0.0L, -0x1p63L, -1e30L}) {
+        long double integral = 1.0L;
+        const long double fraction = modfl_nid_postfix(value, &integral);
+        Require(fraction == 0.0L && std::signbit(fraction) && SameBits(integral, value));
+    }
+    long double integral = 0;
+    Require(modfl_nid_postfix(-2.5L, &integral) == -0.5L && integral == -2.0L);
+    const long double positive = modfl_nid_postfix(3.0L, &integral);
+    Require(positive == 0.0L && !std::signbit(positive) && integral == 3.0L);
 }
 
 static void CheckErrno() {
@@ -110,6 +123,7 @@ static void CheckClassification() {
 
 int main() {
     CheckSignalingNanPassThrough();
+    CheckModflSigns();
     CheckErrno();
     CheckConsoleQuirks();
     CheckClassification();

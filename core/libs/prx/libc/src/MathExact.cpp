@@ -152,7 +152,7 @@ long double APS5_VABI modfl_nid_postfix(long double x, long double* integral) {
         *integral = x;
         return x;
     }
-    return std::modf(x, integral);
+    return std::copysign(std::modf(x, integral), x);
 }
 long double APS5_VABI nanl_nid_postfix(const char*) { return std::numeric_limits<long double>::quiet_NaN(); }
 
