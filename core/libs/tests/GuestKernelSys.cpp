@@ -16,6 +16,7 @@
 #include <string>
 #ifdef _WIN32
 #include <windows.h>
+#include <winioctl.h>
 #ifndef SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
 #define SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE 0x2
 #endif
@@ -31,6 +32,7 @@ int APS5_VABI _fstatfs_nid_postfix(int, void*);
 int APS5_VABI open_nid_postfix(const char*, int, int);
 int APS5_VABI close_nid_postfix(int);
 std::int64_t APS5_VABI readlink_nid_postfix(const char*, char*, std::size_t);
+int APS5_VABI lstat_nid_postfix(const char*, FileStat*);
 std::int64_t APS5_VABI pathconf_nid_postfix(const char*, int);
 int APS5_VABI fchdir_nid_postfix(int);
 int APS5_VABI chdir_nid_postfix(const char*);
@@ -308,6 +310,33 @@ int main() {
     Require((GetFileAttributesW(compressed.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
     Require(readlink_nid_postfix(compressed.string().c_str(), buffer, sizeof(buffer)) == -1 && Error() == 22);
     Require(std::filesystem::remove(compressed));
+    const auto surrogate = root / "surrogate.bin";
+    std::ofstream(surrogate, std::ios::binary) << "abc";
+    const HANDLE surrogateHandle = CreateFileW(surrogate.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    Require(surrogateHandle != INVALID_HANDLE_VALUE);
+    std::array<std::byte, REPARSE_GUID_DATA_BUFFER_HEADER_SIZE + 4> reparseData{};
+    REPARSE_GUID_DATA_BUFFER reparseHeader{};
+    reparseHeader.ReparseTag = 0x20000ABC;
+    reparseHeader.ReparseDataLength = 4;
+    reparseHeader.ReparseGuid = {0x6a1e3d0b, 0x1f6c, 0x4c1e, {0x9b, 0x52, 0x3d, 0x8e, 0x41, 0x07, 0x5c, 0x2a}};
+    std::memcpy(reparseData.data(), &reparseHeader, REPARSE_GUID_DATA_BUFFER_HEADER_SIZE);
+    DWORD returned = 0;
+    Require(DeviceIoControl(surrogateHandle, FSCTL_SET_REPARSE_POINT, reparseData.data(), static_cast<DWORD>(reparseData.size()),
+        nullptr, 0, &returned, nullptr) != 0);
+    Require(CloseHandle(surrogateHandle) != 0);
+    Require((GetFileAttributesW(surrogate.c_str()) & FILE_ATTRIBUTE_REPARSE_POINT) != 0);
+    Require(readlink_nid_postfix(surrogate.string().c_str(), buffer, sizeof(buffer)) == -1 && Error() == 22);
+    FileStat surrogateStatus{};
+    Require(lstat_nid_postfix(surrogate.string().c_str(), &surrogateStatus) == 0);
+    Require(surrogateStatus.st_mode == 0100666 && surrogateStatus.st_nlink == 1);
+    const HANDLE cleanupHandle = CreateFileW(surrogate.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    Require(cleanupHandle != INVALID_HANDLE_VALUE);
+    reparseHeader.ReparseDataLength = 0;
+    Require(DeviceIoControl(cleanupHandle, FSCTL_DELETE_REPARSE_POINT, &reparseHeader, REPARSE_GUID_DATA_BUFFER_HEADER_SIZE,
+        nullptr, 0, &returned, nullptr) != 0);
+    Require(CloseHandle(cleanupHandle) != 0 && std::filesystem::remove(surrogate));
 #endif
     std::error_code error;
     const auto link = (root / "link").string();
