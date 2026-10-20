@@ -60,4 +60,13 @@ int main() {
     Require(sceVrSetupDialogTerminate() == kErrNotInitialized);
     Require(sceVrSetupDialogGetStatus() == kStatusNone);
     Require(sceVrSetupDialogUpdateStatus() == kStatusNone);
+
+    Require(sceVrSetupDialogInitialize() == 0);
+    Require(sceVrSetupDialogUpdateStatus() == kStatusInitialized);
+    Require(sceVrSetupDialogClose() == 0);
+    Require(sceVrSetupDialogUpdateStatus() == kStatusFinished);
+    result[0] = -1;
+    Require(sceVrSetupDialogGetResult(result) == 0);
+    Require(result[0] == kResultUserCanceled);
+    Require(sceVrSetupDialogTerminate() == 0);
 }

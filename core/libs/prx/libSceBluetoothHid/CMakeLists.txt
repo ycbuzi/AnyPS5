@@ -1,5 +1,6 @@
 add_library(libSceBluetoothHid SHARED EXCLUDE_FROM_ALL Export.cpp)
 target_include_directories(libSceBluetoothHid PRIVATE ${LIBS_INCLUDE_DIR})
+target_link_libraries(libSceBluetoothHid PRIVATE libkernel)
 configure_windows_unwind(libSceBluetoothHid)
 
 if(BUILD_TESTING)

@@ -1,0 +1,8 @@
+start 76405f4c  2925/3298 = 88.69%
+   1583  APPLIED  +3/+0  -> 2928/3298 = 88.78%  (additive: docs/dev/TechnicalDebt.md)
+   1141  DUPLICATE-DEFINITION core/libs/prx/libSceJson2/Export.cpp:_ZN3sce4Json14InitParameter2C2Ev,_ZN3sce4Json18InitParameterRtti216setAllocatorRttiEPNS0_14AllocParamRttiEPv
+   2012  APPLIED  +2/+0  -> 2930/3298 = 88.84%  (additive: core/libs/prx/libSceVoice/CMakeLists.txt,docs/dev/TechnicalDebt.md)
+   1689  APPLIED  +3/+0  -> 2933/3298 = 88.93%  (additive: docs/dev/TechnicalDebt.md)
+   1985  APPLIED  +2/+0  -> 2935/3298 = 88.99%  (additive: docs/dev/TechnicalDebt.md)
+   1108  DUPLICATE-DEFINITION core/libs/prx/libkernel/File/src/Stdio.cpp:sceKernelGetdirentries,sceKernelGetdents,sceKernelPread,sceKernelPwrite,sceKernelReadv,sceKernelWritev,sceK
+end   73cb9bcb5  2935/3298 = 88.99%

@@ -484,18 +484,27 @@ static int NativeFstatfs(int descriptor, KernelStatfs* fs) {
     fs->f_namemax = nameMax;
     return 0;
 }
+
+static bool NativeIsPipe(int descriptor) {
+    const auto handle = reinterpret_cast<HANDLE>(::_get_osfhandle(descriptor));
+    return handle != INVALID_HANDLE_VALUE && ::GetFileType(handle) == FILE_TYPE_PIPE;
+}
 #else
 #include <sys/statvfs.h>
 #include <sys/vfs.h>
-static int NativeFstatfs(int descriptor, KernelStatfs* fs) {
+static bool NativeIsPipe(int descriptor) {
     constexpr long PipeFilesystem = 0x50495045;
+    struct stat file{};
+    struct statfs kind{};
+    return ::fstat(descriptor, &file) == 0 && S_ISFIFO(file.st_mode) && ::fstatfs(descriptor, &kind) == 0
+        && static_cast<long>(kind.f_type) == PipeFilesystem;
+}
+
+static int NativeFstatfs(int descriptor, KernelStatfs* fs) {
     struct stat file{};
     if (::fstat(descriptor, &file) != 0) return SceErrorFromErrno(errno) & 0xffff;
     if (S_ISSOCK(file.st_mode) && (::fcntl(descriptor, F_GETFL) & O_PATH) == 0) return GUEST_EINVAL;
-    if (S_ISFIFO(file.st_mode)) {
-        struct statfs kind{};
-        if (::fstatfs(descriptor, &kind) == 0 && static_cast<long>(kind.f_type) == PipeFilesystem) return GUEST_EINVAL;
-    }
+    if (NativeIsPipe(descriptor)) return GUEST_EINVAL;
     struct statvfs host{};
     if (::fstatvfs(descriptor, &host) != 0) return SceErrorFromErrno(errno) & 0xffff;
     if (host.f_flag & ST_RDONLY) fs->f_flags |= KERNEL_MNT_RDONLY;
@@ -605,6 +614,16 @@ static std::string FileFlagNames(std::uint64_t flags) {
     return names;
 }
 
+static int SetFileFlags(const char* function, const std::string& target, std::uint64_t flags) {
+    std::uint64_t known = 0;
+    for (const auto& entry : GUEST_FILE_FLAGS) known |= entry.first;
+    if ((flags & ~known) != 0) return GUEST_EOPNOTSUPP;
+    if ((flags & GUEST_SF_SNAPSHOT) != 0) return GUEST_EPERM;
+    if (flags != 0)
+        throw std::runtime_error(std::string(function) + ": setting " + FileFlagNames(flags) + " on " + target + " is not supported, the host keeps no BSD file flags");
+    return 0;
+}
+
 extern "C" {
 
 int APS5_VABI chmod_nid_postfix(const char* path, int mode) {
@@ -618,12 +637,19 @@ int APS5_VABI chmod_nid_postfix(const char* path, int mode) {
 int APS5_VABI chflags_nid_postfix(const char* path, std::uint64_t flags) {
     if (const int error = PathError(path)) return PosixFailure(error);
     if (const int error = LookupError(ResolvePath_nid_no_patch(path))) return PosixFailure(error);
-    std::uint64_t known = 0;
-    for (const auto& entry : GUEST_FILE_FLAGS) known |= entry.first;
-    if ((flags & ~known) != 0) return PosixFailure(GUEST_EOPNOTSUPP);
-    if ((flags & GUEST_SF_SNAPSHOT) != 0) return PosixFailure(GUEST_EPERM);
-    if (flags != 0)
-        throw std::runtime_error("chflags: setting " + FileFlagNames(flags) + " on " + path + " is not supported, the host keeps no BSD file flags");
+    if (const int error = SetFileFlags("chflags", path, flags)) return PosixFailure(error);
+    return 0;
+}
+
+int APS5_VABI fchflags_nid_postfix(int d, std::uint64_t flags) {
+    if (GuestSockets::IsOpen(d) || File::IsSharedMemoryDescriptor_nid_no_patch(d)) return PosixFailure(GUEST_EINVAL);
+    File::RefuseArchivedFile(d, "fchflags");
+    if (!File::IsVnode(d)) {
+        if (!DescriptorIsOpen_nid_no_patch(d)) return PosixFailure(GUEST_EBADF);
+        if (NativeIsPipe(d)) return PosixFailure(GUEST_EINVAL);
+        throw std::runtime_error("fchflags: descriptor " + std::to_string(d) + " is neither a file, a directory, a pipe, a socket nor shared memory");
+    }
+    if (const int error = SetFileFlags("fchflags", "descriptor " + std::to_string(d), flags)) return PosixFailure(error);
     return 0;
 }
 
@@ -654,6 +680,8 @@ int APS5_VABI close_nid_postfix(int d) {
 #ifdef _WIN32
     File::ForgetDirectoryDescriptor(d);
     File::ForgetFileLock(d);
+    const int shared = File::CloseSharedMemoryDescriptor_nid_no_patch(d);
+    if (shared != -2) return shared;
     return WithoutParameterHandler([d] { return ::_close(d); });
 #else
     return ::close(d);
@@ -699,6 +727,7 @@ int APS5_VABI dup_nid_postfix(int d) {
 #ifdef _WIN32
     const int duplicate = WithoutParameterHandler([d] { return ::_dup(d); });
     if (duplicate >= 0) File::DuplicateDirectoryDescriptor(d, duplicate);
+    if (duplicate >= 0) File::DuplicateSharedMemoryDescriptor_nid_no_patch(d, duplicate);
 #else
     const int duplicate = ::dup(d);
 #endif
@@ -730,8 +759,10 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     if (WithoutParameterHandler([from] { return ::_get_osfhandle(from) == -1 ? -1 : 0; }) != 0) return PosixFailure(GUEST_EBADF);
     if (from == to) return to;
     if (to == 2) PreserveHostStandardError();
+    auto positioned = File::LockPositionedTransfer(to);
     auto* const standard = HostStandardHandle_nid_no_patch(to);
-    const int duplicated = WithoutParameterHandler([from, to] { return ::_dup2(from, to); });
+    int duplicated = File::ReplaceSharedMemoryDescriptor_nid_no_patch(from, to);
+    if (duplicated == -2) duplicated = WithoutParameterHandler([from, to] { return ::_dup2(from, to); });
     KeepStandardHandle_nid_no_patch(to, standard);
     if (duplicated != 0) return PosixFailure(SceErrorFromErrno(errno) & 0xffff);
     EqueueDescriptorClosed(to);
@@ -740,7 +771,10 @@ int APS5_VABI dup2_nid_postfix(int from, int to) {
     File::DuplicateDirectoryDescriptor(from, to);
     File::ForgetFileLock(to);
     File::ForgetRandomDevice(to);
+    File::ForgetSharedMemoryDescriptor_nid_no_patch(to);
+    File::DuplicateSharedMemoryDescriptor_nid_no_patch(from, to);
     if (sourceIsRandom) File::RememberRandomDevice(to);
+    positioned.unlock();
     File::ShareDescriptor(from, to);
     DuplicateJitSharedMemory(from, to);
     return to;
@@ -1373,6 +1407,10 @@ int APS5_VABI sceKernelChmod_nid_postfix(const char* path, std::uint16_t mode) {
 int APS5_VABI sceKernelFchmod(int d, std::uint16_t mode) {
     if (GuestSockets::IsOpen(d)) return SceErrorFromErrno(GUEST_EINVAL);
     File::RefuseArchivedFile(d, "fchmod");
+#ifdef _WIN32
+    const int sharedMemoryResult = File::SetSharedMemoryMode_nid_no_patch(d, mode);
+    if (sharedMemoryResult != -2) return sharedMemoryResult == 0 ? 0 : SceErrorFromErrno(errno);
+#endif
     if (NativeFchmod(d, mode & 07777) != 0) return SceErrorFromErrno(errno);
     return 0;
 }

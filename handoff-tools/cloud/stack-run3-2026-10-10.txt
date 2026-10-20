@@ -1,0 +1,35 @@
+start b356c930  2922/3298 = 88.60%
+   1952  CONFLICT (not additive) core/libs/prx/libc/Export.cpp
+   1884  CONFLICT (not additive) core/libs/prx/libSceSsl/Export.cpp
+   2393  CONFLICT (not additive) core/libs/prx/libkernel/Pthread/include/Pthread.hpp core/libs/prx/libkernel/Pthread/src/Thread.cpp
+   1583  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+   2562  CONFLICT (not additive) core/libs/prx/libSceAudioIn/Export.cpp
+   1141  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+   1739  CONFLICT (not additive) core/libs/prx/libkernel/Pthread/src/Thread.cpp docs/dev/TechnicalDebt.md
+   2012  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+   1689  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+    953  CONFLICT (not additive) core/libs/prx/libSceVideoRecordingP/Export.cpp
+   1021  CONFLICT (not additive) core/libs/prx/libSceNgs2.native/CMakeLists.txt core/libs/prx/libSceNgs2.native/include/Ngs2Types.hpp core/libs/prx/libSceNgs2.native/src/Unimplemented.cpp
+     82  SYNTAX FAIL core/libs/prx/libSceNgs2.native/Export.cpp :: core/libs/prx/libSceNgs2.native/Export.cpp:882:46: error: ‘Ngs2WaveformFormat’ does not name a type
+   1981  CONFLICT (not additive) core/libs/prx/libc/Export.cpp
+   1064  CONFLICT (not additive) core/libs/prx/libSceAgc/Unimplemented.cpp docs/dev/TechnicalDebt.md
+   1672  CONFLICT (not additive) core/libs/prx/libScePad/Export.cpp docs/dev/TechnicalDebt.md
+   1985  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+   1980  CONFLICT (not additive) core/libs/prx/libc/Export.cpp
+   1108  CONFLICT (not additive) docs/dev/TechnicalDebt.md
+    850  SYNTAX FAIL core/libs/tests/GuestFontSetScriptLanguage.cpp :: core/libs/prx/libSceFont/include/FontInternal.hpp:15:10: fatal error: ft2build.h: No such file or directo
+    852  SYNTAX FAIL core/libs/tests/GuestFontGetScriptLanguage.cpp :: core/libs/prx/libSceFont/include/FontInternal.hpp:15:10: fatal error: ft2build.h: No such file or directo
+   1993  CONFLICT (not additive) core/libs/prx/libc/Export.cpp
+   1886  APPLIED  +3/+0  -> 2925/3298 = 88.69%
+   1887  CONFLICT (not additive) core/libs/prx/libSceAgc/DcbDraw/src/IndexBuffer.cpp
+   1584  EMPTY
+   2437  CONFLICT (not additive) core/libs/prx/libSceAgc/DcbDraw/src/Stats.cpp
+   2496  CONFLICT (not additive) core/libs/prx/libSceNet/Export.cpp core/libs/prx/libSceNpWebApi2/Export.cpp docs/dev/TechnicalDebt.md
+    999  CONFLICT (not additive) core/libs/tests/GuestVoiceQoS.cpp docs/dev/TechnicalDebt.md
+   1616  DUPLICATE-DEFINITION core/libs/prx/libkernel/File/src/Stdio.cpp:sceKernelGetdirentries,sceKernelGetdents,sceKernelPread,sceKernelPwrite,sceKernelReadv,sceKernelWritev,sceK
+   1075  CONFLICT (not additive) core/libs/prx/libSceAgc/tests/ContextStateSize.cpp docs/dev/TechnicalDebt.md
+   1175  CONFLICT (not additive) core/libs/prx/libSceAgc/Unimplemented.cpp
+   1802  CONFLICT (not additive) core/libs/prx/libkernel/Pthread/include/Pthread.hpp core/libs/prx/libkernel/Pthread/src/Thread.cpp docs/dev/TechnicalDebt.md
+   1431  CONFLICT (not additive) core/libs/prx/libkernel/Pthread/include/Pthread.hpp core/libs/prx/libkernel/Pthread/src/Thread.cpp
+   2150  CONFLICT (not additive) core/libs/tests/GuestFont.cpp
+end   950d1ae8d  2925/3298 = 88.69%

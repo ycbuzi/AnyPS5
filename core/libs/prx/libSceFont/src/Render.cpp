@@ -119,6 +119,49 @@ int RenderDirectional(FontHandle fontHandle, std::uint32_t code, FontRenderSurfa
     return rc;
 }
 
+int RenderGeneratedGlyph(FontGlyph glyph, const FontStyleFrame* styleFrame, FontRenderer fontRenderer, FontRenderSurface* surface, float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* result, std::uint16_t direction) {
+    const auto fail = [&](int rc) {
+        ClearRenderOutputs(metrics, result);
+        return rc;
+    };
+    auto* generated = TryGetGeneratedGlyph(glyph);
+    if (!generated) return fail(SCE_FONT_ERROR_INVALID_GLYPH);
+    const auto* renderer = static_cast<const RendererNative*>(fontRenderer);
+    if (!renderer || renderer->magic != RENDERER_MAGIC) return fail(SCE_FONT_ERROR_INVALID_RENDERER);
+    if ((styleFrame && !ValidStyleFrame(styleFrame)) || !surface || !metrics || !result) return fail(SCE_FONT_ERROR_INVALID_PARAMETER);
+    const FontHandle handle = generated->owner;
+    if (!TryGetState(handle)) return fail(SCE_FONT_ERROR_INVALID_FONT_HANDLE);
+    auto* font = GetNativeFont(handle);
+    std::uint32_t fontLock = 0;
+    if (font->magic != HANDLE_MAGIC || !AcquireFontLock(font, fontLock)) return fail(SCE_FONT_ERROR_INVALID_FONT_HANDLE);
+    StyleStateBlock state = font->cached_style.state;
+    StyleStateSetScalePixel(&state, generated->glyph.scale_x, generated->glyph.base_scale);
+    const FontStyleFrame* surfaceFrame = (surface->styleFlag & 0x1) != 0 ? SurfaceSystemUse(surface)->styleframe : nullptr;
+    if (ValidStyleFrame(surfaceFrame)) ApplyStyleFrame(state, surfaceFrame);
+    if (styleFrame) ApplyStyleFrame(state, styleFrame);
+    int rc = SCE_FONT_OK;
+    if (direction == 0) {
+        const bool horizontal = static_cast<std::int16_t>(font->flags) >= 0;
+        if (horizontal) {
+            std::uint8_t layout[HORIZONTAL_LAYOUT_SIZE] = {};
+            rc = ComputeHorizontalLayout(handle, &state, layout);
+            y += LoadFloat(layout, HORIZONTAL_BASELINE);
+        } else {
+            std::uint8_t layout[VERTICAL_LAYOUT_SIZE] = {};
+            rc = ComputeVerticalLayout(handle, &state, layout);
+            x += LoadFloat(layout, VERTICAL_BASELINE_OFFSET_X);
+        }
+        direction = horizontal ? 1 : 2;
+    }
+    if (rc == SCE_FONT_OK) {
+        CachedStyleSetDirectionWord(font->cached_style, direction);
+        rc = RenderCharGlyphImageStyled(handle, generated->codepoint, state, surface, x, y, metrics, result);
+    }
+    ReleaseFontLock(font, fontLock);
+    if (rc != SCE_FONT_OK) ClearRenderOutputs(metrics, result);
+    return rc;
+}
+
 }
 
 #pragma GCC visibility push(default)
@@ -475,6 +518,18 @@ FontGlyphOutline* APS5_VABI sceFontGlyphRefersOutline(FontGlyph glyph) {
     if (!generated) return nullptr;
     if (!generated->outlineInitialized && !BuildTrueOutline(*generated)) BuildBoundingOutline(*generated);
     return &generated->outline;
+}
+
+int APS5_VABI sceFontGlyphRenderImage(FontGlyph glyph, const FontStyleFrame* styleFrame, FontRenderer renderer, FontRenderSurface* surface, float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* result) {
+    return RenderGeneratedGlyph(glyph, styleFrame, renderer, surface, x, y, metrics, result, 0);
+}
+
+int APS5_VABI sceFontGlyphRenderImageHorizontal(FontGlyph glyph, const FontStyleFrame* styleFrame, FontRenderer renderer, FontRenderSurface* surface, float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* result) {
+    return RenderGeneratedGlyph(glyph, styleFrame, renderer, surface, x, y, metrics, result, 1);
+}
+
+int APS5_VABI sceFontGlyphRenderImageVertical(FontGlyph glyph, const FontStyleFrame* styleFrame, FontRenderer renderer, FontRenderSurface* surface, float x, float y, FontGlyphMetrics* metrics, FontRenderOutput* result) {
+    return RenderGeneratedGlyph(glyph, styleFrame, renderer, surface, x, y, metrics, result, 2);
 }
 
 }

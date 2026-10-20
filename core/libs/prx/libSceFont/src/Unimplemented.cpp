@@ -32,11 +32,6 @@ int APS5_VABI sceFontCreateWords() {
     return 0;
 }
 
-int APS5_VABI sceFontDefineAttribute() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
 int APS5_VABI sceFontDestroyGraphicsDevice() {
     NotImplemented_nid_no_patch(__func__);
     return 0;
@@ -52,11 +47,6 @@ int APS5_VABI sceFontDestroyWords() {
     return 0;
 }
 
-
-int APS5_VABI sceFontGetAttribute() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
 
 int APS5_VABI sceFontGetFontGlyphsOutlineProfile() {
     NotImplemented_nid_no_patch(__func__);
@@ -79,21 +69,6 @@ int APS5_VABI sceFontGetGlyphExpandBufferState() {
 }
 
 int APS5_VABI sceFontGlyphGetAttribute() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImage() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImageHorizontal() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceFontGlyphRenderImageVertical() {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }

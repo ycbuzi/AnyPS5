@@ -7,7 +7,7 @@
 ### Unknown function info
 
 - [sceHttp2GetMemoryPoolStats, sceSslGetMemoryPoolStats, sceNetGetMemoryPoolStats](../../../core/libs/prx/libSceNet/Export.cpp) (libSceHttp2, libSceSsl, libSceNet) - the signatures `(int id, stats*)`, the layouts (pool size, peak and current use, and for Http2 and Ssl a 32-bit reserved field) and the error codes were measured on a PS5 (firmware 13.60). The pool size is the one given at init or pool creation. Http2 and Net allocate nothing from these pools. Ssl counts its certificate backend allocations and returned data against its pool; C++ bookkeeping is outside that budget. All three initially report zero use, where the console already reports 0x15C0 bytes for Ssl, 0x1640 for Http2 and 4 for a Net pool. Ssl's allocation sizes and peak usage do not reproduce the console allocator
-- [sceNetClearDnsCache](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetClearDnsCache](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) returns 0 without doing anything: every `sceNetResolverStart*` lookup goes to the host resolver, so the library keeps no DNS cache to drop, and the host's own cache is left alone. The `(int flags)` signature and its meaning come from [SharpProspero](https://github.com/SvenGDK/SharpProspero/blob/5dfdb4b0b166e83dc9ae275001afb695f12c7174/src/SharpProspero/Interop/Net/Socket.cs#L928-L930); nonzero flags throw because their meaning is unknown
 - [sceNetGetStatisticsInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetInterfaceStats](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSetDnsInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
@@ -16,7 +16,6 @@
 - [sceNetShowPolicyWithMemory](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetShowRoute](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetShowRouteWithMemory](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetResolverStartAton6](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetResolverConnectAbort](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetResolverConnectCreate](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetResolverConnect](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
@@ -40,10 +39,10 @@
 - [sceNetGetIfList](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetIfListEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetIfListOnce](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetGetIfName](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetGetIfName](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(uint32_t index)` signature and the table of ten interface names (`lo0`, `eth0`, `eth1`, `dbg0`, `wlan0`, `wlan1`, `gbe0`, `bt0`, `phone0`, `pppoe0`) follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); an index past the table sets `EINVAL` and returns an empty string. Whether the console has more names, or returns null, is unverified on hardware
 - [sceNetGetIfnameNumList](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetNameToIndex](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetGetRandom](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetGetRandom](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(uint32_t* output)` signature and the `EINVAL` failure for a null output follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); the value comes from the host's `std::random_device`, as `kern.rng_pseudo` in libkernel does. Unverified on hardware
 - [sceNetGetRouteInfo](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetsockoptEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetGetSystemTime](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unverified on PS5 hardware: the `void(uint64_t*)` signature, process-relative microseconds and ignored null output follow [shadPS4 net.cpp](https://github.com/shadps4-emu/shadPS4/blob/d615b3887ba29025a59242e1a26f5b68bb176158/src/core/libraries/net/net.cpp#L1654-L1659). The clock is the same as `sceKernelGetProcessTime`, including `APS5_TIME_SCALE`
@@ -51,8 +50,8 @@
 - [sceNetInitParam](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetInetPtonEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(int af, const char* src, void* dst, int flags)` signature follows [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/main/src/core/libraries/net/net.cpp), which forwards it to `sceNetInetPton` and does not know the flags either. Flags 0 converts as `sceNetInetPton` does; any other flags throw, since their meaning (an IPv6 scope or otherwise) is not known. Unverified on hardware
 - [sceNetIoctl](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetMemoryAllocate](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
-- [sceNetMemoryFree](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
+- [sceNetMemoryAllocate](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(int64_t size, int flags)` signature, flag 2 as zero fill and the null result for a size of 0 or less follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp). The block comes from the guest heap, and an allocation failure returns null without setting an errno. Any other flag bit throws, since its meaning is not known. Unverified on hardware
+- [sceNetMemoryFree](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - the `(void* memory)` signature follows [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/d5ba5fd06c49af29b8ec9200cad70bca676a9cd4/src/core/libraries/net/net.cpp); the block returns to the guest heap and a null pointer is ignored. Unverified on hardware
 - [sceNetSetDnsInfoToKernel](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSetsockoptEx](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
 - [sceNetSocketInternal](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) - unknown signature
@@ -180,6 +179,7 @@
 
 ### Functional
 
+- [sceNetResolverStartAton6](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) reverse-resolves a 16-byte IPv6 address through the host resolver (`getnameinfo` with `NI_NAMEREQD`) into the caller's buffer of `len` bytes, as `sceNetResolverStartAton` does for IPv4. The `(rid, addr, hostname, len, timeout, retry, flags)` signature comes from [SharpProspero](https://github.com/SvenGDK/SharpProspero/blob/5dfdb4b0b166e83dc9ae275001afb695f12c7174/src/SharpProspero/Interop/Net/Socket.cs#L992-L997). An address with no name, or a name longer than `len - 1` bytes, fails with `RESOLVER_ENODNS` (`0x804101E1`) and leaves the buffer untouched; whether the console truncates instead is not verified. Abort flag 2 (ATON preservation) fails the next call with `EINTR` as it does `sceNetResolverStartAton`. Timeout and retry are ignored, and any nonzero flags throw because their meaning is unknown
 - [sceNetAccept](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) inherits the listener's non-blocking mode through the existing `SO_NBIO` setter, as the libkernel socket path does and FreeBSD's [`sonewconn`](https://github.com/freebsd/freebsd-src/blob/8c639945a44588f6cfdddfb057bb5aad88735da0/sys/kern/uipc_socket.c#L571) copies the socket state. The mode is sampled when accept starts; changes between connection creation and accept are not modelled. Not measured on a console.
 
 - [sceNetConnect to AF_UNSPEC](../../../core/libs/prx/libSceNet/Export.cpp) (libSceNet) dissolves a datagram association as FreeBSD 11.4's `udp_disconnect()` does, which resets the local address to the wildcard address and keeps the port. On Linux a socket bound to an explicit port keeps its local address as well (`127.0.0.1:<port>` stays `127.0.0.1:<port>`), because a bound socket cannot be bound again; one bound to port 0 is bound again to the wildcard address with the port it had

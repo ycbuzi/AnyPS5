@@ -1,0 +1,103 @@
+start 81af6c0a  2733/3151 = 86.73%
+   2271  APPLIED  +43/+43  -> 2776/3194 = 86.91%
+   2280  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2234  APPLIED  +10/+0  -> 2786/3194 = 87.23% (changelog conflict: kept both)
+   2235  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2166  APPLIED  +8/+8  -> 2794/3202 = 87.26%
+   1638  APPLIED  +6/+0  -> 2800/3202 = 87.45% (changelog conflict: kept both)
+   2277  APPLIED  +6/+6  -> 2806/3208 = 87.47%
+   1574  APPLIED  +5/+5  -> 2811/3213 = 87.49%
+   2213  APPLIED  +5/+5  -> 2816/3218 = 87.51%
+   2232  EMPTY (already present)
+   1537  CONFLICT core/libs/SceTypes.hpp core/libs/prx/libSceContentExport/Export.cpp core/libs/tests/GuestContentExport.cpp
+   1567  APPLIED  +3/+3  -> 2819/3221 = 87.52%
+   1768  APPLIED  +4/+4  -> 2823/3225 = 87.53%
+   1770  APPLIED  +4/+4  -> 2827/3229 = 87.55%
+   1879  APPLIED  +4/+0  -> 2831/3229 = 87.67% (changelog conflict: kept both)
+   1982  APPLIED  +4/+3  -> 2835/3232 = 87.72% (changelog conflict: kept both)
+   2037  APPLIED  +4/+4  -> 2839/3236 = 87.73%
+   2167  CONFLICT core/libs/tests/GuestMath.cpp
+   2333  CONFLICT core/libs/prx/libc/include/GuestLocale.hpp core/libs/prx/libc/src/LocaleSupport.cpp core/libs/tests/GuestCollate.cpp docs/dev/TechnicalDebt.md
+   1390  APPLIED  +3/+3  -> 2842/3239 = 87.74% (changelog conflict: kept both)
+   1582  APPLIED  +3/+0  -> 2845/3239 = 87.84% (changelog conflict: kept both)
+   1730  NO-GAIN (+0/+0)
+   1806  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2173  CONFLICT core/libs/tests/GuestMath.cpp
+   1052  APPLIED  +2/+0  -> 2847/3239 = 87.90%
+   1169  APPLIED  +2/+0  -> 2849/3239 = 87.96% (changelog conflict: kept both)
+   1585  CONFLICT core/libs/prx/libSceAgc/tests/Commands.cpp
+   1765  APPLIED  +2/+2  -> 2851/3241 = 87.97%
+   1841  APPLIED  +2/+2  -> 2853/3243 = 87.97%
+   1875  APPLIED  +2/+0  -> 2855/3243 = 88.04% (changelog conflict: kept both)
+   1882  CONFLICT core/libs/prx/libSceAgc/Misc/src/Semaphore.cpp core/libs/prx/libSceAgc/tests/Semaphore.cpp docs/dev/TechnicalDebt.md
+   2038  APPLIED  +2/+2  -> 2857/3245 = 88.04%
+   2040  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2358  APPLIED  +2/+0  -> 2859/3245 = 88.10%
+   2367  CONFLICT core/libs/prx/libSceAgc/CMakeLists.txt
+   2604  CONFLICT core/libs/prx/libc/src/Math.cpp
+    867  APPLIED  +1/+0  -> 2860/3245 = 88.14%
+    967  APPLIED  +1/+0  -> 2861/3245 = 88.17%
+    989  APPLIED  +1/+0  -> 2862/3245 = 88.20% (changelog conflict: kept both)
+   1008  APPLIED  +1/+0  -> 2863/3245 = 88.23% (changelog conflict: kept both)
+   1024  NO-GAIN (+1/+4)
+   1212  APPLIED  +1/+1  -> 2864/3246 = 88.23%
+   1527  APPLIED  +1/+0  -> 2865/3246 = 88.26%
+   1541  CONFLICT core/libs/tests/GuestAjm.cpp docs/dev/TechnicalDebt.md
+   1554  APPLIED  +1/+0  -> 2866/3246 = 88.29%
+   1592  NO-GAIN (+0/+0)
+   1594  APPLIED  +1/+1  -> 2867/3247 = 88.30%
+   1595  CONFLICT core/libs/prx/libc/src/Process.cpp
+   1637  APPLIED  +1/+1  -> 2868/3248 = 88.30%
+   1679  APPLIED  +1/+1  -> 2869/3249 = 88.30%
+   1681  APPLIED  +1/+1  -> 2870/3250 = 88.31%
+   1687  APPLIED  +1/+1  -> 2871/3251 = 88.31%
+   1698  CONFLICT core/libs/prx/libc/src/Math.cpp core/libs/tests/GuestMath.cpp
+   1699  CONFLICT core/libs/tests/GuestMath.cpp
+   1700  CONFLICT core/libs/prx/libc/src/Math.cpp
+   1702  CONFLICT core/libs/tests/GuestMath.cpp
+   1703  NO-GAIN (+0/+0)
+   1716  NO-GAIN (+0/+0)
+   1718  NO-GAIN (+0/+0)
+   1719  NO-GAIN (+0/+0)
+   1720  CONFLICT core/libs/tests/GuestMath.cpp
+   1721  APPLIED  +1/+1  -> 2872/3252 = 88.31%
+   1722  CONFLICT core/libs/prx/libc/src/Math.cpp
+   1723  NO-GAIN (+0/+0)
+   1724  APPLIED  +1/+1  -> 2873/3253 = 88.32%
+   1725  APPLIED  +1/+1  -> 2874/3254 = 88.32%
+   1753  CONFLICT core/libs/prx/libc/src/Math.cpp core/libs/tests/GuestMath.cpp
+   1758  CONFLICT core/libs/prx/libc/src/Math.cpp core/libs/tests/GuestMath.cpp
+   1760  CONFLICT core/libs/prx/libc/src/Math.cpp
+   1767  APPLIED  +1/+1  -> 2875/3255 = 88.33%
+   1773  APPLIED  +1/+1  -> 2876/3256 = 88.33%
+   1814  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   1852  APPLIED  +1/+1  -> 2877/3257 = 88.33%
+   1853  NO-GAIN (+0/+0)
+   1868  NO-GAIN (+0/+0)
+   1869  CONFLICT core/libs/prx/libSceLibcInternal/Export.cpp
+   1906  CONFLICT core/libs/prx/libSceLibcInternal/Export.cpp
+   1922  APPLIED  +1/+1  -> 2878/3258 = 88.34%
+   1975  CONFLICT core/libs/prx/libSceLibcInternal/Export.cpp docs/dev/TechnicalDebt.md
+   1983  APPLIED  +1/+0  -> 2879/3258 = 88.37% (changelog conflict: kept both)
+   1984  APPLIED  +1/+0  -> 2880/3258 = 88.40%
+   1998  APPLIED  +1/+0  -> 2881/3258 = 88.43%
+   2017  APPLIED  +1/+0  -> 2882/3258 = 88.46%
+   2019  NO-GAIN (+0/+0)
+   2024  CONFLICT core/libs/prx/libSceLibcInternal/CMakeLists.txt
+   2058  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2059  CONFLICT core/libs/prx/libc/CMakeLists.txt
+   2174  CONFLICT core/libs/tests/GuestMath.cpp
+   2187  APPLIED  +1/+1  -> 2883/3259 = 88.46%
+   2189  CONFLICT core/libs/tests/GuestMath.cpp
+   2192  CONFLICT core/libs/prx/libc/src/Math.cpp
+   2216  CONFLICT core/libs/tests/GuestMath.cpp
+   2217  APPLIED  +1/+1  -> 2884/3260 = 88.47%
+   2220  CONFLICT core/libs/prx/libc/src/Strings.cpp core/libs/tests/GuestWideStrings.cpp
+   2252  CONFLICT core/libs/prx/libSceAppContent/Export.cpp
+   2306  APPLIED  +1/+0  -> 2885/3260 = 88.50% (changelog conflict: kept both)
+   2308  APPLIED  +1/+0  -> 2886/3260 = 88.53% (changelog conflict: kept both)
+   2309  CONFLICT core/libs/tests/GuestJson.cpp
+   2354  CONFLICT core/libs/prx/libc/src/StandardStreams.cpp
+   2482  APPLIED  +1/+0  -> 2887/3260 = 88.56%
+   2533  APPLIED  +1/+0  -> 2888/3260 = 88.59%
+end   05ceedc99  2888/3260 = 88.59%

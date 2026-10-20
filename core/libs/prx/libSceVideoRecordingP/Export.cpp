@@ -10,6 +10,8 @@
 #include <vector>
 
 namespace {
+constexpr int32_t SCE_VIDEO_RECORDING_ERROR_UNSUPPORTED = static_cast<int32_t>(0x80A80008);
+constexpr int32_t SCE_VIDEO_RECORDING_STATUS_NONE = 0;
 std::mutex g_infoMutex;
 std::map<int32_t, std::vector<unsigned char>> g_info;
 }
@@ -63,8 +65,7 @@ int APS5_VABI sceVideoRecordingGetInfoByHandle(int handle, int32_t info, void* d
 }
 
 int APS5_VABI sceVideoRecordingGetStatus(void) {
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    return SCE_VIDEO_RECORDING_STATUS_NONE;
 }
 
 int APS5_VABI sceVideoRecordingGetSupportInfo(void* info) {
@@ -91,12 +92,10 @@ int APS5_VABI sceVideoRecordingInitialize(void* param) {
 }
 
 int APS5_VABI sceVideoRecordingOpen(const char* path, const void* param, void* heap, int heapSize) {
- (void)path;
- (void)param;
- (void)heap;
- (void)heapSize;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    (void)heap;
+    (void)heapSize;
+    if (path == nullptr || param == nullptr) APS5_INVALID_ARG_EX;
+    return SCE_VIDEO_RECORDING_ERROR_UNSUPPORTED;
 }
 
 int APS5_VABI sceVideoRecordingOpen2(const char* path, const void* param, void* heap, int heapSize) {
@@ -115,9 +114,8 @@ int APS5_VABI sceVideoRecordingQueryHddSize2(const void* param) {
 }
 
 int APS5_VABI sceVideoRecordingQueryMemSize(const void* param) {
- (void)param;
- NotImplemented_nid_no_patch(__func__);
- return 0;
+    if (param == nullptr) APS5_INVALID_ARG_EX;
+    return SCE_VIDEO_RECORDING_ERROR_UNSUPPORTED;
 }
 
 int APS5_VABI sceVideoRecordingQueryMemSize2(const void* param) {

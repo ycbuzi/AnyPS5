@@ -278,6 +278,7 @@ CompiledVariant sampleVariant() {
     image.cubeFaceCompatible = false;
     image.flatVolumeCompatible = false;
     image.singleMipPlaneBiasCompatible = true;
+    image.volumeArraySampleCompatible = true;
     image.flatLineCompatible = false;
     image.flatVolumeLineCompatible = false;
     image.foldTexelOffsetsOnly = true;

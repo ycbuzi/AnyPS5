@@ -4,22 +4,12 @@
 #include "prx/libSceAgc/Command/include/Memory.hpp"
 #include "prx/libSceAgc/Command/include/Packet.hpp"
 #include "prx/libSceAgc/DcbState/include/Marker.hpp"
+#include "prx/libSceAgc/DcbState/include/Workload.hpp"
 #include "prx/libSceAgcDriver/Execution/include/VideoOutput.hpp"
-#include "prx/libSceAgcDriver/Resource/include/Registration.hpp"
 #include <cstdint>
 #include <cstddef>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
-
-namespace {
-
-std::uint32_t* RejectUnregisteredWorkloadStream(CommandBuffer* buf, std::uint32_t streamId, const char* function) {
-    if (buf == nullptr || !AgcDriverWorkloadStreamRegistered_nid_postfix(streamId)) return nullptr;
-    NotImplemented_nid_no_patch(function);
-    return nullptr;
-}
-
-}
 
 extern "C" {
 
@@ -83,18 +73,15 @@ std::uint32_t* APS5_VABI sceAgcAcbSetFlip(CommandBuffer* buf, std::uint32_t vide
 }
 
 std::uint32_t* APS5_VABI sceAgcAcbSetWorkloadsActive(CommandBuffer* buf, std::uint32_t streamId, const std::uint32_t* workloadIds, std::uint32_t workloadCount) {
-    (void)workloadIds;
-    (void)workloadCount;
-    return RejectUnregisteredWorkloadStream(buf, streamId, __func__);
+    return Agc::Workload::WriteActive(buf, streamId, workloadIds, workloadCount, __func__);
 }
 
 std::uint32_t* APS5_VABI sceAgcAcbSetWorkloadComplete(CommandBuffer* buf, std::uint32_t streamId, std::uint32_t workloadId) {
-    (void)workloadId;
-    return RejectUnregisteredWorkloadStream(buf, streamId, __func__);
+    return Agc::Workload::WriteComplete(buf, streamId, workloadId, __func__);
 }
 
 std::uint32_t* APS5_VABI sceAgcAcbSetWorkloadStreamInactive(CommandBuffer* buf, std::uint32_t streamId) {
-    return RejectUnregisteredWorkloadStream(buf, streamId, __func__);
+    return Agc::Workload::WriteStreamInactive(buf, streamId, __func__);
 }
 
 uint32_t* APS5_VABI sceAgcAcbPushMarker(CommandBuffer* buf, const char* str, uint32_t color) {

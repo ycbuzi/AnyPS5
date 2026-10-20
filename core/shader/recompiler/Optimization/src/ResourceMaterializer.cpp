@@ -1850,7 +1850,8 @@ std::vector<ImageResource> ResourceMaterializer::RuntimeImageModes(const ImageRe
         const bool volumeLoad = (image.dimension == RdnaImageDimension::Dim2D || image.dimension == RdnaImageDimension::Dim2DArray) && image.fmaskCompatible;
         const bool volumeStore = image.dimension == RdnaImageDimension::Dim2DArray && storage && image.written && !image.read && !image.atomic && image.mipMode != ImageMipMode::DynamicStorage;
         const bool volumePlaneBias = image.dimension == RdnaImageDimension::Dim2D && image.singleMipPlaneBiasCompatible && !storage && image.table == NoTable && conversion == IrBufferFormat::Invalid;
-        if ((volumeLoad || volumeStore || volumePlaneBias) && !depth && packed == IrBufferFormat::Invalid && image.byElements == 0u) {
+        const bool volumeArraySample = image.dimension == RdnaImageDimension::Dim2DArray && image.volumeArraySampleCompatible && !storage && image.table == NoTable && conversion == IrBufferFormat::Invalid;
+        if ((volumeLoad || volumeStore || volumePlaneBias || volumeArraySample) && !depth && packed == IrBufferFormat::Invalid && image.byElements == 0u) {
             auto volume = mode;
             volume.dimension = RdnaImageDimension::Dim3D;
             modes.push_back(volume);

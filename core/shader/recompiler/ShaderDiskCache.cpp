@@ -140,7 +140,7 @@ constexpr std::size_t fieldCount() {
 
 static_assert(fieldCount<ShaderInfo>() == 23, "ShaderInfo changed: update the info encoder");
 static_assert(fieldCount<BufferResource>() == 12, "BufferResource changed: update the info encoder");
-static_assert(fieldCount<ImageResource>() == 39, "ImageResource changed: update the info encoder");
+static_assert(fieldCount<ImageResource>() == 40, "ImageResource changed: update the info encoder");
 static_assert(fieldCount<SamplerResource>() == 8, "SamplerResource changed: update the info encoder");
 static_assert(fieldCount<SampledResourcePair>() == 3, "SampledResourcePair changed: update the info encoder");
 static_assert(fieldCount<StageInput>() == 5, "StageInput changed: update the info encoder");
@@ -711,6 +711,7 @@ void encodeShaderInfo(Writer& writer, const ShaderInfo& info) {
         out.Value(image.cubeFaceCompatible);
         out.Value(image.flatVolumeCompatible);
         out.Value(image.singleMipPlaneBiasCompatible);
+        out.Value(image.volumeArraySampleCompatible);
         out.Value(image.flatLineCompatible);
         out.Value(image.flatVolumeLineCompatible);
         out.Value(image.foldTexelOffsetsOnly);
@@ -814,6 +815,7 @@ void decodeShaderInfo(Reader& reader, ShaderInfo& info) {
         in.Value(image.cubeFaceCompatible);
         in.Value(image.flatVolumeCompatible);
         in.Value(image.singleMipPlaneBiasCompatible);
+        in.Value(image.volumeArraySampleCompatible);
         in.Value(image.flatLineCompatible);
         in.Value(image.flatVolumeLineCompatible);
         in.Value(image.foldTexelOffsetsOnly);

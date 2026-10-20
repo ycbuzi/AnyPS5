@@ -1,3 +1,4 @@
+#include "SceTypes.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include "prx/libc/include/RemoveTree.hpp"
 #include "prx/libkernel/File/include/FileFlags.hpp"
@@ -32,6 +33,8 @@ int APS5_VABI open_nid_postfix(const char*, int, int);
 int APS5_VABI close_nid_postfix(int);
 std::int64_t APS5_VABI readlink_nid_postfix(const char*, char*, std::size_t);
 std::int64_t APS5_VABI pathconf_nid_postfix(const char*, int);
+std::int64_t APS5_VABI fpathconf_nid_postfix(int, int);
+std::int64_t APS5_VABI _fpathconf_nid_postfix(int, int);
 int APS5_VABI fchdir_nid_postfix(int);
 int APS5_VABI chdir_nid_postfix(const char*);
 int APS5_VABI chroot_nid_postfix(const char*);
@@ -55,6 +58,7 @@ int APS5_VABI mkdirat_nid_postfix(int, const char*, std::uint16_t);
 int APS5_VABI renameat_nid_postfix(int, const char*, int, const char*);
 int APS5_VABI fchmodat_nid_postfix(int, const char*, int, int);
 int APS5_VABI fchown_nid_postfix(int, std::uint32_t, std::uint32_t);
+int APS5_VABI fstatat_nid_postfix(int, const char*, FileStat*, int);
 std::int64_t APS5_VABI sceKernelRead(int, void*, std::size_t);
 std::uint16_t APS5_VABI umask_nid_postfix(std::uint16_t);
 int* APS5_VABI __error_nid_postfix();
@@ -254,6 +258,38 @@ void DirectoryRenameTests(const std::filesystem::path& parent) {
     Require(std::filesystem::remove(original) && std::filesystem::remove(moved) && std::filesystem::remove(fixture));
 }
 
+template <typename F>
+bool DescriptorPathconfThrows(F fn, int descriptor, int name) {
+    try {
+        fn(descriptor, name);
+    } catch (const std::runtime_error&) {
+        return true;
+    }
+    return false;
+}
+
+template <typename F>
+void CheckDescriptorPathconf(F fn, int descriptor) {
+    Require(fn(descriptor, 1) == 32767);
+    Require(fn(descriptor, 4) == 255);
+    Require(fn(descriptor, 5) == 1024);
+    Require(fn(descriptor, 6) == 512);
+    Require(fn(descriptor, 7) == 1);
+    Require(fn(descriptor, 8) == 1);
+    Require(fn(descriptor, 12) == 64);
+    *__error_nid_postfix() = 0;
+    Require(fn(descriptor, 15) == -1 && Error() == 0);
+    Require(fn(descriptor, 18) == 1024);
+    Require(fn(descriptor, 54) == 0);
+    Require(fn(descriptor, 55) == 0);
+    for (const int name : {0, 11, 61, 62, 65, -1})
+        Require(fn(descriptor, name) == -1 && Error() == 22);
+    for (const int name : {2, 3, 9, 10, 14, 16, 17, 21, 53, 59, 60, 63, 64})
+        Require(DescriptorPathconfThrows(fn, descriptor, name));
+    Require(fn(-1, 4) == -1 && Error() == 9);
+    Require(fn(descriptor + 1000, 4) == -1 && Error() == 9);
+}
+
 int main() {
 #ifdef _WIN32
     auto hostDirectorySpelling = std::filesystem::current_path().native();
@@ -279,8 +315,17 @@ int main() {
     Require(std::memcmp(viaPublic, viaSyscall, 4) == 0 && std::memcmp(viaPublic + 16, viaSyscall + 16, 8) == 0);
     Require(std::memcmp(viaPublic + 280, viaSyscall + 280, 16) == 0);
     Require(fstatfs_nid_postfix(descriptor, nullptr) == -1 && Error() == 14);
+    CheckDescriptorPathconf(fpathconf_nid_postfix, descriptor);
+    CheckDescriptorPathconf(_fpathconf_nid_postfix, descriptor);
     Require(close_nid_postfix(descriptor) == 0);
     Require(fstatfs_nid_postfix(-1, viaPublic) == -1 && Error() == 9);
+    Require(fpathconf_nid_postfix(descriptor, 4) == -1 && Error() == 9);
+    Require(_fpathconf_nid_postfix(descriptor, 4) == -1 && Error() == 9);
+    const int dirDescriptor = open_nid_postfix(root.generic_string().c_str(), 0, 0);
+    Require(dirDescriptor >= 0);
+    CheckDescriptorPathconf(fpathconf_nid_postfix, dirDescriptor);
+    CheckDescriptorPathconf(_fpathconf_nid_postfix, dirDescriptor);
+    Require(close_nid_postfix(dirDescriptor) == 0);
     char buffer[64];
     for (const auto& component : {std::string("missing"), std::string("file.txt")}) {
         const auto prefix = root.generic_string() + "/" + component + "/../";
@@ -635,6 +680,29 @@ int main() {
     fchownThrew = false;
     try { fchown_nid_postfix(base, 0, 1); } catch (const std::exception&) { fchownThrew = true; }
     Require(fchownThrew);
+    FileStat stat{};
+    Require(fstatat_nid_postfix(base, "file.txt", &stat, 0) == 0 && (stat.st_mode & 0170000) == 0100000 && stat.st_size == 1);
+    Require(fstatat_nid_postfix(base, "other_dir", &stat, 0) == 0 && (stat.st_mode & 0170000) == 0040000);
+    Require(fstatat_nid_postfix(base, "other_dir/", &stat, 0) == 0 && (stat.st_mode & 0170000) == 0040000);
+    Require(fstatat_nid_postfix(base, "file.txt/", &stat, 0) == -1 && Error() == 20);
+    Require(fstatat_nid_postfix(base, "file.txt", &stat, 0x0200) == 0 && (stat.st_mode & 0170000) == 0100000);
+    Require(fstatat_nid_postfix(-100, file.c_str(), &stat, 0) == 0 && stat.st_size == 1);
+    Require(fstatat_nid_postfix(-1, guestFile.c_str(), &stat, 0) == 0 && stat.st_size == 1);
+    Require(fstatat_nid_postfix(base, "missing.bin", &stat, 0) == -1 && Error() == 2);
+    Require(fstatat_nid_postfix(base, "missing.bin", &stat, 0x0200) == -1 && Error() == 2);
+    Require(fstatat_nid_postfix(base, nullptr, &stat, 0) == -1 && Error() == 14);
+    Require(fstatat_nid_postfix(base, "", &stat, 0) == -1 && Error() == 2);
+    Require(fstatat_nid_postfix(base, "file.txt", &stat, 0x4000) == -1 && Error() == 22);
+    Require(fstatat_nid_postfix(-1, "file.txt", &stat, 0) == -1 && Error() == 9);
+    const int notDirectory = sceKernelOpen(file.c_str(), SCE_KERNEL_O_RDONLY, 0);
+    Require(notDirectory >= 0);
+    Require(fstatat_nid_postfix(notDirectory, "file.txt", &stat, 0) == -1 && Error() == 20);
+    Require(sceKernelClose(notDirectory) == 0);
+#ifndef _WIN32
+    Require(symlink_nid_postfix("file.txt", (root / "link.txt").string().c_str()) == 0);
+    Require(fstatat_nid_postfix(base, "link.txt", &stat, 0) == 0 && (stat.st_mode & 0170000) == 0100000 && stat.st_size == 1);
+    Require(fstatat_nid_postfix(base, "link.txt", &stat, 0x0200) == 0 && (stat.st_mode & 0170000) == 0120000);
+#endif
     Require(sceKernelClose(base) == 0);
 #ifdef _WIN32
     const auto junctionTarget = root / "junction-target";

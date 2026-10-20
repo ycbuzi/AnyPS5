@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <climits>
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
@@ -13,6 +14,7 @@ char* APS5_VABI basename_nid_postfix(const char*);
 char* APS5_VABI __inet_ntoa_nid_postfix(unsigned int);
 char* APS5_VABI dirname_nid_postfix(const char*);
 int* APS5_VABI __error_nid_postfix();
+long long APS5_VABI strtonum_nid_postfix(const char*, long long, long long, const char**);
 int APS5_VABI strcasecmp_nid_postfix(const char*, const char*);
 int APS5_VABI strncasecmp_nid_postfix(const char*, const char*, std::size_t);
 std::size_t APS5_VABI strnlen_nid_postfix(const char*, std::size_t);
@@ -262,7 +264,51 @@ static void CheckBcopy() {
     bcopy_nid_postfix(nullptr, nullptr, 0);
 }
 
+static void CheckStrtonum() {
+    struct Valid {
+        const char* text;
+        long long value;
+    };
+    for (const auto& test : {Valid{"0", 0}, Valid{"-0", 0}, Valid{"  +42", 42}, Valid{"010", 10},
+             Valid{"9223372036854775807", LLONG_MAX}, Valid{"-9223372036854775808", LLONG_MIN}}) {
+        const char* error = "unchanged";
+        *__error_nid_postfix() = 13;
+        Require(strtonum_nid_postfix(test.text, LLONG_MIN, LLONG_MAX, &error) == test.value);
+        Require(error == nullptr && *__error_nid_postfix() == 13);
+    }
+    for (const auto& test : {Valid{"-5", -5}, Valid{"5", 5}, Valid{"0", 0}}) {
+        const char* error = "unchanged";
+        Require(strtonum_nid_postfix(test.text, -5, 5, &error) == test.value && error == nullptr);
+        Require(strtonum_nid_postfix(test.text, test.value, test.value, &error) == test.value && error == nullptr);
+    }
+    const auto fails = [](const char* text, long long minimum, long long maximum, const char* expected, int number) {
+        const char* error = nullptr;
+        *__error_nid_postfix() = 13;
+        Require(strtonum_nid_postfix(text, minimum, maximum, &error) == 0);
+        Require(error != nullptr && std::strcmp(error, expected) == 0 && *__error_nid_postfix() == number);
+        *__error_nid_postfix() = 13;
+        Require(strtonum_nid_postfix(text, minimum, maximum, nullptr) == 0 && *__error_nid_postfix() == number);
+    };
+    for (const char* text : {"", " ", "+", "-", "--1", "0x10", "0b10", "1x", "42 ", "1\n",
+             "9223372036854775808x", "-9223372036854775809x"})
+        fails(text, LLONG_MIN, LLONG_MAX, "invalid", 22);
+    fails("0", 1, -1, "invalid", 22);
+    fails(nullptr, 1, -1, "invalid", 22);
+    fails("9223372036854775808", 1, -1, "invalid", 22);
+    fails("-6", -5, 5, "too small", 34);
+    fails("6", -5, 5, "too large", 34);
+    fails("0", 1, 5, "too small", 34);
+    fails("0", -5, -1, "too large", 34);
+    fails("-9223372036854775809", LLONG_MIN, LLONG_MAX, "too small", 34);
+    fails("9223372036854775808", LLONG_MIN, LLONG_MAX, "too large", 34);
+    fails("-9999999999999999999999999999999999", LLONG_MIN, LLONG_MAX, "too small", 34);
+    fails("9999999999999999999999999999999999", LLONG_MIN, LLONG_MAX, "too large", 34);
+    *__error_nid_postfix() = 34;
+    Require(strtonum_nid_postfix("42", 0, 100, nullptr) == 42 && *__error_nid_postfix() == 34);
+}
+
 int main() {
+    CheckStrtonum();
     CheckBcopy();
     if (!CheckDirnameLengths()) return 1;
     CheckBoundsCheckedFunctions();

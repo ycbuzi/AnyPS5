@@ -1,0 +1,40 @@
+start d9db303a  2886/3260 = 88.53%
+   2280  APPLIED  +18/+18  -> 2904/3278 = 88.59%  (additive: core/libs/prx/libc/CMakeLists.txt)
+   2235  APPLIED  +9/+9  -> 2913/3287 = 88.62%  (additive: core/libs/prx/libc/CMakeLists.txt)
+   1537  CONFLICT (not additive) core/libs/prx/libSceContentExport/Export.cpp core/libs/tests/GuestContentExport.cpp
+   2167  APPLIED  +3/+3  -> 2916/3290 = 88.63%  (additive: core/libs/prx/libc/src/Math.cpp,core/libs/tests/GuestMath.cpp)
+   2333  CONFLICT (not additive) core/libs/prx/libc/src/LocaleSupport.cpp docs/dev/TechnicalDebt.md
+   1806  APPLIED  +2/+2  -> 2918/3292 = 88.64%  (additive: core/libs/prx/libc/CMakeLists.txt)
+   2173  APPLIED  +2/+2  -> 2920/3294 = 88.65%  (additive: core/libs/prx/libc/src/Math.cpp,core/libs/tests/GuestMath.cpp)
+   1585  NO-GAIN (+0/+0)
+   1882  DUPLICATE-DEFINITION core/libs/prx/libSceAgc/Misc/src/Semaphore.cpp:sceAgcSetAmmSemaphoreMemory,sceAgcGetSemaphoreLabel
+   2040  DUPLICATE-DEFINITION core/libs/prx/libc/src/Backtrace.cpp:sceLibcBacktraceGetBufferSize,sceLibcBacktraceSelf
+   2367  NO-GAIN (+0/+0)
+   2604  APPLIED  +2/+0  -> 2922/3294 = 88.71%  (additive: core/libs/prx/libc/src/Math.cpp)
+   1541  SYNTAX FAIL core/libs/tests/GuestAjm.cpp :: core/libs/tests/GuestAjm.cpp:406:18: error: expected constructor, destructor, or type conversion before ‘(’ token
+   1595  SYNTAX FAIL core/libs/prx/libc/src/Process.cpp :: core/libs/prx/libc/src/Process.cpp:230:2: error: expected ‘}’ at end of input
+   1698  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:log1pf_nid_postfix
+   1699  NO-GAIN (+0/+0)
+   1700  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:nextafterf_nid_postfix
+   1702  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:sinhf_nid_postfix
+   1720  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:expm1_nid_postfix
+   1722  NO-GAIN (+0/+0)
+   1753  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:fma_nid_postfix
+   1758  SYNTAX FAIL core/libs/tests/GuestMath.cpp :: core/libs/tests/GuestMath.cpp:126:39: error: a function-definition is not allowed here before ‘{’ token
+   1760  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:logb_nid_postfix
+   1814  APPLIED  +1/+1  -> 2923/3295 = 88.71%  (additive: core/libs/prx/libc/CMakeLists.txt)
+   1869  SYNTAX FAIL core/libs/prx/libSceLibcInternal/Export.cpp :: core/libs/prx/libSceLibcInternal/Export.cpp:114:60: error: a function-definition is not allowed here before 
+   1906  SYNTAX FAIL core/libs/prx/libSceLibcInternal/Export.cpp :: core/libs/prx/libSceLibcInternal/Export.cpp:120:60: error: a function-definition is not allowed here before 
+   1975  SYNTAX FAIL core/libs/prx/libSceLibcInternal/Export.cpp :: core/libs/prx/libSceLibcInternal/Export.cpp:125:60: error: a function-definition is not allowed here before 
+   2024  CONFLICT (not additive) core/libs/prx/libSceLibcInternal/CMakeLists.txt
+   2058  APPLIED  +1/+1  -> 2924/3296 = 88.71%  (additive: core/libs/prx/libc/CMakeLists.txt)
+   2059  NO-GAIN (+0/+0)
+   2174  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:__isinf_nid_postfix
+   2189  NO-GAIN (+0/+0)
+   2192  DUPLICATE-DEFINITION core/libs/prx/libc/src/Math.cpp:nextafterf_nid_postfix
+   2216  APPLIED  +1/+1  -> 2925/3297 = 88.72%  (additive: core/libs/tests/GuestMath.cpp)
+   2220  DUPLICATE-DEFINITION core/libs/prx/libc/src/Strings.cpp:wcstok_nid_postfix
+   2252  CONFLICT (not additive) core/libs/prx/libSceAppContent/Export.cpp
+   2309  APPLIED  +1/+0  -> 2926/3297 = 88.75%  (additive: core/libs/tests/GuestJson.cpp)
+   2354  SYNTAX FAIL core/libs/prx/libc/src/StandardStreams.cpp :: core/libs/prx/libc/src/StandardStreams.cpp:92:22: error: expected constructor, destructor, or type conversion
+end   62ed6a90a  2926/3297 = 88.75%

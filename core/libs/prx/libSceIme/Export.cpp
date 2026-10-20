@@ -9,6 +9,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libSceIme/include/ImeInput.hpp"
@@ -59,6 +60,7 @@ constexpr uint32_t CaretMoveRight = 2;
 
 struct Session {
     Param param{};
+    ImeExtKeyboardFilter extKeyboardFilter = nullptr;
     std::u16string text;
     std::uint32_t caret = 0;
     std::deque<ImeEvent> events;
@@ -157,6 +159,64 @@ void QueueCaretSteps(Session& session, uint32_t direction, std::size_t steps) {
     }
 }
 
+struct EditDelta {
+    std::uint32_t index = 0;
+    std::int32_t length = 0;
+};
+
+EditDelta ComputeEditDelta(const std::u16string& before, const std::u16string& after) {
+    std::size_t prefix = 0;
+    while (prefix < before.size() && prefix < after.size() && before[prefix] == after[prefix]) ++prefix;
+    std::size_t beforeTail = before.size();
+    std::size_t afterTail = after.size();
+    while (beforeTail > prefix && afterTail > prefix && before[beforeTail - 1] == after[afterTail - 1]) {
+        --beforeTail;
+        --afterTail;
+    }
+    return {static_cast<std::uint32_t>(prefix),
+            static_cast<std::int32_t>(afterTail - prefix) - static_cast<std::int32_t>(beforeTail - prefix)};
+}
+
+void NormalizeCaret(Session& session) {
+    if (session.caret > session.text.size()) session.caret = static_cast<std::uint32_t>(session.text.size());
+    if (session.caret > 0 && session.caret < session.text.size() &&
+        IsHighSurrogate(session.text[session.caret - 1]) && IsLowSurrogate(session.text[session.caret])) {
+        ++session.caret;
+    }
+}
+
+bool RunTextFilter(const Session& session, std::u16string* filtered) {
+    std::vector<char16_t> buffer(session.param.max_text_length + 1, u'\0');
+    std::uint32_t length = session.param.max_text_length;
+    if (session.param.filter(buffer.data(), &length, session.text.c_str(),
+                             static_cast<std::uint32_t>(session.text.size())) != 0) {
+        return false;
+    }
+    if (length > session.param.max_text_length ||
+        !ValidText(buffer.data(), length, (session.param.option & OptionMultiline) != 0)) {
+        return false;
+    }
+    filtered->assign(buffer.data(), buffer.data() + length);
+    return true;
+}
+
+void CommitEdit(Session& session, const std::u16string& oldText, std::uint32_t plainIndex, std::int32_t plainDelta) {
+    if (session.param.filter) {
+        std::u16string filtered;
+        if (RunTextFilter(session, &filtered)) {
+            session.text = std::move(filtered);
+            NormalizeCaret(session);
+        }
+        if (session.text == oldText) return;
+        SyncBuffers(session);
+        const EditDelta edit = ComputeEditDelta(oldText, session.text);
+        QueueText(session, EventUpdateText, edit.index, edit.length);
+        return;
+    }
+    SyncBuffers(session);
+    QueueText(session, EventUpdateText, plainIndex, plainDelta);
+}
+
 void Insert(Session& session, std::u16string units) {
     const bool multiline = (session.param.option & OptionMultiline) != 0;
     std::u16string accepted;
@@ -169,10 +229,10 @@ void Insert(Session& session, std::u16string units) {
     if (count > 0 && count < accepted.size() && IsHighSurrogate(accepted[count - 1])) --count;
     if (count == 0) return;
     const uint32_t index = session.caret;
+    const std::u16string oldText = session.text;
     session.text.insert(index, accepted, 0, count);
     session.caret += static_cast<uint32_t>(count);
-    SyncBuffers(session);
-    QueueText(session, EventUpdateText, index, static_cast<int32_t>(count));
+    CommitEdit(session, oldText, index, static_cast<int32_t>(count));
 }
 
 std::size_t UnitsBefore(const Session& session) {
@@ -198,18 +258,18 @@ void Apply(Session& session, const ImeHostInput& input) {
         case ImeHostInputKind::Backspace: {
             const std::size_t units = UnitsBefore(session);
             if (units == 0) return;
+            const std::u16string oldText = session.text;
             session.caret -= static_cast<uint32_t>(units);
             session.text.erase(session.caret, units);
-            SyncBuffers(session);
-            QueueText(session, EventUpdateText, session.caret, -static_cast<int32_t>(units));
+            CommitEdit(session, oldText, session.caret, -static_cast<int32_t>(units));
             return;
         }
         case ImeHostInputKind::Delete: {
             const std::size_t units = UnitsAfter(session);
             if (units == 0) return;
+            const std::u16string oldText = session.text;
             session.text.erase(session.caret, units);
-            SyncBuffers(session);
-            QueueText(session, EventUpdateText, session.caret, -static_cast<int32_t>(units));
+            CommitEdit(session, oldText, session.caret, -static_cast<int32_t>(units));
             return;
         }
         case ImeHostInputKind::Left: {
@@ -317,10 +377,9 @@ int APS5_VABI sceImeOpen_nid_postfix(const Param* param, const ExtendedParam* ex
     std::lock_guard lock(g_imeMutex);
     if (g_session) return ErrorBusy;
     if (const int error = ValidateOpen(param, extended)) return error;
-    if (param->filter) NotImplemented_nid_no_patch("sceImeOpen: text filter");
-    if (extended && extended->ext_keyboard_filter) NotImplemented_nid_no_patch("sceImeOpen: external keyboard filter");
     Session session;
     session.param = *param;
+    session.extKeyboardFilter = extended ? extended->ext_keyboard_filter : nullptr;
     session.text.assign(param->input_text_buffer, TextLength(param->input_text_buffer, param->max_text_length));
     session.caret = static_cast<uint32_t>(session.text.size());
     SyncBuffers(session);
@@ -412,6 +471,12 @@ int APS5_VABI sceImeSetCaret(const Caret* caret) {
     if (!caret) return ErrorInvalidAddress;
     if (caret->index > g_session->text.size()) return ErrorInvalidParam;
     g_session->caret = caret->index;
+    return 0;
+}
+
+int APS5_VABI sceImeSetConsecutiveClauseConversionEnabled(bool enabled) {
+    (void)enabled;
+    NotImplemented_nid_no_patch(__func__);
     return 0;
 }
 

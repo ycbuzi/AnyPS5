@@ -16,7 +16,7 @@ Throughout the project, every function at every stage either **does exactly what
 
 ### Unknown function info
 
-- AudioIn and NpSessionSignaling exports added without an implementation have assumed signatures
+- NpSessionSignaling exports added without an implementation have assumed signatures
 - `sceNetCtlGetIfStat` signature and 56-byte layout come from PPSA09030's call site and SharpProspero's `SceNetCtlIfStat`; the device kind is always 0, the byte counters are the host's totals over its up non-loopback hardware interfaces (not "since cleared"), and the not-connected result is assumed to match `sceNetCtlGetState`
 - Font, Http2, Net, Ssl, SystemService and libkernel exports imported by PPSA12544 and added without an implementation have unknown signatures
 - The Share, NpTrophy2, NpEntitlementAccess and WebBrowserDialog exports imported by PPSA12544's Unity plugins and added without an implementation have unknown signatures

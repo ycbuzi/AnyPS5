@@ -1,5 +1,6 @@
 #include <csignal>
 #include <cstdint>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

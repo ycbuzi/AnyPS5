@@ -3,7 +3,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <stdexcept>
 
 extern "C" {
 int APS5_VABI sceGameUpdateInitialize(void);

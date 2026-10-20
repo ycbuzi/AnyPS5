@@ -31,6 +31,7 @@ FileStream* APS5_VABI freopen_nid_postfix(const char*, const char*, FileStream*)
 int APS5_VABI fseeko_nid_postfix(FileStream*, std::int64_t, int);
 std::int64_t APS5_VABI ftello_nid_postfix(FileStream*);
 int APS5_VABI fseek_nid_postfix(FileStream*, std::int64_t, int);
+void APS5_VABI rewind_nid_postfix(FileStream*);
 std::int64_t APS5_VABI ftell_nid_postfix(FileStream*);
 int* APS5_VABI __error_nid_postfix();
 extern FileStream* __stdinp_nid_postfix;
@@ -676,6 +677,9 @@ int main(int argc, char** argv) {
     Require(std::strcmp(text, "B\n") == 0);
     Require(fgetc_nid_postfix(&stream) == EOF);
     Require(feof_nid_postfix(&stream) && (guest.flags & 0x20));
+    rewind_nid_postfix(&stream);
+    Require(ftello_nid_postfix(&stream) == 0 && !feof_nid_postfix(&stream));
+    Require((guest.flags & 0x20) == 0);
     clearerr_nid_postfix(&stream);
     Require(!feof_nid_postfix(&stream) && !(guest.flags & 0x20));
     stream.Close();
