@@ -42,17 +42,21 @@ static void CheckNextafter(TFloat (APS5_VABI *next)(TFloat, TFloat)) {
     std::feclearexcept(FE_ALL_EXCEPT);
     *__error_nid_postfix() = 0;
     Require(std::isinf(next(std::numeric_limits<TFloat>::max(), infinity)), "nextafter: overflow value");
+#ifdef math_errhandling
     if (math_errhandling & MATH_ERREXCEPT)
         Require(std::fetestexcept(FE_OVERFLOW) != 0, "nextafter: overflow exception");
     if (math_errhandling & MATH_ERRNO)
         Require(*__error_nid_postfix() == 34, "nextafter: overflow errno");
+#endif
     std::feclearexcept(FE_ALL_EXCEPT);
     *__error_nid_postfix() = 0;
     Require(next(std::numeric_limits<TFloat>::denorm_min(), TFloat{0}) == TFloat{0}, "nextafter: underflow value");
+#ifdef math_errhandling
     if (math_errhandling & MATH_ERREXCEPT)
         Require(std::fetestexcept(FE_UNDERFLOW) != 0, "nextafter: underflow exception");
     if (math_errhandling & MATH_ERRNO)
         Require(*__error_nid_postfix() == 34, "nextafter: underflow errno");
+#endif
 }
 
 int main() {
@@ -69,12 +73,16 @@ int main() {
         const float result = tgammaf_nid_postfix(input);
         if (input == -1.f) {
             Require(std::isnan(result), "tgammaf: negative integer domain");
+#ifdef math_errhandling
             if (math_errhandling & MATH_ERRNO) Require(*__error_nid_postfix() == 33, "tgammaf: domain errno");
             if (math_errhandling & MATH_ERREXCEPT) Require(std::fetestexcept(FE_INVALID) != 0, "tgammaf: domain exception");
+#endif
         } else {
             Require(std::isinf(result) && std::signbit(result) == std::signbit(input), "tgammaf: pole or overflow value");
+#ifdef math_errhandling
             if (math_errhandling & MATH_ERRNO) Require(*__error_nid_postfix() == 34, "tgammaf: range errno");
             if (math_errhandling & MATH_ERREXCEPT) Require(std::fetestexcept(input == 0.f ? FE_DIVBYZERO : FE_OVERFLOW) != 0, "tgammaf: pole or overflow exception");
+#endif
         }
     }
 }
