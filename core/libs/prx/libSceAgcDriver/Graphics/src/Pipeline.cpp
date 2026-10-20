@@ -297,6 +297,9 @@ bool libraryKeys(PipelineLibraryKeys& keys, const Context& context, const State&
             for (const auto word : resources.fragmentKey) appendKey(key, word);
         }
     };
+    const std::uint32_t unusedSets = 3u & ~(keys.preRasterizationSets | keys.fragmentSets);
+    keys.preRasterizationSets |= unusedSets & 1u;
+    keys.fragmentSets |= unusedSets & 2u;
     splitKey(keys.layout, 3u);
     splitKey(keys.preRasterizationLayout, keys.preRasterizationSets);
     splitKey(keys.fragmentLayout, keys.fragmentSets);
