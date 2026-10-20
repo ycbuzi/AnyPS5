@@ -128,7 +128,20 @@ on upstream `567c5fd63`:
 - `agent/agc-split-library-sets` (`46207c2d9`): a set no stage binds stays in the library that
   owns it. On llvmpipe the 102 tests pass and 06681 drops to 0.
 - `agent/agc-independent-blend` (`90bc3c320`): enables `independentBlend` when available and
-  refuses differing blend states without it. Not yet run.
+  refuses differing blend states without it.
+
+llvmpipe comparison on 2026-10-20: same tree, incremental rebuild, `-R "agc_|shader|video_out"`
+with `ANYPS5_REQUIRE_VULKAN=1`, `ANYPS5_NO_SHADER_CACHE=1` and
+`VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation`. The layer was found in every run.
+
+| tree | tests | 06681 | 00605 | other VUIDs |
+|---|---|---|---|---|
+| upstream `567c5fd63` | 840/840 | 3405 | 48 | pNext 1863, 02275 6, 04553 3, 00118 3 |
+| + `46207c2d9` | 840/840 | 0 | 48 | unchanged |
+| + `90bc3c320` | 840/840 | 3414 | 0 | unchanged |
+
+The 06681 count varies slightly between runs of unchanged code (3405, 3411, 3414). Neither fix
+adds a VUID. A real-GPU run (PC) is still needed for the PR's `GPUs tested` line.
 
 PC steps, from a WinLibs shell in a worktree at `upstream/main`, repeated after checking out
 each branch, with the same GPU and an incremental rebuild:
