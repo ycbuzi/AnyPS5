@@ -14,6 +14,12 @@
 #include <system_error>
 #include <thread>
 #include <time.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -54,18 +60,67 @@ constexpr int mutexRecursive = 0x100;
 constexpr std::uint64_t mutexTag = 0x5854'4D5F'4D54'5844ull;
 constexpr std::uint64_t conditionTag = 0x5854'4E43'5F44'4E43ull;
 
+#ifdef _WIN32
+struct DinkumwareNativeMutex {
+    CRITICAL_SECTION value;
+
+    DinkumwareNativeMutex() {
+        if (!InitializeCriticalSectionAndSpinCount(&value, 0))
+            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "_Mtx_init: initializing critical section failed");
+    }
+
+    ~DinkumwareNativeMutex() { DeleteCriticalSection(&value); }
+    void lock() { EnterCriticalSection(&value); }
+    void unlock() { LeaveCriticalSection(&value); }
+    bool try_lock() { return TryEnterCriticalSection(&value) != FALSE; }
+};
+
+struct DinkumwareNativeCondition {
+    CONDITION_VARIABLE value = CONDITION_VARIABLE_INIT;
+};
+#else
+using DinkumwareNativeMutex = std::mutex;
+using DinkumwareNativeCondition = std::condition_variable;
+#endif
+
 struct DinkumwareMutex {
     std::uint64_t tag = mutexTag;
     int type = 0;
     int count = 0;
     std::atomic<std::thread::id> owner{};
-    std::mutex native;
+    DinkumwareNativeMutex native;
 };
 
 struct DinkumwareCondition {
     std::uint64_t tag = conditionTag;
-    std::condition_variable native;
+    DinkumwareNativeCondition native;
 };
+
+#ifdef _WIN32
+DWORD WaitMillisecondsUntil(std::chrono::system_clock::time_point deadline) {
+    const auto now = std::chrono::system_clock::now();
+    if (now >= deadline)
+        return 0;
+    const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - now).count();
+    constexpr auto largest = static_cast<std::int64_t>(std::numeric_limits<DWORD>::max() - 1U);
+    return static_cast<DWORD>(std::min<std::int64_t>(remaining, largest));
+}
+
+bool WaitUntil(DinkumwareCondition* condition, DinkumwareMutex* mutex, std::chrono::system_clock::time_point deadline) {
+    for (;;) {
+        const DWORD milliseconds = WaitMillisecondsUntil(deadline);
+        if (milliseconds == 0)
+            return false;
+        if (SleepConditionVariableCS(&condition->native.value, &mutex->native.value, milliseconds) != FALSE)
+            return true;
+        const DWORD error = GetLastError();
+        if (error != ERROR_TIMEOUT)
+            throw std::system_error(static_cast<int>(error), std::system_category(), "_Cnd_timedwait: condition wait failed");
+        if (std::chrono::system_clock::now() >= deadline)
+            return false;
+    }
+}
+#endif
 
 DinkumwareMutex* ResolveMutex(void** handle, const char* function) {
     if (!handle)
@@ -213,7 +268,12 @@ int APS5_VABI _Cnd_wait_nid_postfix(void** conditionHandle, void** mutexHandle) 
     mutex->owner.store(std::thread::id{}, std::memory_order_release);
     std::unique_lock lock(mutex->native, std::adopt_lock);
     try {
+#ifdef _WIN32
+        if (SleepConditionVariableCS(&condition->native.value, &mutex->native.value, INFINITE) == FALSE)
+            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "_Cnd_wait: condition wait failed");
+#else
         condition->native.wait(lock);
+#endif
     } catch (const std::system_error&) {
         lock.release();
         mutex->owner.store(std::this_thread::get_id(), std::memory_order_release);
@@ -252,7 +312,11 @@ int APS5_VABI _Cnd_timedwait_nid_postfix(void** conditionHandle, void** mutexHan
         const auto deadlineTime = std::chrono::system_clock::time_point(
             std::chrono::seconds(deadline.tv_sec) +
             std::chrono::ceil<std::chrono::system_clock::duration>(std::chrono::nanoseconds(deadline.tv_nsec)));
+#ifdef _WIN32
+        timeout = !WaitUntil(condition, mutex, deadlineTime);
+#else
         timeout = (condition->native.wait_until(lock, deadlineTime) == std::cv_status::timeout);
+#endif
     } catch (const std::system_error&) {
         lock.release();
         mutex->owner.store(std::this_thread::get_id(), std::memory_order_release);
@@ -266,12 +330,20 @@ int APS5_VABI _Cnd_timedwait_nid_postfix(void** conditionHandle, void** mutexHan
 }
 
 int APS5_VABI _Cnd_broadcast_nid_postfix(void** handle) {
+#ifdef _WIN32
+    WakeAllConditionVariable(&ResolveCondition(handle, "_Cnd_broadcast")->native.value);
+#else
     ResolveCondition(handle, "_Cnd_broadcast")->native.notify_all();
+#endif
     return threadSuccess;
 }
 
 int SignalCondition_nid_no_patch(void** handle) {
+#ifdef _WIN32
+    WakeConditionVariable(&ResolveCondition(handle, "_Cnd_signal")->native.value);
+#else
     ResolveCondition(handle, "_Cnd_signal")->native.notify_one();
+#endif
     return threadSuccess;
 }
 

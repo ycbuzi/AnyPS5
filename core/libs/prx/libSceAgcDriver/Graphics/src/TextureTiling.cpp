@@ -466,6 +466,10 @@ bool LevelsFitAllocation(const GuestTextureResource& surface, std::uint32_t leve
     return true;
 }
 
+bool TracksBlockUnits(const GuestTextureResource& surface, const SurfaceGeometry& geometry) {
+    return !geometry.thick && surface.tileMode != TextureTileMode::kLinear && surface.baseAddress % 65536 == 0 && (surface.dccAddress == 0 || surface.mipCount == 1);
+}
+
 GuestTextureResource ViewedArrayWindow(const GuestTextureResource& viewed) {
     const bool layered = viewed.dimension == TextureDimension::k2DArray || viewed.dimension == TextureDimension::k1DArray || viewed.dimension == TextureDimension::kCube;
     if (!layered || viewed.baseArray == 0 || viewed.baseArray > viewed.depthOrLastArray || viewed.dccAddress != 0) return viewed;

@@ -818,6 +818,27 @@ static void CheckEpollIdent() {
     Require(sceNetSocketClose(sender) == 0 && sceNetSocketClose(receiver) == 0);
 }
 
+static void CheckTcpNoDelay() {
+    const int stream = sceNetSocket("tcp-nodelay", 2, 1, 6);
+    const int datagram = sceNetSocket("tcp-nodelay-udp", 2, 2, 17);
+    Require(stream >= 0 && datagram >= 0);
+    int value = -1;
+    std::uint32_t size = sizeof(value);
+    Require(sceNetGetsockopt(stream, 6, 1, &value, &size) == 0 && size == sizeof(value) && value == 0);
+    const int on = 1;
+    const int off = 0;
+    Require(sceNetSetsockopt(stream, 6, 1, &on, sizeof(on)) == 0);
+    Require(sceNetGetsockopt(stream, 6, 1, &value, &size) == 0 && value == 4);
+    Require(setsockopt_nid_postfix(stream, 6, 1, &off, sizeof(off)) == 0);
+    Require(sceNetGetsockopt(stream, 6, 1, &value, &size) == 0 && value == 0);
+    Require(Failed(sceNetSetsockopt(stream, 6, 2, &on, sizeof(on)), 42));
+    Require(Failed(sceNetGetsockopt(stream, 6, 2, &value, &size), 42));
+    Require(Failed(sceNetSetsockopt(datagram, 6, 1, &on, sizeof(on)), 22));
+    Require(Failed(sceNetGetsockopt(datagram, 6, 1, &value, &size), 22));
+    Require(Failed(sceNetSetsockopt(datagram, 6, 2, &on, sizeof(on)), 22));
+    Require(sceNetSocketClose(stream) == 0 && sceNetSocketClose(datagram) == 0);
+}
+
 static bool ipv6Unavailable = false;
 
 static bool HostIpv6LoopbackUnavailable() {
@@ -1014,7 +1035,7 @@ static void CheckUnspecifiedIpv6() {
 
     const char payload[] = "IPv6 wildcard receive";
     const auto sent = sceNetSendto(sender, payload, sizeof(payload), 0, address.data(), address.size());
-    if (sent < 0 && *sceNetErrnoLoc() == 51 && HostIpv6LoopbackUnavailable()) {
+    if (sent < 0 && (*sceNetErrnoLoc() == 49 || *sceNetErrnoLoc() == 51 || *sceNetErrnoLoc() == 65) && HostIpv6LoopbackUnavailable()) {
         Require(sceNetSocketClose(sender) == 0);
         Require(sceNetSocketClose(receiver) == 0);
         ipv6Unavailable = true;
@@ -1221,6 +1242,7 @@ int main() {
     CheckUsleep();
     CheckSystemTime();
     CheckEpollIdent();
+    CheckTcpNoDelay();
     CheckLinkLocalAllNodesIpv6();
     CheckUnboundSocketName();
     CheckUnboundDatagramReceive();

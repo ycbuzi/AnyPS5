@@ -456,6 +456,11 @@ int APS5_VABI sceNetCtlGetInfo(int code, NetCtlInfo* info) {
     return 0;
 }
 
+int APS5_VABI sceNetCtlGetInfoV6() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
 int APS5_VABI sceNetCtlGetNatInfo(NetCtlNatInfo* nat_info) {
     if (!nat_info) return SCE_NET_CTL_ERROR_INVALID_ADDR;
     return SCE_NET_CTL_ERROR_NOT_CONNECTED;

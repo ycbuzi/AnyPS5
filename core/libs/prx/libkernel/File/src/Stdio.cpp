@@ -617,7 +617,9 @@ int APS5_VABI chmod_nid_postfix(const char* path, int mode) {
 
 int APS5_VABI chflags_nid_postfix(const char* path, std::uint64_t flags) {
     if (const int error = PathError(path)) return PosixFailure(error);
-    if (const int error = LookupError(ResolvePath_nid_no_patch(path))) return PosixFailure(error);
+    std::filesystem::path native;
+    if (const int error = ResolvePathError_nid_no_patch(path, native)) return PosixFailure(error);
+    if (const int error = LookupError(native)) return PosixFailure(error);
     std::uint64_t known = 0;
     for (const auto& entry : GUEST_FILE_FLAGS) known |= entry.first;
     if ((flags & ~known) != 0) return PosixFailure(GUEST_EOPNOTSUPP);
@@ -1381,10 +1383,14 @@ int APS5_VABI fchmod_nid_postfix(int d, int mode) {
     return PosixResult(sceKernelFchmod(d, static_cast<std::uint16_t>(mode)));
 }
 
+static bool InvalidTimes(const KernelTimeval* times) {
+    return times != nullptr && (times[0].tv_usec < 0 || times[0].tv_usec >= 1000000 || times[1].tv_usec < 0 || times[1].tv_usec >= 1000000);
+}
+
 int APS5_VABI sceKernelTruncate_nid_postfix(const char* path, std::int64_t length) {
+    if (length < 0) return SceErrorFromErrno(GUEST_EINVAL);
     if (!path) return SceErrorFromErrno(GUEST_EFAULT);
     if (*path == '\0') return SceErrorFromErrno(GUEST_ENOENT);
-    if (length < 0) return SceErrorFromErrno(GUEST_EINVAL);
     std::filesystem::path native;
     if (const int error = ResolvePathError_nid_no_patch(path, native)) return SceKernelError(error);
     std::error_code error;
@@ -1397,18 +1403,15 @@ int APS5_VABI sceKernelTruncate_nid_postfix(const char* path, std::int64_t lengt
 }
 
 int APS5_VABI truncate_nid_postfix(const char* path, std::int64_t length) {
+    if (length < 0) return PosixFailure(GUEST_EINVAL);
     if (const int error = PathError(path)) return PosixFailure(error);
     return PosixResult(sceKernelTruncate_nid_postfix(path, length));
 }
 
 int APS5_VABI sceKernelUtimes_nid_postfix(const char* path, const KernelTimeval* times) {
+    if (InvalidTimes(times)) return SCE_KERNEL_ERROR_EINVAL;
     if (!path) return SceErrorFromErrno(GUEST_EFAULT);
     if (*path == '\0') return SceErrorFromErrno(GUEST_ENOENT);
-    if (times != nullptr) {
-        for (int i = 0; i < 2; ++i) {
-            if (times[i].tv_usec < 0 || times[i].tv_usec >= 1000000) return SCE_KERNEL_ERROR_EINVAL;
-        }
-    }
     std::filesystem::path native;
     if (const int error = ResolvePathError_nid_no_patch(path, native)) return SceKernelError(error);
     if (NativeUtimes(native, times) != 0) return SceErrorFromErrno(errno);
@@ -1416,17 +1419,14 @@ int APS5_VABI sceKernelUtimes_nid_postfix(const char* path, const KernelTimeval*
 }
 
 int APS5_VABI utimes_nid_postfix(const char* path, const KernelTimeval* times) {
+    if (InvalidTimes(times)) return PosixFailure(GUEST_EINVAL);
     if (const int error = PathError(path)) return PosixFailure(error);
     return PosixResult(sceKernelUtimes_nid_postfix(path, times));
 }
 
 int APS5_VABI lutimes_nid_postfix(const char* path, const KernelTimeval* times) {
+    if (InvalidTimes(times)) return PosixFailure(GUEST_EINVAL);
     if (const int error = PathError(path)) return PosixFailure(error);
-    if (times != nullptr) {
-        for (int i = 0; i < 2; ++i) {
-            if (times[i].tv_usec < 0 || times[i].tv_usec >= 1000000) return PosixFailure(GUEST_EINVAL);
-        }
-    }
     std::filesystem::path native;
     if (const int error = ResolvePathError_nid_no_patch(path, native)) return PosixFailure(error);
     if (NativeUtimes(native, times, false) != 0) return PosixResult(SceErrorFromErrno(errno));

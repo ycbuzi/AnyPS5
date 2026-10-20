@@ -231,15 +231,16 @@ bool DeliverPendingSignal(int guest) {
 int WaitForPendingInSet(const GuestSignalSet& set, bool waitForever, const GuestTimespec* timeout, int* guest) {
     auto& pending = Pending();
     std::unique_lock lock(pending.lock);
+    std::optional<std::chrono::steady_clock::time_point> deadline;
     for (;;) {
         if (PendingInSet(set, guest)) return 0;
         if (waitForever) {
             pending.changed.wait(lock);
             continue;
         }
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout->seconds) +
+        if (!deadline) deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout->seconds) +
             std::chrono::nanoseconds(timeout->nanoseconds);
-        if (pending.changed.wait_until(lock, deadline) == std::cv_status::no_timeout) continue;
+        if (pending.changed.wait_until(lock, *deadline) == std::cv_status::no_timeout) continue;
         return PendingInSet(set, guest) ? 0 : GuestEagain;
     }
 }
