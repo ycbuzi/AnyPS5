@@ -167,7 +167,9 @@ first. Each was checked on Linux: the new test fails without the change and pass
   rounding mode because MathExact.cpp lacked `-frounding-math`. Two files, 28 lines.
 - `agent/libc-fmax-signaling-nan` (fork ycbuzi/AnyPS5#5): `fmin`/`fmax` raised FE_INVALID for a
   signalling NaN; FreeBSD's `s_fmax.c`/`s_fmin.c` read the bits instead. Two files, 31 lines.
-- `agent/windows-backtrace` (fork ycbuzi/AnyPS5#2): needs a Windows run first.
+- `agent/windows-backtrace` (fork ycbuzi/AnyPS5#2, closed 2026-10-20 by the PC session):
+  **superseded**, do not post. Upstream boykopovar/AnyPS5#8137, open since 2026-10-19, implements
+  the same two Windows exports. The branch is kept.
 
 Both libc fixes credit Привалов Александр Владимирович, whose unmerged PR tests found the bugs.
 
