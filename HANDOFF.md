@@ -114,6 +114,35 @@ PRs that gain functions, merge cleanly and are not constant-return bodies. Each 
     `Require` both.
   - Not merged into this branch until it runs on the PC.
 
+### GPU validation fixes waiting for a real-GPU run (2026-10-20)
+
+The cloud container now runs the GPU suite on software Vulkan (Mesa llvmpipe 25.2.8 with
+`vulkan-validationlayers`). On the stack, 836/836 pass, with these validation errors:
+- `VUID-VkGraphicsPipelineCreateInfo-pLibraries-06681`: 3411 errors in 102 tests.
+- `VUID-VkPipelineColorBlendStateCreateInfo-pAttachments-00605`: 48 errors in 2 tests.
+- `VUID-VkDeviceCreateInfo-pNext-pNext`: this one is Ubuntu's older layer not knowing structure
+  type 1000574000.
+
+Both real ones are in upstream code that is identical on the stack. Two fix branches are based
+on upstream `567c5fd63`:
+- `agent/agc-split-library-sets` (`46207c2d9`): a set no stage binds stays in the library that
+  owns it. On llvmpipe the 102 tests pass and 06681 drops to 0.
+- `agent/agc-independent-blend` (`90bc3c320`): enables `independentBlend` when available and
+  refuses differing blend states without it. Not yet run.
+
+PC steps, from a WinLibs shell in a worktree at `upstream/main`, repeated after checking out
+each branch, with the same GPU and an incremental rebuild:
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+cmake --build build --parallel
+$env:ANYPS5_REQUIRE_VULKAN=1; $env:ANYPS5_NO_SHADER_CACHE=1; $env:VK_INSTANCE_LAYERS="VK_LAYER_KHRONOS_validation"
+ctest --test-dir build -R "agc_|shader|video_out" --timeout 900 -V *> gpu-<tree>.log
+Select-String -Path gpu-<tree>.log -Pattern "was not found but was requested by env var VK_INSTANCE_LAYERS"
+Select-String -Path gpu-<tree>.log -Pattern "VUID-[A-Za-z0-9_-]+" -AllMatches | % { $_.Matches.Value } | Group-Object | Sort Count -Desc
+```
+The first `Select-String` must print nothing. Then compare the VUID counts and the pass totals of
+`main` and each branch.
+
 ### Upstream contribution status (checked 2026-10-19)
 
 - **Intake rule changed** (`.github/workflows/pr-intake.yml`): an author with no merged PR may have
