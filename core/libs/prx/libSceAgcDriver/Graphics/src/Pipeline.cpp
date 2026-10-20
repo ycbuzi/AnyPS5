@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <list>
 #include <mutex>
 #include <string_view>
@@ -535,6 +536,10 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
                 secondChannels[index].colorBlendOp = state.blends[index].alphaBlendOp;
             }
         }
+        const auto differ = [](const std::vector<VkPipelineColorBlendAttachmentState>& attachments) {
+            return std::ranges::any_of(attachments, [&](const VkPipelineColorBlendAttachmentState& attachment) { return std::memcmp(&attachment, &attachments.front(), sizeof(attachment)) != 0; });
+        };
+        Require(context.independentBlend || (!differ(firstChannels) && !(alternateAlpha && differ(secondChannels))), "color targets with different blend states need the independentBlend feature, which the device does not support");
         blend.attachmentCount = static_cast<std::uint32_t>(firstChannels.size());
         blend.pAttachments = firstChannels.empty() ? nullptr : firstChannels.data();
         std::copy(state.blendConstants.begin(), state.blendConstants.end(), blend.blendConstants);
