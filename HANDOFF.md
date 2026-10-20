@@ -171,6 +171,19 @@ The first `Select-String` must print nothing. Then compare the VUID counts and t
 - Only these two PRs have commits by the user's identity that are not in upstream `main`
   (searched across all 6,855 PR heads).
 
+### PC-verified PR branches (2026-10-20, these replace the `agent/*` ones below)
+
+The PC session closed fork PRs #2 and #4–#6. It rebased each change as one commit on current
+upstream and verified it on Windows. Use these, not the `agent/*` branches:
+- `pr/libc-rint-rounding-mode` (`5c1eba11a`): posted as boykopovar/AnyPS5#8211.
+- `pr/libc-fmax-signaling-nan` (`213327fed`): verified on Windows, including a revert check. Waits
+  for the open-PR slot.
+- `pr/windows-reparse-non-link` (`5f84edd8c`): verified on Windows. Waits for the slot.
+  - The cloud's `compact /exe` fixture could not work: on Windows 11 24H2 the WOF filter hides
+    the reparse point, so the cloud's assumption that WOF files show `FILE_ATTRIBUTE_REPARSE_POINT`
+    was wrong.
+  - The tests now use GUID-tagged reparse points.
+
 ### Upstream-ready PR branches (one topic each, based on upstream `eaa5c9238`)
 
 The intake rule allows one open upstream PR until one is merged, so pick one of these to post
