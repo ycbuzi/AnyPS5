@@ -171,6 +171,37 @@ The first `Select-String` must print nothing. Then compare the VUID counts and t
 - Only these two PRs have commits by the user's identity that are not in upstream `main`
   (searched across all 6,855 PR heads).
 
+### Cloud Windows cross-build and Wine comparison (2026-10-20)
+
+**The cross toolchain.** The cloud now cross-builds for Windows with a Linux-hosted GCC 15.2.0 /
+mingw-w64 14.0.0 / UCRT / posix / SEH toolchain, configured with `--disable-sjlj-exceptions` so
+it passes the DWARF check. Tests run under Wine 9.0. Three cross-build shims sit outside the repo:
+- `binfmt_misc` runs `.exe` files through Wine.
+- A `dlltool.exe` wrapper passes `-S <cross as>`.
+- The jpeg-turbo sub-build is pre-configured with the toolchain file.
+
+**Builds.** The stack `9309f2a1b` and upstream base `252cbc29b` both build and link for Windows
+with 0 failures, including the `libs` target. That is the first Windows build of the 43 harvested
+PRs.
+
+**Wine runs.** Stack 873/1721 passed, base 849/1689. About half fails in both, so the differences
+are what matter:
+- Eight tests passed on base and failed on the stack, but all eight pass when rerun alone. They
+  were flaky in parallel under Wine.
+- Three stack-only tests fail:
+  - `guest_extended_math`, check "modfl infinity": **a real Windows bug, also in upstream.**
+    mingw-w64's statically linked `modfl` returns +0 for -inf, -3, -0, -2^63 and -1e30, where
+    glibc and FreeBSD return -0. The fix is `agent/libc-modfl-signed-zero` (`265f1663e`), based on
+    upstream `d50ec76da`, and uses `copysign`. It cites C11 7.12.6.12 and FreeBSD 11.4
+    `s_modfl.c`. Proven on the Windows cross-build under Wine: the new `guest_math_exact` check
+    fails without the fix and passes with it. On Linux it passes both ways. It has no fork PR.
+    `modf` and `modff` go to Windows' UCRT, so their signs need checking on the PC.
+  - `guest_named_shm_windows` (from the 7299 harvest): "closing the last descriptor did not reap
+    its unlinked host object". It may be Wine's named-object lifetime, so it **needs a real Windows
+    run**.
+  - `guest_math_exports`: "tgammaf: range errno", then a crash inside Wine's abort handling.
+    `tgammaf` uses Wine's ucrtbase here, so it **needs a real Windows run**.
+
 ### PC-verified PR branches (2026-10-20, these replace the `agent/*` ones below)
 
 The PC session closed fork PRs #2 and #4–#6. It rebased each change as one commit on current
