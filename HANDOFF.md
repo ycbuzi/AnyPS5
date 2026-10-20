@@ -165,6 +165,11 @@ first. Each was checked on Linux: the new test fails without the change and pass
 
 - `agent/libc-rint-rounding-mode` (fork ycbuzi/AnyPS5#4): `rint`/`rintf` ignored a non-default
   rounding mode because MathExact.cpp lacked `-frounding-math`. Two files, 28 lines.
+  **Posted upstream on 2026-10-20 as boykopovar/AnyPS5#8211** by the PC session. That uses the
+  single open-PR slot until it merges.
+- On 2026-10-20 blu merged upstream main (`c942b37c0`) into both AGC fix branches, so their heads
+  are now merges (`13616f441` and `6f3bacb86`). The fix commits themselves are `46207c2d9` and
+  `90bc3c320`.
 - `agent/libc-fmax-signaling-nan` (fork ycbuzi/AnyPS5#5): `fmin`/`fmax` raised FE_INVALID for a
   signalling NaN; FreeBSD's `s_fmax.c`/`s_fmin.c` read the bits instead. Two files, 31 lines.
 - `agent/windows-backtrace` (fork ycbuzi/AnyPS5#2, closed 2026-10-20 by the PC session):
