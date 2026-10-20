@@ -105,9 +105,13 @@ PRs that gain functions, merge cleanly and are not constant-return bodies. Each 
     compression, dedup, cloud files) now act as on the file itself (`stat` /
     `EINVAL`), following Microsoft's reparse tag docs, CPython's `os.lstat` and FreeBSD
     readlink(2).
-  - Name surrogates other than links and junctions still throw, so the count does not move.
-  - **Not run on Windows**; whether `compact /exe` sets the reparse attribute is unverified, and
-    its tests `Require` it.
+  - `38dd55a72`: other name surrogates (mounted volumes, WSL symlinks, other tags) follow CPython:
+    `readlink` returns `EINVAL` and `lstat` reports the reparse point itself with the mode of its
+    attributes. `readlink`/`readlinkat` no longer throw on Windows: on upstream's base Windows
+    goes from 4155 to 4157, against Linux 4156.
+  - **Not run on Windows**; whether `compact /exe` sets the reparse attribute and whether a
+    non-administrator can set a third-party name-surrogate tag are unverified, and its tests
+    `Require` both.
   - Not merged into this branch until it runs on the PC.
 
 ### Upstream contribution status (checked 2026-10-19)
