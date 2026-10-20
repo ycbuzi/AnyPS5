@@ -18,6 +18,8 @@ int APS5_VABI sceVoiceGetMuteFlag(std::uint32_t, bool*);
 int APS5_VABI sceVoiceGetPortInfo(std::uint32_t, VoicePortInfo*);
 int APS5_VABI sceVoiceReadFromOPort(std::uint32_t, void*, std::uint32_t*);
 int APS5_VABI sceVoiceResetPort(std::uint32_t);
+int APS5_VABI sceVoicePausePort(std::uint32_t);
+int APS5_VABI sceVoiceResumePort(std::uint32_t);
 int APS5_VABI sceVoiceGetResourceInfo(VoiceResourceInfo*);
 int APS5_VABI sceVoiceEnableChat(void);
 int APS5_VABI sceVoiceDisableChat(void);
@@ -47,6 +49,8 @@ std::uint32_t CreatePort(std::int32_t type, float volume) {
 
 int main() {
     RequireThrows([] { sceVoiceResetPort(0); });
+    RequireThrows([] { sceVoicePausePort(0); });
+    RequireThrows([] { sceVoiceResumePort(0); });
     RequireThrows([] { VoiceResourceInfo info{}; sceVoiceGetResourceInfo(&info); });
     RequireThrows([] { sceVoiceEnableChat(); });
     RequireThrows([] { sceVoiceDisableChat(); });
@@ -75,6 +79,16 @@ int main() {
     Require(sceVoiceResetPort(output) == 0);
     RequireThrows([&] { sceVoiceResetPort(output + 1); });
 
+    Require(sceVoicePausePort(input) == 0);
+    Require(sceVoicePausePort(output) == 0);
+    VoicePortInfo paused{};
+    Require(sceVoiceGetPortInfo(input, &paused) == 0);
+    Require(paused.port_type == before.port_type && paused.state == before.state && paused.frame_size == before.frame_size);
+    Require(sceVoiceResumePort(input) == 0);
+    Require(sceVoiceResumePort(output) == 0);
+    RequireThrows([&] { sceVoicePausePort(output + 1); });
+    RequireThrows([&] { sceVoiceResumePort(output + 1); });
+
     VoicePortInfo after{};
     Require(sceVoiceGetPortInfo(input, &after) == 0);
     Require(after.port_type == before.port_type && after.state == before.state && after.frame_size == before.frame_size);
@@ -89,9 +103,11 @@ int main() {
 
     Require(sceVoiceDeletePort(input) == 0);
     RequireThrows([&] { sceVoiceResetPort(input); });
+    RequireThrows([&] { sceVoicePausePort(input); });
     Require(sceVoiceResetPort(output) == 0);
     Require(sceVoiceEnd_nid_postfix() == 0);
     RequireThrows([&] { sceVoiceResetPort(output); });
+    RequireThrows([&] { sceVoiceResumePort(output); });
     RequireThrows([] { VoiceResourceInfo info{}; sceVoiceGetResourceInfo(&info); });
     RequireThrows([] { sceVoiceEnableChat(); });
     RequireThrows([] { sceVoiceDisableChat(); });

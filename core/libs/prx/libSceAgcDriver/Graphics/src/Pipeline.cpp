@@ -225,6 +225,11 @@ bool libraryKeys(PipelineLibraryKeys& keys, const Context& context, const State&
             }
         }
     }
+    if (resources.split) {
+        const auto unused = 3u & ~(keys.preRasterizationSets | keys.fragmentSets);
+        keys.preRasterizationSets |= unused & 1u;
+        keys.fragmentSets |= unused & 2u;
+    }
     for (const auto& binding : input.bindings) {
         appendKey(keys.vertexInput, binding.binding);
         appendKey(keys.vertexInput, binding.stride);

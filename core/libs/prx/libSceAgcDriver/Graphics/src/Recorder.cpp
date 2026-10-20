@@ -32,6 +32,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unordered_map>
 #include "prx/libc/include/general/AtomicSharedPtr.hpp"
 
 namespace AgcDriver::Graphics {
@@ -3954,6 +3955,16 @@ void Recorder::finish(std::unique_ptr<Batch> batch, bool wait, int source, bool 
         for (auto& action : batch->completions) {
             try {
                 action();
+            } catch (const BdaUnalignedAccess& error) {
+                static std::mutex failuresMutex;
+                static std::unordered_map<std::uint32_t, std::uint64_t> failures;
+                constexpr std::uint64_t kDeferredFailureFirst = 8, kDeferredFailureEvery = 1024;
+                const auto count = [&] {
+                    std::lock_guard lock(failuresMutex);
+                    return ++failures[error.instruction];
+                }();
+                if (count <= kDeferredFailureFirst) std::fprintf(stderr, "[gpu] deferred write-back failed: %s\n", error.what());
+                else if (count % kDeferredFailureEvery == 0) std::fprintf(stderr, "[gpu] deferred write-back failed with an unaligned BDA access at pc 0x%x %llu times so far; latest: %s\n", error.instruction, static_cast<unsigned long long>(count), error.what());
             } catch (const std::exception& error) {
                 AgcDriver::LogCoalescedStderr_nid_no_patch("[gpu] deferred write-back failed: %s\n", error.what());
             }

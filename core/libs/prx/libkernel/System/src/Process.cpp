@@ -142,7 +142,11 @@ std::atomic<int> guestNice{0};
 constexpr int guestNiceMin = -20;
 constexpr int guestNiceMax = 20;
 constexpr int guestRlimitData = 2;
+constexpr int guestRlimitStack = 3;
 constexpr int guestRlimitCore = 4;
+constexpr int guestRlimitRss = 5;
+constexpr int guestRlimitMemlock = 6;
+constexpr int guestRlimitNproc = 7;
 constexpr int guestRlimitNofile = 8;
 constexpr int guestRlimitSbsize = 9;
 constexpr int guestRlimitVmem = 10;
@@ -152,6 +156,8 @@ constexpr int guestRlimitKqueues = 13;
 constexpr int guestRlimitUmtxp = 14;
 constexpr int guestRlimitCount = 15;
 constexpr std::int64_t guestRlimitInfinity = std::numeric_limits<std::int64_t>::max();
+constexpr std::int64_t guestStackLimit = 0x200000;
+constexpr std::int64_t guestProcessLimit = 1604;
 
 #ifdef _WIN32
 std::int64_t hostMemoryLimit() {
@@ -357,6 +363,8 @@ int APS5_VABI setrlimit_nid_postfix(int resource, const GuestResourceLimit* limi
             return 0;
         }
     }
+    if (resource == guestRlimitNproc)
+        throw std::runtime_error("setrlimit: RLIMIT_NPROC is not stored");
     if (requested.rlim_cur != current.rlim_cur || requested.rlim_max != current.rlim_max)
         throw std::runtime_error("setrlimit: changing the limit of resource " + std::to_string(resource) + " is not supported");
     return 0;
@@ -630,9 +638,19 @@ int APS5_VABI getrlimit_nid_postfix(int resource, GuestResourceLimit* limit) {
         *limit = *guestOpenFileLimit;
         return 0;
     }
+    case guestRlimitStack:
+        limit->rlim_cur = guestStackLimit;
+        limit->rlim_max = guestStackLimit;
+        return 0;
+    case guestRlimitNproc:
+        limit->rlim_cur = guestProcessLimit;
+        limit->rlim_max = guestProcessLimit;
+        return 0;
     case guestRlimitCpu:
     case guestRlimitFsize:
     case guestRlimitCore:
+    case guestRlimitRss:
+    case guestRlimitMemlock:
     case guestRlimitSbsize:
     case guestRlimitVmem:
     case guestRlimitNpts:

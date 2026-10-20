@@ -364,7 +364,7 @@ DescriptorBindingPlan DescriptorBindingBuilder::Prepare(const IrBindingLayout& l
     std::vector<std::uint32_t> samplerIntegerModes(info.samplers.size(), 0u);
     std::vector<std::uint32_t> samplerFloatModes(info.samplers.size(), 0u);
     std::vector<std::uint32_t> directSamplerModes(info.samplers.size(), 0u);
-    const auto samplerMode = [](const ImageResource& image) { return !image.constantSwizzle && (image.numericClass == IrTextureNumericClass::Sint || image.conversionFormat != IrBufferFormat::Invalid || image.depthBits) ? 2u : 1u; };
+    const auto samplerMode = [](const ImageResource& image) { return !image.constantSwizzle && (image.numericClass == IrTextureNumericClass::Uint || image.numericClass == IrTextureNumericClass::Sint || image.conversionFormat != IrBufferFormat::Invalid || image.depthBits) ? 2u : 1u; };
     const auto pairSampler = [&](std::uint32_t sampler, const ImageResource& image) {
         const auto mode = samplerMode(image);
         samplerModes.at(sampler) |= mode;

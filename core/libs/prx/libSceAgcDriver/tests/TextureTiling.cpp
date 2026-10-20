@@ -142,6 +142,27 @@ void requireSliceAddresses(const GuestTextureResource& resource, std::uint32_t b
 
 void RunTextureTilingTests() {
     {
+        GuestTextureResource surface{};
+        surface.baseAddress = 0x30000000;
+        surface.width = 1920;
+        surface.height = 1080;
+        surface.mipCount = 6;
+        surface.tileMode = TextureTileMode::kR64KBX;
+        surface.dimension = TextureDimension::k2D;
+        surface.format = 71;
+        const auto tracks = [](const GuestTextureResource& resource) { return TracksBlockUnits(resource, DescribeSurface(resource)); };
+        Require(tracks(surface), "a tiled surface without DCC metadata must be tracked as 64 KiB blocks");
+        surface.dccAddress = 0x31000000;
+        Require(!tracks(surface), "a DCC surface with more than one mip must be tracked as one unit");
+        surface.mipCount = 1;
+        Require(tracks(surface), "a DCC surface with one mip must be tracked as 64 KiB blocks");
+        surface.baseAddress += 0x1000;
+        Require(!tracks(surface), "a surface off a 64 KiB boundary must be tracked as one unit");
+        surface.baseAddress -= 0x1000;
+        surface.tileMode = TextureTileMode::kLinear;
+        Require(!tracks(surface), "a linear surface must be tracked as one unit");
+    }
+    {
         const auto mips = ComputeMipLayout(TextureTileMode::kLinear, 1, 4, 4, 2);
         Require(mips.size() == 2, "linear mip chain must contain the requested mip count");
         Require(mips[0].tiledOffset == 512 && mips[0].tiledSize == 1024, "linear mip 0 offset or size changed");

@@ -103,6 +103,14 @@ int APS5_VABI sceNpAuthGetIdTokenV3(int req_id, const void* param, void* id_toke
  return SCE_NP_ERROR_SIGNED_OUT;
 }
 
+int APS5_VABI sceNpAuthGetAuthorizationCode(int req_id, const void* param, void* auth_code) {
+ return sceNpAuthGetAuthorizationCodeV3(req_id, param, auth_code, nullptr);
+}
+
+int APS5_VABI sceNpAuthGetIdToken(int req_id, const void* param, void* id_token) {
+ return sceNpAuthGetIdTokenV3(req_id, param, id_token);
+}
+
 int APS5_VABI sceNpAuthPollAsync(int req_id, int* result) {
  std::lock_guard lock(g_requestMutex);
  auto it = g_requests.find(req_id);

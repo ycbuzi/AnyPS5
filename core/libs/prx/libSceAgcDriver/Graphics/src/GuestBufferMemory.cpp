@@ -170,6 +170,21 @@ struct ImportRefusal {
     std::uint64_t budget;
 };
 
+struct EvictingRefusal {
+    std::uint64_t base;
+    std::uint64_t bytes;
+    GuestAllocations::Mapped ranges;
+    std::uint64_t epoch;
+    std::uint64_t liveBytes;
+    std::uint64_t budget;
+    std::uint64_t room;
+    std::uint64_t window;
+    std::uint64_t floor;
+    std::uint64_t ready;
+    std::uint64_t readyHeld;
+    bool joined;
+};
+
 #ifdef _WIN32
 constexpr std::size_t settleBatchCount = 4;
 constexpr std::uint32_t settleBatchCopies = 256;
@@ -225,6 +240,7 @@ struct HostImports {
     std::map<std::uint64_t, std::uint32_t> sparseRunJoins;
     std::map<std::pair<std::uint64_t, std::uint64_t>, ImportFailure> failedBlocks;
     std::map<std::pair<std::uint64_t, std::uint64_t>, ImportRefusal> refusals;
+    std::map<std::pair<std::uint64_t, std::uint64_t>, EvictingRefusal> evictingRefusals;
     // Registry generation the imports were last reconciled with.
     std::uint64_t refreshedGeneration = 0;
     // Bumped whenever an import is dropped, so HostImport pointers taken under the lock earlier can be
@@ -1425,9 +1441,14 @@ bool pointerHeld(const HostImports& state, const HostImport& entry) {
     return effectiveUse(state, entry) >= state.buildFloor;
 }
 
+constexpr std::uint64_t ProtectedUses = 256;
+
 bool evictable(const HostImports& state, const HostImport& entry) {
-    constexpr std::uint64_t protectedUses = 256;
-    return !pointerHeld(state, entry) && effectiveUse(state, entry) + protectedUses < state.useCounter;
+    return !pointerHeld(state, entry) && effectiveUse(state, entry) + ProtectedUses < state.useCounter;
+}
+
+bool evictingRefusalCurrent(const HostImports& state, const EvictingRefusal& refusal, std::uint64_t budget) {
+    return refusal.epoch == state.epoch && refusal.liveBytes == state.liveBytes && budget <= refusal.budget && refusal.window == importWindow.load(std::memory_order_relaxed) && state.useCounter < refusal.ready && (state.buildFloor <= refusal.floor || state.useCounter < refusal.readyHeld);
 }
 
 std::uint64_t retireLeastRecent(const Context& context, HostImports& state, const GuestAllocations::Lease& lease, std::uint64_t wanted) {
@@ -1564,10 +1585,16 @@ const HostImport* findImport(HostImports& state, std::uint64_t begin, std::uint6
 const HostImport* importRunAt(const Context& context, HostImports& state, ImportRun run, bool joined, std::uint64_t address, const GuestAllocations::Lease& lease, std::uint64_t end, bool evict, ImportRequester requester);
 
 // The bytes retireLeastRecent could free outside [begin, end).
-std::uint64_t evictableBytes(const HostImports& state, std::uint64_t begin, std::uint64_t end) {
+std::uint64_t evictableBytes(const HostImports& state, std::uint64_t begin, std::uint64_t end, std::uint64_t& ready, std::uint64_t& readyHeld) {
     std::uint64_t bytes = 0;
     for (const auto& [base, entry] : state.imports) {
-        if ((entry.base + entry.bytes <= begin || entry.base >= end) && evictable(state, entry)) bytes += entry.pinnedBytes;
+        if (entry.base + entry.bytes > begin && entry.base < end) continue;
+        if (evictable(state, entry)) {
+            bytes += entry.pinnedBytes;
+            continue;
+        }
+        auto& horizon = pointerHeld(state, entry) ? readyHeld : ready;
+        horizon = std::min(horizon, effectiveUse(state, entry) + ProtectedUses + 1);
     }
     return bytes;
 }
@@ -1657,6 +1684,19 @@ const HostImport* importRunAt(const Context& context, HostImports& state, Import
         failures.erase(failed);
     }
     dropTrimmed(state, base, base + bytes);
+    const auto budget = effectiveBudget(context, state);
+    const auto containing = std::find_if(run.ranges.begin(), run.ranges.end(), [address](const auto& range) { return address >= range->address && address < range->address + range->bytes; });
+    if (const auto remembered = state.evictingRefusals.find({base, bytes}); evict && remembered != state.evictingRefusals.end()) {
+        if (remembered->second.joined == joined && evictingRefusalCurrent(state, remembered->second, budget) && sameRun(remembered->second, run)) {
+            ++counts.refused;
+            counts.refusedBytes += bytes;
+            ++counts.remembered;
+            const auto room = remembered->second.room - std::min(remembered->second.room, remembered->second.budget - budget);
+            if (stepDown && containing != run.ranges.end() && room >= (*containing)->bytes) return importAllocation(context, state, address, lease, requester, end, evict, std::min(bytes / 2, room));
+            return nullptr;
+        }
+        state.evictingRefusals.erase(remembered);
+    }
     auto first = state.imports.lower_bound(base);
     if (first != state.imports.begin() && std::prev(first)->second.base + std::prev(first)->second.bytes > base) --first;
     std::uint64_t replaced = 0;
@@ -1672,9 +1712,10 @@ const HostImport* importRunAt(const Context& context, HostImports& state, Import
         if (held(it->second)) return stepDown ? importAllocation(context, state, address, lease, requester, end, evict, bytes / 2) : nullptr;
         replaced += it->second.pinnedBytes;
     }
-    const auto budget = effectiveBudget(context, state);
     const auto live = state.liveBytes - replaced;
-    const auto evictable = evict && live + bytes > budget ? evictableBytes(state, base, base + bytes) : 0;
+    auto ready = std::numeric_limits<std::uint64_t>::max();
+    auto readyHeld = std::numeric_limits<std::uint64_t>::max();
+    const auto evictable = evict && live + bytes > budget ? evictableBytes(state, base, base + bytes, ready, readyHeld) : 0;
     if (live + bytes > budget + evictable) {
         // A refused import turns every later use of the range into CPU copies, so say so.
         static auto lastReport = std::chrono::steady_clock::now() - std::chrono::seconds(60);
@@ -1696,8 +1737,8 @@ const HostImport* importRunAt(const Context& context, HostImports& state, Import
             }
             std::fprintf(stderr, "[gpu] host import budget: %llu MiB live of %llu MiB (%s); %llu imports (%llu MiB) refused so far, %llu of them remembered, last 0x%llx+0x%llx by %s\n", static_cast<unsigned long long>(state.liveBytes >> 20u), static_cast<unsigned long long>(budget >> 20u), budgetSource(context, state, budget).c_str(), static_cast<unsigned long long>(refused), static_cast<unsigned long long>(refusedBytes >> 20u), static_cast<unsigned long long>(remembered), static_cast<unsigned long long>(base), static_cast<unsigned long long>(bytes), ImportRequesterName(requester));
         }
-        const auto containing = std::find_if(run.ranges.begin(), run.ranges.end(), [address](const auto& range) { return address >= range->address && address < range->address + range->bytes; });
         const auto room = budget + evictable > live ? budget + evictable - live : 0;
+        if (evict) state.evictingRefusals.insert_or_assign(std::pair{base, bytes}, EvictingRefusal{base, bytes, GuestAllocations::Mapped(run.ranges.begin(), run.ranges.end()), state.epoch, state.liveBytes, budget, room, importWindow.load(std::memory_order_relaxed), state.buildFloor, ready, readyHeld, joined});
         if (stepDown && containing != run.ranges.end() && room >= (*containing)->bytes) return importAllocation(context, state, address, lease, requester, end, evict, std::min(bytes / 2, room));
         if (containing != run.ranges.end() && run.ranges.size() > 1) remember((*containing)->address, (*containing)->bytes, GuestAllocations::Mapped{*containing});
         return nullptr;
@@ -1939,6 +1980,7 @@ void refreshImports(const Context& context, HostImports& state, const GuestAlloc
         state.failedJoins.clear();
         state.failedBlocks.clear();
         state.refusals.clear();
+        state.evictingRefusals.clear();
         state.ceiling = 0;
         state.allocationFailures = 0;
         state.allocationFailed = false;
@@ -1989,6 +2031,7 @@ void refreshImports(const Context& context, HostImports& state, const GuestAlloc
     for (auto it = state.failedJoins.begin(); it != state.failedJoins.end();) it = sameRun(it->second, joinedRun(lease, it->second.base, it->second.base + it->second.bytes)) ? std::next(it) : state.failedJoins.erase(it);
     for (auto it = state.failedBlocks.begin(); it != state.failedBlocks.end();) it = sameRun(it->second, exactRun(lease, it->first.first, it->first.second)) ? std::next(it) : state.failedBlocks.erase(it);
     for (auto it = state.refusals.begin(); it != state.refusals.end();) it = stillRefused(state, &it->second, budget) && sameRun(it->second, exactRun(lease, it->first.first, it->first.second)) ? std::next(it) : state.refusals.erase(it);
+    for (auto it = state.evictingRefusals.begin(); it != state.evictingRefusals.end();) it = evictingRefusalCurrent(state, it->second, budget) && sameRun(it->second, exactRun(lease, it->first.first, it->first.second)) ? std::next(it) : state.evictingRefusals.erase(it);
 }
 
 const HostImport* peekImport(const HostImports& state, std::uint64_t begin, std::uint64_t end) {
@@ -3097,6 +3140,7 @@ void ClearHostImports(VkDevice device) {
     state.failedJoins.clear();
     state.failedBlocks.clear();
     state.refusals.clear();
+    state.evictingRefusals.clear();
     state.ceiling = 0;
     state.allocationFailures = 0;
     state.allocationFailed = false;

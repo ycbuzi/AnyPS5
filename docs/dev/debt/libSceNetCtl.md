@@ -6,6 +6,7 @@
 
 ### Unknown function info
 
+- [sceNetCtlGetInfoV6](../../../core/libs/prx/libSceNetCtl/Export.cpp) (libSceNetCtl, NID `Jy1EO5GdlcM`) - imported by PPSA08587, which fails to load without it, and not called before its loading screen; declared without parameters as a throwing stub, signature unknown. Name from the aerolib NID list
 - [sceNetCtlGetInfo](../../../core/libs/prx/libSceNetCtl/Export.cpp) (libSceNetCtl) - answers from the host interface that holds an IPv4 address, preferring the one that carries the default route: its address, netmask, gateway, MTU and first two IPv4 DNS servers. The device is reported as wired, the link as connected, the IP configuration as DHCP and the HTTP proxy as off, whatever the host uses, and the Ethernet address is the one `sceNetGetMacAddress` reports. A gateway or DNS server the interface does not have is reported as `0.0.0.0`; what a console reports then is unknown. The DHCP host name (12), the PPPoE user name (13), the HTTP proxy server (20) and the Wi-Fi BSSID and SSID (5, 6) are empty strings, as that configuration sets none of them; the remaining Wi-Fi codes (7-10) and the HTTP proxy port (21) report 0; this follows [KytyPS5](https://github.com/KytyPS5/KytyPS5/blob/main/src/libs/network.cpp) and is not measured on hardware
 
 ### Functional

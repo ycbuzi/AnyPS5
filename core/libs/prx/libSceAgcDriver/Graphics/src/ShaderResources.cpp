@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <stdexcept>
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Pm4.hpp"
@@ -274,16 +275,17 @@ bool admitTexture(TextureCache& cache, const TextureKey& key, std::uint64_t inco
         cache.firstUses.clear();
         cache.firstUsesPresent = present;
     }
-    const bool firstUse = incoming != 0 && present != 0 && !cache.firstUses.contains(key);
+    const bool scan = incoming != 0 && present != 0;
+    const bool firstUse = scan && !cache.firstUses.contains(key);
     const auto ceiling = budget + budget / 4u;
     while (!cache.entries.empty() && cache.bytes + incoming > budget) {
         const auto back = std::prev(cache.entries.end());
-        if (firstUse && back->present + 1u >= present) {
+        const bool over = cache.bytes + incoming > ceiling;
+        if (scan && !over && (firstUse ? back->present + 1u >= present : back->present == present)) {
             cache.firstUses.insert(key);
             ++cache.counts.uncached;
             return false;
         }
-        const bool over = cache.bytes + incoming > ceiling;
         const bool keep = back->accounted == 0 || (!over && back->texture.use_count() > 1);
         if (keep && cache.passed < cache.entries.size()) {
             cache.entries.splice(cache.entries.begin(), cache.entries, back);
@@ -306,7 +308,7 @@ void reportCacheCounts(TextureCache& cache, std::uint64_t budget) {
     if (now - cache.countsReported < std::chrono::seconds(10)) return;
     cache.countsReported = now;
     const auto counts = std::exchange(cache.counts, {});
-    AgcDriver::ProfilePrint_nid_no_patch("[texture-cache] (10 s): %llu textures cached, %llu used uncached (first use this frame, the least recently used entry used this frame or the last), %llu evicted, %llu held ones passed over, %llu found changed; %llu MiB in %zu entries, budget %llu MiB, frame %llu\n", static_cast<unsigned long long>(counts.inserted), static_cast<unsigned long long>(counts.uncached), static_cast<unsigned long long>(counts.evicted), static_cast<unsigned long long>(counts.passed), static_cast<unsigned long long>(counts.stale), static_cast<unsigned long long>(cache.bytes >> 20u), cache.entries.size(), static_cast<unsigned long long>(budget >> 20u), static_cast<unsigned long long>(Recorder::Presents()));
+    AgcDriver::ProfilePrint_nid_no_patch("[texture-cache] (10 s): %llu textures cached, %llu used uncached (first use this frame with the least recently used entry used this frame or the last, or a later use with it used this frame), %llu evicted, %llu held ones passed over, %llu found changed; %llu MiB in %zu entries, budget %llu MiB, frame %llu\n", static_cast<unsigned long long>(counts.inserted), static_cast<unsigned long long>(counts.uncached), static_cast<unsigned long long>(counts.evicted), static_cast<unsigned long long>(counts.passed), static_cast<unsigned long long>(counts.stale), static_cast<unsigned long long>(cache.bytes >> 20u), cache.entries.size(), static_cast<unsigned long long>(budget >> 20u), static_cast<unsigned long long>(Recorder::Presents()));
 }
 
 struct ImageMemoEntry {
@@ -551,7 +553,10 @@ std::optional<std::uint32_t> largestDeviceLocalHeap(const VkPhysicalDeviceMemory
     return heap;
 }
 
+std::atomic<std::uint64_t> budgetOverride{0};
+
 std::uint64_t forcedCacheBudget() {
+    if (const auto overridden = budgetOverride.load(std::memory_order_relaxed); overridden != 0) return overridden;
     static const std::uint64_t forced = [] {
         const char* text = std::getenv("APS5_TEXTURE_CACHE_MIB");
         return text != nullptr ? std::strtoull(text, nullptr, 10) << 20u : 0u;
@@ -1218,6 +1223,10 @@ std::optional<std::uint32_t> LargestDeviceLocalHeap(const VkPhysicalDeviceMemory
 
 std::uint64_t StorageTextureCacheBudget(const Context& context) {
     return storageBudget(context);
+}
+
+void OverrideCacheBudgetForTest(std::uint64_t bytes) {
+    budgetOverride.store(bytes, std::memory_order_relaxed);
 }
 
 TextureCacheUse TextureCacheUsage() {
@@ -5477,13 +5486,20 @@ bool SkipWriteBack() {
 }
 
 void ShaderResources::WriteBack() {
-    WriteBackBuffers();
-    if (SkipWriteBack()) return;
-    for (std::size_t index = 0; index < storageTextures.size(); ++index) {
-        if (!storageWritten[index] || storageTextures[index] == nullptr) continue;
-        storageTextures[index]->MarkDirty();
-        static_cast<void>(DepthSurfaceStoreBack(context, *storageTextures[index]));
+    std::exception_ptr unaligned;
+    try {
+        WriteBackBuffers();
+    } catch (const BdaUnalignedAccess&) {
+        unaligned = std::current_exception();
     }
+    if (!SkipWriteBack()) {
+        for (std::size_t index = 0; index < storageTextures.size(); ++index) {
+            if (!storageWritten[index] || storageTextures[index] == nullptr) continue;
+            storageTextures[index]->MarkDirty();
+            static_cast<void>(DepthSurfaceStoreBack(context, *storageTextures[index]));
+        }
+    }
+    if (unaligned) std::rethrow_exception(unaligned);
 }
 
 void ShaderResources::MarkGpuWrites(Recorder& recorder) {
@@ -5529,9 +5545,16 @@ void ShaderResources::CheckFaults() const {
 }
 
 void ShaderResources::WriteBackBuffers() {
-    if (bda) bda->CheckFault();
-    if (SkipWriteBack()) return;
-    guestMemory.WriteBack();
+    std::exception_ptr unaligned;
+    if (bda) {
+        try {
+            bda->CheckFault();
+        } catch (const BdaUnalignedAccess&) {
+            unaligned = std::current_exception();
+        }
+    }
+    if (!SkipWriteBack()) guestMemory.WriteBack();
+    if (unaligned) std::rethrow_exception(unaligned);
 }
 
 bool ShaderResources::ReadsOverlap(std::uint64_t address, std::size_t bytes) const {

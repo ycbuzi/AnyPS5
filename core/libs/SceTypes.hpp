@@ -1941,6 +1941,13 @@ struct SystemGestureTouchRecognizerInformation {
 
 struct SystemGestureTouchEvent { std::uint8_t reserve[168]; };
 
+struct SystemGestureTouchPadData {
+    std::int32_t pad_handle;
+    std::int32_t report_number;
+    const PadData* pad_data_buffer;
+    std::uint8_t reserve[8];
+};
+
 struct UserServiceLoginUserIdList { int user_id[4]; };
 
 struct UserServiceRegisteredUserIdList { int user_id[16]; };

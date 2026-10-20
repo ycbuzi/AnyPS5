@@ -153,6 +153,7 @@ long double APS5_VABI log1pl_nid_postfix(long double);
 long double APS5_VABI log2l_nid_postfix(long double);
 long double APS5_VABI lgammal_nid_postfix(long double);
 long double APS5_VABI tgammal_nid_postfix(long double);
+float APS5_VABI tgammaf_nid_postfix(float);
 long double APS5_VABI hypotl_nid_postfix(long double, long double);
 float APS5_VABI hypot3f_nid_postfix(float, float, float);
 double APS5_VABI hypot3_nid_postfix(double, double, double);
@@ -862,6 +863,9 @@ static void CheckLongDoubleFunctions() {
     Require(log2l_nid_postfix(8.0L) == 3.0L && log2l_nid_postfix(0x1p-16445L) == -16445.0L);
     Require(lgammal_nid_postfix(1.0L) == 0.0L && lgammal_nid_postfix(2.0L) == 0.0L && lgammal_nid_postfix(0.0L) == infinity);
     Require(tgammal_nid_postfix(5.0L) == 24.0L && Near(tgammal_nid_postfix(0.5L), 1.7724538509055160272981675L));
+    Require(tgammaf_nid_postfix(5.0f) == 24.0f && std::abs(tgammaf_nid_postfix(0.5f) - 1.77245385f) < 1e-6f);
+    Require(tgammaf_nid_postfix(1.0f) == 1.0f && tgammaf_nid_postfix(2.0f) == 1.0f && tgammaf_nid_postfix(3.0f) == 2.0f);
+    Require(std::isinf(tgammaf_nid_postfix(0.0f)) && std::isnan(tgammaf_nid_postfix(-1.0f)));
     Require(hypotl_nid_postfix(3.0L, -4.0L) == 5.0L && hypotl_nid_postfix(nan, -infinity) == infinity);
 
     Require(hypot3f_nid_postfix(3.0f, -4.0f, 12.0f) == 13.0f && hypot3f_nid_postfix(0.0f, 3.0f, -4.0f) == 5.0f);

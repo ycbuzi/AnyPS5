@@ -153,7 +153,7 @@ const char* APS5_VABI strchr_nid_postfix(const char* s, int c) {
 }
 
 char* APS5_VABI strrchr_nid_postfix(const char* s, int c) {
-    return std::strrchr(const_cast<char*>(s), c);
+    return std::strrchr(const_cast<char*>(s), static_cast<char>(c));
 }
 
 char* APS5_VABI rindex_nid_postfix(const char* s, int c) {
