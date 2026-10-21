@@ -8,7 +8,9 @@
 #include <string>
 
 extern "C" {
+int APS5_VABI sceNpGetAccountCountryA(int user_id, void* country_code);
 int APS5_VABI sceNpGetNpId(int user_id, NpId* np_id);
+int APS5_VABI sceNpGetOnlineId(int user_id, NpOnlineId* online_id);
 int APS5_VABI sceNpGetUserIdByAccountId(std::uint64_t account_id, int* user_id);
 int APS5_VABI sceNpUnknown_8weiQyIdI3A(int userId, void* buffer);
 int APS5_VABI sceNpUnknown_WxLcN76q19o(void);
@@ -29,6 +31,7 @@ int APS5_VABI sceNpUnregisterStateCallback(void);
 int APS5_VABI sceNpRegisterStateCallbackA(void* callback, void* userdata);
 int APS5_VABI sceNpUnregisterStateCallbackA(int callbackId);
 int APS5_VABI sceNpRegisterNpReachabilityStateCallback(void* callback, void* userdata);
+void APS5_VABI sceNpRegisterGamePresenceCallback(void* callback, void* userdata);
 int APS5_VABI sceNpUnregisterNpReachabilityStateCallback(void);
 }
 
@@ -74,6 +77,10 @@ bool SignedOutOnce(const StateCall& call, void* userdata) {
         call.npId == nullptr && call.userdata == userdata;
 }
 
+void APS5_VABI AbortingGamePresenceCallback(const void*, const void*, void*) {
+    std::abort();
+}
+
 void APS5_VABI AbortingReachabilityCallback(int, std::uint32_t, void*) {
     std::fprintf(stderr, "NpManager: the reachability callback was called\n");
     std::abort();
@@ -109,6 +116,8 @@ void CheckStateCallbacksA() {
     Require(stateCallsA[0].calls == 0, "registering calls the state callback");
     Require(sceNpRegisterNpReachabilityStateCallback(reinterpret_cast<void*>(&AbortingReachabilityCallback), nullptr) == 0,
         "registering the reachability callback");
+    sceNpRegisterGamePresenceCallback(nullptr, nullptr);
+    sceNpRegisterGamePresenceCallback(reinterpret_cast<void*>(&AbortingGamePresenceCallback), &userdata[0]);
     Require(sceNpCheckCallback() == 0, "sceNpCheckCallback failed");
     Require(SignedOutOnce(stateCallsA[0], &userdata[0]), "sceNpCheckCallback must deliver SIGNED_OUT once");
     Require(sceNpUnregisterNpReachabilityStateCallback() == 0, "unregistering the reachability callback");
@@ -213,6 +222,20 @@ int main() {
     Require(sceNpGetNpId(0x10000, &npId) == SignedOut, "sceNpGetNpId must report the user as signed out");
     Require(std::memcmp(&npId, &untouched, sizeof(npId)) == 0, "sceNpGetNpId must leave the NpId untouched");
     Require(sceNpGetNpId(0x10000, nullptr) == InvalidArgument, "sceNpGetNpId must reject a null NpId");
+    char countryCode[4]{};
+    std::memset(countryCode, 0x5a, sizeof(countryCode));
+    char untouchedCountryCode[4]{};
+    std::memset(untouchedCountryCode, 0x5a, sizeof(untouchedCountryCode));
+    Require(sceNpGetAccountCountryA(0x10000, countryCode) == SignedOut, "sceNpGetAccountCountryA must report the user as signed out");
+    Require(std::memcmp(countryCode, untouchedCountryCode, sizeof(countryCode)) == 0, "sceNpGetAccountCountryA must leave the country code untouched");
+    Require(sceNpGetAccountCountryA(0x10000, nullptr) == InvalidArgument, "sceNpGetAccountCountryA must reject a null country code");
+    NpOnlineId onlineId{};
+    std::memset(&onlineId, 0x5a, sizeof(onlineId));
+    NpOnlineId untouchedOnlineId{};
+    std::memset(&untouchedOnlineId, 0x5a, sizeof(untouchedOnlineId));
+    Require(sceNpGetOnlineId(0x10000, &onlineId) == SignedOut, "sceNpGetOnlineId must report the user as signed out");
+    Require(std::memcmp(&onlineId, &untouchedOnlineId, sizeof(onlineId)) == 0, "sceNpGetOnlineId must leave the online id untouched");
+    Require(sceNpGetOnlineId(0x10000, nullptr) == InvalidArgument, "sceNpGetOnlineId must reject a null online id");
     int userId = 0x5a5a;
     Require(sceNpGetUserIdByAccountId(0, &userId) == InvalidArgument, "sceNpGetUserIdByAccountId must reject account id 0");
     Require(sceNpGetUserIdByAccountId(0x1234, nullptr) == InvalidArgument, "sceNpGetUserIdByAccountId must reject a null output");

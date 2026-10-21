@@ -4,12 +4,14 @@
 #include "prx/libc/include/General.hpp"
 #include "libatrac9.h"
 extern "C" {
+#include "atrac9_dec.h"
 #include <libavcodec/avcodec.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/log.h>
 #include <libavutil/mem.h>
 }
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -18,7 +20,6 @@ extern "C" {
 #include <map>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -135,6 +136,7 @@ struct Instance {
     std::uint32_t codec = 0;
     std::uint64_t flags = 0;
     void* decoder = nullptr;
+    atrac9_handle_t* vibrationDecoder = nullptr;
     std::vector<void*> channelDecoders;
     std::vector<std::uint32_t> channelBytes;
     std::vector<std::uint8_t> blockPcm;
@@ -174,6 +176,7 @@ struct Instance {
 
     ~Instance() {
         if (decoder) Atrac9ReleaseHandle(decoder);
+        atrac9_free(vibrationDecoder);
         for (void* channelDecoder : channelDecoders) Atrac9ReleaseHandle(channelDecoder);
         if (mp3) avcodec_free_context(&mp3);
         if (opus) avcodec_free_context(&opus);
@@ -187,7 +190,7 @@ std::atomic<std::uint32_t> g_nextContext{1};
 std::atomic<std::uint32_t> g_nextInstance{1};
 std::atomic<std::uint32_t> g_nextBatch{1};
 std::mutex& g_batchLock = *new std::mutex();
-std::set<std::uint32_t>& g_batches = *new std::set<std::uint32_t>();
+std::map<std::uint32_t, std::uint32_t>& g_batches = *new std::map<std::uint32_t, std::uint32_t>();
 
 enum class JobKind : std::uint32_t {
     Initialize = 1,
@@ -302,7 +305,23 @@ bool ParseMultichannelConfig(const std::uint8_t* config, At9MultichannelConfig& 
     return true;
 }
 
+bool IsAt9Vibration(const std::uint8_t* config) {
+    return config[0] == 0xFE && ((config[1] >> 1u) & 7u) >= 6u;
+}
+
 bool DescribeAt9Config(const std::uint8_t* configData, Atrac9CodecInfo& info) {
+    if (IsAt9Vibration(configData)) {
+        atrac9_info_t vibration{};
+        if (atrac9_get_config_info(configData, &vibration) != 0 || vibration.sample_rate <= 0) return false;
+        info.channels = vibration.channels;
+        info.channelConfigIndex = (configData[1] >> 1u) & 7u;
+        info.samplingRate = vibration.sample_rate;
+        info.superframeSize = vibration.superframe_size;
+        info.framesInSuperframe = vibration.frames_per_superframe;
+        info.frameSamples = vibration.frame_samples;
+        std::memcpy(info.configData, configData, ATRAC9_CONFIG_DATA_SIZE);
+        return true;
+    }
     At9MultichannelConfig multichannel{};
     const bool isMultichannel = ParseMultichannelConfig(configData, multichannel);
     unsigned char config[ATRAC9_CONFIG_DATA_SIZE];
@@ -325,12 +344,18 @@ bool DescribeAt9Config(const std::uint8_t* configData, Atrac9CodecInfo& info) {
 bool ResetDecoder(Instance& instance) {
     if (instance.decoder) Atrac9ReleaseHandle(instance.decoder);
     instance.decoder = nullptr;
+    atrac9_free(instance.vibrationDecoder);
+    instance.vibrationDecoder = nullptr;
     for (void* channelDecoder : instance.channelDecoders) Atrac9ReleaseHandle(channelDecoder);
     instance.channelDecoders.clear();
     instance.superframeRemaining = 0;
     instance.frameInSuperframe = 0;
     unsigned char config[ATRAC9_CONFIG_DATA_SIZE];
     std::memcpy(config, instance.info.configData, sizeof(config));
+    if (IsAt9Vibration(config)) {
+        instance.vibrationDecoder = atrac9_init(config);
+        return instance.vibrationDecoder != nullptr;
+    }
     At9MultichannelConfig multichannel{};
     if (!ParseMultichannelConfig(config, multichannel)) {
         instance.decoder = Atrac9GetHandle();
@@ -345,7 +370,7 @@ bool ResetDecoder(Instance& instance) {
 }
 
 bool HasAt9Decoder(const Instance& instance) {
-    return instance.decoder || !instance.channelDecoders.empty();
+    return instance.decoder || instance.vibrationDecoder || !instance.channelDecoders.empty();
 }
 
 int DecodeAt9Block(void* decoder, std::uint32_t encoding, const std::uint8_t* data, int size, std::uint8_t* pcm, int* used) {
@@ -359,6 +384,25 @@ int DecodeAt9Block(void* decoder, std::uint32_t encoding, const std::uint8_t* da
 constexpr int AT9_MULTICHANNEL_BLOCK_OVERRUN = 0x7F000001;
 
 int DecodeAt9Frame(Instance& instance, const std::uint8_t* data, int size, std::uint8_t* pcm, std::uint32_t encoding, std::size_t sampleBytes, int* used) {
+    if (instance.vibrationDecoder) {
+        if (encoding > 2) NotImplemented_nid_no_patch("AJM ATRAC9 vibration PCM encoding other than PCM16, PCM32 and float");
+        int samples = 0;
+        if (encoding == 0) samples = atrac9_decode_pcm16(instance.vibrationDecoder, data, size, reinterpret_cast<std::int16_t*>(pcm), used);
+        else if (encoding == 2) samples = atrac9_decode_float(instance.vibrationDecoder, data, size, reinterpret_cast<float*>(pcm), used);
+        else {
+            std::array<float, 512> decoded{};
+            samples = atrac9_decode(instance.vibrationDecoder, data, size, decoded.data(), used);
+            if (samples > 0) {
+                const auto count = static_cast<std::size_t>(samples) * instance.info.channels;
+                if (count > decoded.size()) return AT9_MULTICHANNEL_BLOCK_OVERRUN;
+                for (std::size_t index = 0; index < count; ++index) {
+                    const auto value = static_cast<std::int32_t>(std::clamp(static_cast<double>(decoded[index]) * 65536.0, -2147483648.0, 2147483647.0));
+                    std::memcpy(pcm + index * sizeof(value), &value, sizeof(value));
+                }
+            }
+        }
+        return samples < 0 ? samples : samples == instance.info.frameSamples ? 0 : AT9_MULTICHANNEL_BLOCK_OVERRUN;
+    }
     if (instance.channelDecoders.empty()) return DecodeAt9Block(instance.decoder, encoding, data, size, pcm, used);
     const std::size_t channels = instance.channelDecoders.size();
     const auto frameSamples = static_cast<std::size_t>(instance.info.frameSamples);
@@ -1833,7 +1877,7 @@ int APS5_VABI sceAjmBatchJobGetStatistics(AjmBatchInfo* info, float interval, vo
 }
 
 int APS5_VABI sceAjmBatchStart(uint32_t context, const AjmBatchInfo* info, int priority, AjmBatchError* error, uint32_t* batch) {
-    (void)context;
+    if (context == 0 || context >= g_nextContext.load(std::memory_order_relaxed)) return SCE_AJM_ERROR_INVALID_CONTEXT;
     (void)priority;
     if (!info || !batch) return SCE_AJM_ERROR_INVALID_PARAMETER;
     AJM_TRACE("[ajm] batch start: context %u, priority %d, %llu of %llu buffer bytes used\n", context, priority, static_cast<unsigned long long>(info->offset), static_cast<unsigned long long>(info->size));
@@ -1863,18 +1907,20 @@ int APS5_VABI sceAjmBatchStart(uint32_t context, const AjmBatchInfo* info, int p
     const auto id = g_nextBatch.fetch_add(1, std::memory_order_relaxed);
     {
         std::lock_guard lock(g_batchLock);
-        g_batches.insert(id);
+        g_batches.emplace(id, context);
     }
     *batch = id;
     return 0;
 }
 
 int APS5_VABI sceAjmBatchWait(uint32_t context, uint32_t batch, uint32_t timeout, AjmBatchError* error) {
-    (void)context;
+    if (context == 0 || context >= g_nextContext.load(std::memory_order_relaxed)) return SCE_AJM_ERROR_INVALID_CONTEXT;
     (void)timeout;
     {
         std::lock_guard lock(g_batchLock);
-        if (g_batches.erase(batch) == 0) return SCE_AJM_ERROR_INVALID_BATCH;
+        const auto found = g_batches.find(batch);
+        if (found == g_batches.end() || found->second != context) return SCE_AJM_ERROR_INVALID_BATCH;
+        g_batches.erase(found);
     }
     if (error) std::memset(error, 0, sizeof(*error));
     return 0;
@@ -1883,7 +1929,8 @@ int APS5_VABI sceAjmBatchWait(uint32_t context, uint32_t batch, uint32_t timeout
 int APS5_VABI sceAjmBatchCancel(uint32_t context, uint32_t batch) {
     if (context == 0 || context >= g_nextContext.load(std::memory_order_relaxed)) return SCE_AJM_ERROR_INVALID_CONTEXT;
     std::lock_guard lock(g_batchLock);
-    return g_batches.contains(batch) ? 0 : SCE_AJM_ERROR_INVALID_BATCH;
+    const auto found = g_batches.find(batch);
+    return found != g_batches.end() && found->second == context ? 0 : SCE_AJM_ERROR_INVALID_BATCH;
 }
 
 int APS5_VABI sceAjmBatchErrorDump(const AjmBatchInfo* info, AjmBatchError* error) {
