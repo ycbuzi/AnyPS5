@@ -41,8 +41,8 @@ static bool ReadPackageChunks(ChunkTable& table) {
     std::ifstream file(ResolvePath_nid_no_patch("/app0/sce_sys/playgo-chunk.dat"), std::ios::binary);
     char header[CountOffset + sizeof(uint16_t)]{};
     if (!file) return false;
-    const auto unreadable = [] { return std::runtime_error("scePlayGo: sce_sys/playgo-chunk.dat is not a chunk table this library reads (expected a plgx header with a nonzero chunk count)"); };
-    if (!file.read(header, sizeof(header)) || std::memcmp(header, "plgx", 4) != 0) throw unreadable();
+    const auto unreadable = [] { return std::runtime_error("scePlayGo: sce_sys/playgo-chunk.dat is not a chunk table this library reads (expected a plgx or plgo header with a nonzero chunk count)"); };
+    if (!file.read(header, sizeof(header)) || (std::memcmp(header, "plgx", 4) != 0 && std::memcmp(header, "plgo", 4) != 0)) throw unreadable();
     uint16_t count = 0;
     std::memcpy(&count, header + CountOffset, sizeof(count));
     if (count == 0) throw unreadable();
@@ -259,6 +259,21 @@ int APS5_VABI scePlayGoSetToDoList(int handle, const PlayGoToDo* todo_list, uint
 }
 
 int APS5_VABI scePlayGoTerminate(void) {
+    return 0;
+}
+
+int APS5_VABI scePlayGoRequestNextChunk() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI scePlayGoSetLanguageMask(std::uint32_t handle, std::uint64_t languageMask) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI scePlayGoSnapshot() {
+    NotImplemented_nid_no_patch(__func__);
     return 0;
 }
 

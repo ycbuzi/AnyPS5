@@ -1155,8 +1155,8 @@ struct ImeKeycode {
     std::uint64_t timestamp;
 };
 
-using ImeTextFilter = std::int32_t (*)(char16_t* out_text, std::uint32_t* out_text_length, const char16_t* source_text, std::uint32_t source_text_length);
-using ImeExtKeyboardFilter = int (*)(const ImeKeycode* source_keycode, std::uint16_t* out_keycode, std::uint32_t* out_status, void* reserved);
+using ImeTextFilter = std::int32_t (APS5_VABI *)(char16_t* out_text, std::uint32_t* out_text_length, const char16_t* source_text, std::uint32_t source_text_length);
+using ImeExtKeyboardFilter = int (APS5_VABI *)(const ImeKeycode* source_keycode, std::uint16_t* out_keycode, std::uint32_t* out_status, void* reserved);
 
 struct ImeExtendedParam {
     std::uint32_t option;
@@ -1459,6 +1459,26 @@ struct NpWebApi2ResponseInformationOption {
     std::size_t error_object_size;
     std::size_t response_data_size;
 };
+
+struct NpWebApi2IntInitializeArgs {
+    std::int32_t lib_http_ctx_id;
+    std::int32_t reserved;
+    std::uint64_t pool_size;
+    const char* name;
+    std::uint64_t struct_size;
+};
+static_assert(sizeof(NpWebApi2IntInitializeArgs) == 32);
+
+struct NpWebApi2IntInitialize2Args {
+    std::int32_t lib_http_ctx_id;
+    std::int32_t reserved;
+    std::uint64_t pool_size;
+    const char* name;
+    std::uint32_t push_config_group;
+    std::int32_t reserved2;
+    std::uint64_t struct_size;
+};
+static_assert(sizeof(NpWebApi2IntInitialize2Args) == 40);
 
 struct GameUpdateCheckParam {
     std::size_t size;
@@ -1900,6 +1920,15 @@ struct SystemServiceDisplaySafeAreaInfo {
     float ratio;
     std::uint8_t reserved[128];
 };
+
+struct SystemServicePlayerDialogParam {
+    std::uint64_t size;
+    std::int32_t mode;
+    std::int32_t user_id;
+    std::uint64_t target_account_id;
+    std::uint8_t reserved[40];
+};
+static_assert(sizeof(SystemServicePlayerDialogParam) == 0x40);
 
 struct SystemServiceHdrToneMapLuminance {
     float max_full_frame_tone_map_luminance;

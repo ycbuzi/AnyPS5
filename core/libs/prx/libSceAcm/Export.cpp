@@ -96,4 +96,14 @@ int APS5_VABI sceAcmBatchJobPriority(void) {
     return 0;
 }
 
+int APS5_VABI sceAcm_ConvReverb_SharedIr() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAcm_IFFT() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
 }
