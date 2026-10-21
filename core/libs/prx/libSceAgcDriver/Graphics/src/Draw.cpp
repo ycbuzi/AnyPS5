@@ -1326,7 +1326,13 @@ std::optional<MeshGrid> MeshGridFor(const Context& context, std::uint32_t groups
 std::vector<CompiledShader> MeshComputeStages(const Context& context, const State& state, std::span<const CompiledShader> shaders) {
     using Stage = ShaderRecompiler::ShaderStage;
     if (!MeshDrawRunsAsCompute(context, state) || shaders.empty() || shaders.front().stage != Stage::Mesh) return {};
-    Require(shaders.size() == 2u && shaders.front().program != nullptr && shaders.front().program->variantId != 0, "a mesh program run as compute needs one fragment stage and a variant id");
+    const bool patches = shaders.size() == 4u && shaders[1].stage == Stage::TessellationControl && shaders[2].stage == Stage::TessellationEvaluation;
+    Require((shaders.size() == 2u || patches) && shaders.front().program != nullptr && shaders.front().program->variantId != 0, "a mesh program run as compute needs one fragment stage, optional emulation patches and a variant id");
+    if (patches) {
+        Require(shaders.back().program != nullptr && shaders.back().program->barycentricEmulation.active && state.stages.mesh->outputPrimitiveSize == 3u, "mesh fallback patches require emulated barycentrics and triangle output");
+        const auto layout = shaders.front().program->meshRecordLayout;
+        Require(ShaderRecompiler::MeshRecordClipDistances(layout) == 0u && ShaderRecompiler::MeshRecordCullDistances(layout) == 0u && !ShaderRecompiler::MeshRecordLayer(layout), "mesh fallback patches do not preserve clip, cull or layer outputs");
+    }
     static std::mutex mutex;
     static std::map<std::uint64_t, std::unique_ptr<const ShaderRecompiler::RecompileResult>> readbacks;
     const auto& mesh = *shaders.front().program;
@@ -1341,7 +1347,9 @@ std::vector<CompiledShader> MeshComputeStages(const Context& context, const Stat
         if (entry == nullptr) entry = std::make_unique<const ShaderRecompiler::RecompileResult>(ShaderRecompiler::BuildMeshReadbackVertexShader(mesh, VK_API_VERSION_1_1));
         readback = entry.get();
     }
-    return {{Stage::Compute, &mesh, shaders.front().pushConstantOffset}, {Stage::Vertex, readback, shaders.front().pushConstantOffset}, shaders.back()};
+    std::vector<CompiledShader> result{{Stage::Compute, &mesh, shaders.front().pushConstantOffset}, {Stage::Vertex, readback, shaders.front().pushConstantOffset}};
+    result.insert(result.end(), shaders.begin() + 1, shaders.end());
+    return result;
 }
 
 MeshArguments ResolveMeshArguments(const Pm4::DrawArguments& record, const MeshArgumentRules& rules) {

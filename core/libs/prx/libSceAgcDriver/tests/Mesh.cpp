@@ -54,6 +54,10 @@ alignas(256) constexpr std::array<std::uint32_t, 7> PixelCode{
     0xc8020002, 0xc8060102, 0xc80a0202, 0xc80e0302, 0xf800180f, 0x03020100, 0xbf810000,
 };
 
+alignas(256) constexpr std::array<std::uint32_t, 4> FlatBarycentricPixelCode{
+    0xc8120002, 0xf800180f, 0x04040100, 0xbf810000,
+};
+
 struct Vertex {
     std::array<float, 4> position;
     std::array<float, 4> color;
@@ -94,6 +98,11 @@ alignas(256) std::array<std::uint16_t, 3 * Triangles> Indices{};
 alignas(256) std::array<Vertex, 3 * Triangles> Ordered{};
 constexpr std::uint32_t WideFastLaunchSkipped = 65535;
 alignas(256) std::array<Vertex, 3 * (WideFastLaunchSkipped + Triangles)> WideFastLaunch{};
+alignas(256) std::array<Vertex, 3 * Triangles> Distinct{};
+
+std::uint8_t VertexRed(std::uint32_t triangle, std::uint32_t vertex) {
+    return static_cast<std::uint8_t>(10u + 2u * triangle + 75u * vertex);
+}
 alignas(256) std::array<Vertex, 2 * Columns + 2> Strip{};
 
 constexpr std::uint32_t LineStrips = 4;
@@ -150,6 +159,9 @@ struct MeshDraw {
     std::span<const std::uint32_t> code = {};
     std::uint32_t stagesRegister = 0x20u;
     ShaderRecompiler::ShaderVertexStageInfo vertex{};
+    bool emulateBarycentrics = false;
+    bool flatInput = false;
+    bool provokingLast = false;
 };
 
 bool ReadsNumWorkgroups(std::span<const std::uint32_t> words) {
@@ -173,7 +185,8 @@ bool ReadsNumWorkgroups(std::span<const std::uint32_t> words) {
 }
 
 void DrawMesh(AgcDriver::VulkanDevice& device, const MeshDraw& setup) {
-    const auto target = device.Target();
+    auto target = device.Target();
+    if (setup.emulateBarycentrics) target.fragmentShaderBarycentricEnabled = false;
     std::vector<std::uint32_t> userData(12, 0u);
     const auto index = AgcDriver::Graphics::MeshIndexBufferDescriptor(setup.draw);
     std::copy(index.begin(), index.end(), userData.begin() + ShaderRecompiler::MeshIndexBufferUserWord);
@@ -195,21 +208,35 @@ void DrawMesh(AgcDriver::VulkanDevice& device, const MeshDraw& setup) {
     ShaderRecompiler::ShaderPixelStageInfo pixel{};
     pixel.interpolatorCount = 1;
     pixel.interpolatorSettings[0] = 0x400u;
+    if (setup.emulateBarycentrics) {
+        pixel.interpolatorSettings[0] = setup.flatInput ? 0x400u : 0u;
+        pixel.inputAddr = ShaderRecompiler::PixelInputBit(ShaderRecompiler::PixelInput::PerspectiveCenter);
+        pixel.hasPerspectiveCenterVgpr = true;
+        pixel.executeOnNoop = true;
+    }
     pixel.targetOutputMode[0] = 9;
     pixel.targetExportMapping.fill(0xe4u);
-    const std::array<ShaderRecompiler::MemoryRegion, 1> pixelMemory{{{reinterpret_cast<std::uintptr_t>(PixelCode.data()), std::as_bytes(std::span(PixelCode))}}};
+    const std::span<const std::uint32_t> pixelCode = setup.flatInput ? std::span<const std::uint32_t>(FlatBarycentricPixelCode) : std::span<const std::uint32_t>(PixelCode);
+    const std::array<ShaderRecompiler::MemoryRegion, 1> pixelMemory{{{reinterpret_cast<std::uintptr_t>(pixelCode.data()), std::as_bytes(pixelCode)}}};
     ShaderRecompiler::RecompileRequest fragment{
-        {ShaderStage::Fragment, reinterpret_cast<std::uintptr_t>(PixelCode.data()), PixelCode, 0, {}},
+        {ShaderStage::Fragment, reinterpret_cast<std::uintptr_t>(pixelCode.data()), pixelCode, 0, {}},
         {64, 0, {}, std::nullopt, pixel, std::nullopt, pixelMemory},
         target,
         target.fixedPushSlots ? PixelPushLayout(meshPush, target) : ShaderRecompiler::BindingLayout{0, 0, meshPush, ShaderRecompiler::MeshDrawPushOffsetBytes - meshPush},
-        std::nullopt
+        setup.emulateBarycentrics ? std::optional<ShaderRecompiler::GraphicsCompileContext>(ShaderRecompiler::GraphicsCompileContext{0, {}, setup.mesh, std::nullopt, {setup.draw.indexAddress, setup.draw.indexCount, setup.draw.indexSize, setup.draw.instanceCount}}) : std::nullopt
     };
     const auto pixelResult = ShaderRecompiler::Recompile(fragment);
-    const std::array<AgcDriver::Graphics::CompiledShader, 2> shaders{{
+    std::vector<AgcDriver::Graphics::CompiledShader> shaders{
         {ShaderStage::Mesh, &meshResult, 0},
         {ShaderStage::Fragment, &pixelResult, PixelPushOffset(meshPush, target)}
-    }};
+    };
+    ShaderRecompiler::BarycentricTessellationShaders patches;
+    if (setup.emulateBarycentrics) {
+        Require(target.meshAsCompute && pixelResult.barycentricEmulation.active, "mesh barycentric fixture requires the compute fallback and active emulation");
+        const auto readback = ShaderRecompiler::BuildMeshReadbackVertexShader(meshResult, target.vulkanVersion);
+        patches = ShaderRecompiler::BuildBarycentricTessellationShaders(readback, pixelResult, target, device.MaxFragmentInputComponents(), setup.provokingLast ? 2u : 0u);
+        shaders.insert(shaders.begin() + 1, {{ShaderStage::TessellationControl, &patches.control, 0}, {ShaderStage::TessellationEvaluation, &patches.evaluation, 0}});
+    }
 
     AgcDriver::Graphics::State state{};
     state.stages = {AgcDriver::Graphics::ShaderPath::Geometry, setup.stagesRegister, setup.waveSize, 64, setup.mesh, std::nullopt};
@@ -227,6 +254,7 @@ void DrawMesh(AgcDriver::VulkanDevice& device, const MeshDraw& setup) {
     state.negativeOneToOne = false;
     state.scissor = {{0, 0}, {Width, Height}};
     state.cullMode = setup.cull;
+    state.provokingVertexMode = setup.provokingLast ? VK_PROVOKING_VERTEX_MODE_LAST_VERTEX_EXT : VK_PROVOKING_VERTEX_MODE_FIRST_VERTEX_EXT;
     state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     state.blend.colorWriteMask = 15;
     state.blends = {state.blend};
@@ -293,6 +321,8 @@ int main() {
             const auto vertices = TriangleVertices(triangle);
             for (std::uint32_t k = 0; k < 3; ++k) {
                 Ordered[3 * triangle + k] = vertices[k];
+                Distinct[3 * triangle + k] = vertices[k];
+                Distinct[3 * triangle + k].color[0] = static_cast<float>(VertexRed(triangle, k)) / 255.0f;
                 const auto slot = 3 * (Triangles - 1 - triangle) + (k + 1) % 3;
                 Scrambled[slot] = vertices[k];
                 Indices[3 * triangle + k] = static_cast<std::uint16_t>(slot);
@@ -529,6 +559,48 @@ int main() {
         ClearPixels();
         DrawMesh(device, {SmallSubgroup, {0, static_cast<std::uint32_t>(Ordered.size()), 0, 1, 0, false}, VertexBufferDescriptor(Ordered.data(), static_cast<std::uint32_t>(Ordered.size())), 0});
         CheckTriangles("mesh program without push data");
+
+        if (device.Target().meshAsCompute && device.Target().tessellation.has_value()) {
+            MeshDraw emulated{SmallSubgroup, {0, static_cast<std::uint32_t>(Ordered.size()), 0, 1, 0, false}, VertexBufferDescriptor(Ordered.data(), static_cast<std::uint32_t>(Ordered.size()))};
+            emulated.emulateBarycentrics = true;
+            ClearPixels();
+            DrawMesh(device, emulated);
+            CheckTriangles("mesh compute fallback with per-vertex barycentric emulation");
+            emulated.draw = {reinterpret_cast<std::uintptr_t>(Indices.data()), static_cast<std::uint32_t>(Indices.size()), 2, 1, 0, true};
+            emulated.vertexBuffer = VertexBufferDescriptor(Scrambled.data(), static_cast<std::uint32_t>(Scrambled.size()));
+            ClearPixels();
+            DrawMesh(device, emulated);
+            CheckTriangles("indexed mesh compute fallback with barycentric emulation");
+            for (const auto cull : {VK_CULL_MODE_BACK_BIT, VK_CULL_MODE_FRONT_BIT}) {
+                emulated.cull = cull;
+                auto plain = emulated;
+                plain.emulateBarycentrics = false;
+                ClearPixels();
+                DrawMesh(device, plain);
+                const auto expected = Pixels;
+                ClearPixels();
+                DrawMesh(device, emulated);
+                for (std::uint32_t triangle = 0; triangle < Triangles; ++triangle) {
+                    const auto offset = CellPixel(triangle);
+                    Require(std::equal(Pixels.begin() + offset, Pixels.begin() + offset + 4u, expected.begin() + offset), "mesh fallback barycentric culling differs from the ordinary readback draw");
+                }
+            }
+            MeshDraw flat{SmallSubgroup, {0, static_cast<std::uint32_t>(Distinct.size()), 0, 1, 0, false}, VertexBufferDescriptor(Distinct.data(), static_cast<std::uint32_t>(Distinct.size()))};
+            flat.emulateBarycentrics = true;
+            flat.flatInput = true;
+            for (const bool provokingLast : {false, true}) {
+                flat.provokingLast = provokingLast;
+                ClearPixels();
+                DrawMesh(device, flat);
+                const std::uint32_t provoking = provokingLast ? 2u : 0u;
+                for (std::uint32_t triangle = 0; triangle < Triangles; ++triangle) {
+                    const auto offset = CellPixel(triangle);
+                    const auto expected = VertexRed(triangle, provoking);
+                    Require(std::to_integer<std::uint8_t>(Pixels[offset + 2]) == expected && std::to_integer<std::uint8_t>(Pixels[offset + 3]) == expected, std::string("mesh fallback flat input with the ") + (provokingLast ? "last" : "first") + " provoking vertex: triangle " + std::to_string(triangle) + " pixel " + PixelText(offset) + " does not carry vertex " + std::to_string(provoking) + "'s value " + std::to_string(expected) + " in blue and alpha");
+                }
+            }
+            std::puts("Mesh fallback barycentric pixels, front/back culling and flat inputs with the first and last provoking vertex passed");
+        }
 
         ClearPixels();
         const ShaderRecompiler::MeshConfiguration strip{6u, 3u, 5u, 9u, 3u, 64u, 1024u, 0u, 4u};

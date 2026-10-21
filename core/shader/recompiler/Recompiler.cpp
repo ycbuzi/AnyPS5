@@ -656,7 +656,7 @@ CompiledVariant emitVariant(const RecompileRequest& request, IrProgram& program)
     targetOptions.fusedExactArithmetic = request.target.fusedExactArithmetic;
     targetOptions.largePixelFunctionLdsBuffer = request.target.largePixelFunctionLdsBuffer;
     targetOptions.pixelFunctionStorageDwords = request.target.pixelFunctionStorageDwords;
-    targetOptions.meshBarycentricPixel = request.shader.stage == ShaderStage::Fragment && request.graphics && request.graphics->mesh;
+    targetOptions.meshBarycentricPixel = request.shader.stage == ShaderStage::Fragment && request.graphics && request.graphics->mesh && !request.target.meshAsCompute;
     if (request.shader.stage == ShaderStage::Mesh && request.graphics && request.graphics->meshBarycentrics) {
         const auto& paired = *request.graphics->meshBarycentrics;
         const auto emulated = DescribeEmulatedInterface(paired.parameters, paired.emulation, true);

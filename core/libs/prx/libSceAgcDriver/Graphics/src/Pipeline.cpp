@@ -150,6 +150,13 @@ bool FragmentInterlock(std::span<const CompiledShader> shaders) {
         }
         return false;
     });
+
+namespace {
+
+bool MeshBarycentricPatches(const State& state, std::span<const CompiledShader> shaders) {
+    return !state.rectList && state.stages.path == ShaderPath::Geometry && state.stages.mesh && !state.stages.tessellation && std::ranges::any_of(shaders, [](const CompiledShader& shader) { return shader.stage == ShaderRecompiler::ShaderStage::TessellationControl; });
+}
+
 }
 
 void ValidateProvokingVertex(const Context& context, const State& state, std::span<const CompiledShader> shaders) {
@@ -165,7 +172,7 @@ void ValidateProvokingVertex(const Context& context, const State& state, std::sp
         if (shader.stage != ShaderRecompiler::ShaderStage::Fragment || shader.program == nullptr) continue;
         Require(std::none_of(shader.program->fragmentParameters.begin(), shader.program->fragmentParameters.end(), [](const ShaderRecompiler::FragmentParameter& parameter) { return parameter.flatP20; }), "v_interp_mov p20 of a flat input with the last provoking vertex is not measured");
     }
-    if (BarycentricPatches(state, shaders)) {
+    if (BarycentricPatches(state, shaders) || MeshBarycentricPatches(state, shaders)) {
         for (const auto& shader : shaders) {
             if (shader.stage != ShaderRecompiler::ShaderStage::Fragment || shader.program == nullptr) continue;
             Require(std::none_of(shader.program->fragmentParameters.begin(), shader.program->fragmentParameters.end(), [](const ShaderRecompiler::FragmentParameter& parameter) { return parameter.flat && parameter.perVertex; }), "last provoking vertex with explicit per-vertex flat interpolation is unsupported");
@@ -505,6 +512,8 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
         Require(state.stages.tessellation->inputControlPoints <= context.limits.maxTessellationPatchSize && state.stages.tessellation->outputControlPoints <= context.limits.maxTessellationPatchSize, "tessellation patch exceeds device limits");
     }
     const bool meshCompute = MeshDrawRunsAsCompute(context, state);
+    const bool emulationPatches = !state.rectList && !state.stages.tessellation && std::ranges::any_of(shaders, [](const CompiledShader& shader) { return shader.stage == ShaderRecompiler::ShaderStage::TessellationControl; });
+    if (emulationPatches) Require(context.tessellationShader && context.limits.maxTessellationPatchSize >= 3u, "emulated barycentrics require tessellation with three control points");
     if (meshCompute) {
         const auto& mesh = *state.stages.mesh;
         const auto invocations = state.stages.vertexWaveSize == 64u && context.subgroup.subgroupSize == 32u ? mesh.threadsPerGroup / 2u : mesh.threadsPerGroup;
@@ -645,7 +654,7 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
         const bool listTopology = state.topology == VK_PRIMITIVE_TOPOLOGY_POINT_LIST || state.topology == VK_PRIMITIVE_TOPOLOGY_LINE_LIST || state.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         assembly.primitiveRestartEnable = !patches && state.primitiveRestart && (!listTopology || context.primitiveListRestart) ? VK_TRUE : VK_FALSE;
         if (meshCompute) {
-            assembly.topology = state.stages.mesh->outputPrimitiveSize == 2u ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+            assembly.topology = emulationPatches ? VK_PRIMITIVE_TOPOLOGY_PATCH_LIST : state.stages.mesh->outputPrimitiveSize == 2u ? VK_PRIMITIVE_TOPOLOGY_LINE_LIST : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
             assembly.primitiveRestartEnable = VK_FALSE;
         }
         // Viewport and scissor are set per draw (Begin), so they do not multiply pipelines; the depth
@@ -750,7 +759,7 @@ Pipeline::Pipeline(const Context& context, const State& state, const VertexInput
         pipelineInfo.stageCount = static_cast<std::uint32_t>(stages.size());
         pipelineInfo.pStages = stages.data();
         VkPipelineTessellationStateCreateInfo tessellation{VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
-        if (state.rectList || state.stages.tessellation || barycentricPatches) {
+        if (state.rectList || state.stages.tessellation || barycentricPatches || emulationPatches) {
             tessellation.patchControlPoints = state.stages.tessellation ? state.stages.tessellation->inputControlPoints : 3u;
             pipelineInfo.pTessellationState = &tessellation;
         }
