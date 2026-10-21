@@ -86,7 +86,46 @@ struct NameMatch {
     bool ambiguous = false;
 };
 
+#ifdef _WIN32
+bool CaseInsensitiveDirectoryWindows(const std::filesystem::path& directory) {
+    const auto handle = CreateFileW(directory.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) return false;
+    const std::unique_ptr<void, decltype(&CloseHandle)> owner(handle, &CloseHandle);
+    struct { ULONG flags; } information{};
+    constexpr auto caseSensitiveInfo = static_cast<FILE_INFO_BY_HANDLE_CLASS>(23);
+    return GetFileInformationByHandleEx(handle, caseSensitiveInfo, &information, sizeof(information)) &&
+        (information.flags & FILE_CS_FLAG_CASE_SENSITIVE_DIR) == 0;
+}
+
+std::error_code MatchNamesWindows(const std::filesystem::path& directory, std::span<NameMatch> names) {
+    for (auto& name : names) {
+        const auto pattern = directory / name.name;
+        WIN32_FIND_DATAW data{};
+        const auto handle = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            const auto error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_NO_MORE_FILES) continue;
+            return {static_cast<int>(error), std::system_category()};
+        }
+        const std::unique_ptr<void, decltype(&FindClose)> owner(handle, &FindClose);
+        do {
+            const auto filename = std::filesystem::path(data.cFileName);
+            if (!SameName(filename.string(), name.name)) continue;
+            name.ambiguous = name.ambiguous || name.path.has_value();
+            name.path = directory / filename;
+        } while (FindNextFileW(handle, &data));
+        const auto error = GetLastError();
+        if (error != ERROR_NO_MORE_FILES) return {static_cast<int>(error), std::system_category()};
+    }
+    return {};
+}
+#endif
+
 std::error_code MatchNames(const std::filesystem::path& directory, std::span<NameMatch> names) {
+#ifdef _WIN32
+    if (CaseInsensitiveDirectoryWindows(directory)) return MatchNamesWindows(directory, names);
+#endif
     std::error_code error;
     std::filesystem::directory_iterator entry(directory, error), end;
     for (; !error && entry != end; entry.increment(error)) {
@@ -142,8 +181,26 @@ std::filesystem::path Child(std::filesystem::path parent, const std::string& nam
 std::filesystem::path ResolveHostPath(std::filesystem::path root, const std::vector<std::string>& relative, bool module = false) {
     const auto direct = Child(root, JoinNames(relative));
     std::error_code error;
+    auto first = relative.begin();
+#ifdef _WIN32
+    const auto attributes = GetFileAttributesW(direct.c_str());
+    if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0) return direct;
+    const auto failure = GetLastError();
+    const bool missing = attributes == INVALID_FILE_ATTRIBUTES && (failure == ERROR_FILE_NOT_FOUND || failure == ERROR_PATH_NOT_FOUND);
+    if (!missing && std::filesystem::exists(direct, error)) return direct;
+    for (auto last = relative.end(); last != relative.begin();) {
+        const auto parent = Child(root, JoinNames(std::vector<std::string>(relative.begin(), std::prev(last))));
+        const auto parentAttributes = GetFileAttributesW(parent.c_str());
+        const bool present = parentAttributes != INVALID_FILE_ATTRIBUTES && (parentAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+        if (!present && !std::filesystem::exists(parent, error)) { --last; continue; }
+        root = parent;
+        first = std::prev(last);
+        break;
+    }
+#else
     if (std::filesystem::exists(direct, error)) return direct;
-    for (auto part = relative.begin(); part != relative.end(); ++part) {
+#endif
+    for (auto part = first; part != relative.end(); ++part) {
         const auto candidate = Child(root, *part);
         const auto status = std::filesystem::symlink_status(candidate, error);
         if (std::filesystem::exists(status) || (error && error != std::errc::no_such_file_or_directory)) {
@@ -269,10 +326,12 @@ std::filesystem::path Resolve(WorkingDirectory& state, const char* path, bool mo
     if (text.empty() || text.front() != '/') text = state.current.lexically_relative(state.root).generic_string() + "/" + text;
     std::vector<std::string> names;
     bool trailing = true;
+    bool endsWithDot = false;
     const auto parts = SplitNames(text);
     for (std::size_t i = 0; i < parts.size(); ++i) {
         const auto& name = parts[i];
         if (name.empty() && i + 1 != parts.size()) continue;
+        if (!name.empty()) endsWithDot = name == ".";
         if (name == ".." && !names.empty()) {
             if (!(archived && AppArchiveHasDirectory_nid_no_patch(HostPath(state, names)))) RequireHostDirectory(state, WithTrailingSeparator(names, trailing));
             names.pop_back();
@@ -280,6 +339,7 @@ std::filesystem::path Resolve(WorkingDirectory& state, const char* path, bool mo
         trailing = name.empty() || name == "." || name == "..";
         if (!trailing) names.push_back(name);
     }
+    if (endsWithDot && !names.empty() && !(archived && AppArchiveHasDirectory_nid_no_patch(HostPath(state, names)))) RequireHostDirectory(state, names);
     return HostPath(state, WithTrailingSeparator(std::move(names), trailing), module);
 }
 #ifdef _WIN32
@@ -422,8 +482,60 @@ extern "C" int HostStandardError_nid_no_patch() {
     return g_hostStandardError.load();
 }
 
+namespace {
+std::mutex g_hostStandardOutputMutex;
+std::atomic<int> g_hostStandardOutput{-1};
+}
+
+extern "C" int KeepHostStandardOutput_nid_no_patch() {
+    const std::lock_guard lock(g_hostStandardOutputMutex);
+    if (const int kept = g_hostStandardOutput.load(); kept >= 0) return kept;
+    const int kept = ::fcntl(1, F_DUPFD_CLOEXEC, 3);
+    if (kept < 0) {
+        if (errno == EBADF) return -1;
+        throw std::system_error(errno, std::generic_category(), "Keeping the host standard output");
+    }
+    std::FILE* const stream = ::fdopen(kept, "w");
+    if (stream == nullptr) {
+        const int error = errno;
+        ::close(kept);
+        throw std::system_error(error, std::generic_category(), "Keeping the host standard output");
+    }
+    std::setvbuf(stream, nullptr, _IONBF, 0);
+    std::fflush(stdout);
+    stdout = stream;
+    g_hostStandardOutput.store(kept);
+    return kept;
+}
+
 extern "C" int DuplicateHostDescriptor_nid_no_patch(int descriptor) {
     return ::fcntl(descriptor, F_DUPFD_CLOEXEC, 3);
+}
+#endif
+
+#ifdef _WIN32
+namespace {
+std::atomic<std::FILE*> g_hostStandardOutputFile{nullptr};
+std::atomic<std::FILE*> g_hostStandardErrorFile{nullptr};
+}
+
+extern "C" bool AdoptHostStandardStream_nid_no_patch(int standard, int saved) {
+    std::fflush(__acrt_iob_func(standard));
+    std::FILE* stream = ::_fdopen(saved, "w");
+    if (stream == nullptr) return false;
+    std::setvbuf(stream, nullptr, _IONBF, 0);
+    (standard == 1 ? g_hostStandardOutputFile : g_hostStandardErrorFile).store(stream, std::memory_order_release);
+    return true;
+}
+
+extern "C" std::FILE* HostStandardOutputFile_nid_no_patch() {
+    if (std::FILE* kept = g_hostStandardOutputFile.load(std::memory_order_acquire)) return kept;
+    return __acrt_iob_func(1);
+}
+
+extern "C" std::FILE* HostStandardErrorFile_nid_no_patch() {
+    if (std::FILE* kept = g_hostStandardErrorFile.load(std::memory_order_acquire)) return kept;
+    return __acrt_iob_func(2);
 }
 #endif
 
@@ -655,6 +767,8 @@ extern "C" int WindowsOpenError_nid_no_patch(unsigned long error) {
         return ENOMEM;
     case ERROR_DISK_FULL:
         return ENOSPC;
+    case ERROR_CANT_RESOLVE_FILENAME:
+        return ELOOP;
     default:
         return EINVAL;
     }

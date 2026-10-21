@@ -323,7 +323,7 @@ FileStream* APS5_VABI freopen_nid_postfix(const char* filename, const char* mode
                 return nullptr;
             }
         }
-        if (stream->Reopen(path, parsed->native.c_str())) {
+        if (stream->Reopen(path, parsed->native.c_str(), OpenNative)) {
 #ifdef _WIN32
             if (parsed->append && !AppendOnlyDescriptor(_fileno(stream->GetHandle()))) {
                 const int error = errno;

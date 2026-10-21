@@ -297,16 +297,6 @@ int APS5_VABI sceLncUtilKickCoredumpOnlyProcMem() {
     return 0;
 }
 
-int APS5_VABI sceLncUtilKillApp() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceLncUtilKillAppWithReason() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
 int APS5_VABI sceLncUtilKillLocalProcess() {
     NotImplemented_nid_no_patch(__func__);
     return 0;

@@ -12,6 +12,7 @@
 #include <vector>
 #include "SceTypes.hpp"
 #include "prx/libc/include/General.hpp"
+#include "prx/libSceIme/include/ImeFilterText.hpp"
 #include "prx/libSceIme/include/ImeInput.hpp"
 
 namespace {
@@ -467,6 +468,16 @@ int APS5_VABI sceImeKeyboardSetMode(int32_t user_id, uint32_t mode) {
  return (mode & ~ValidKeyboardModes) == 0 ? 0 : ErrorInvalidMode;
 }
 
+int APS5_VABI sceImeFilterText(char16_t* dst, int32_t* out_length, uint32_t capacity,
+                               const ime_filter::FilterParam* param, const char16_t* src, uint32_t src_length) {
+    return static_cast<int>(ime_filter::FilterText(dst, out_length, capacity, param, src, src_length));
+}
+
+int APS5_VABI sceImeCheckFilterText(const void* param) {
+    (void)param;
+    NotImplemented_nid_no_patch(__func__);
+}
+
 void APS5_VABI sceImeParamInit(Param* param) {
  if (!param) return;
  std::memset(param, 0, sizeof(*param));
@@ -780,6 +791,15 @@ int APS5_VABI sceImeDicDeleteLearnDics(void) {
 }
 
 int APS5_VABI sceImeDicDeleteUserDics(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+int APS5_VABI FinalizeImeModule_nid_postfix(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI InitializeImeModule_nid_postfix(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
