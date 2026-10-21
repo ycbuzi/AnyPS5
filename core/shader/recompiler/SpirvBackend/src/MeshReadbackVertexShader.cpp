@@ -157,6 +157,7 @@ RecompileResult BuildMeshReadbackVertexShader(const RecompileResult& mesh, std::
     RecompileResult result;
     result.variantId = mesh.variantId;
     result.runtimeAbiVersion = mesh.runtimeAbiVersion;
+    result.parameterExports = mesh.parameterExports;
     result.spirv = emitter.Emit(mesh.parameterExports, mesh.meshRecordLayout);
 #if ANYPS5_ENABLE_SPIRV_TOOLS
     result.spirv = ValidateAndOptimizeSpirv(result.spirv, vulkanVersion, words[1]);
