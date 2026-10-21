@@ -75,6 +75,7 @@ class NumbersTests(unittest.TestCase):
             (summary("a") + "\n{not json", False),
             ("{}\n{}", False),
             ("```json\n" + json.dumps(json.loads(summary("a")), indent=2) + "\n```\n```json\n" + summary("b") + "\n```", True),
+            ("~~~json\n" + json.dumps(json.loads(summary("a")), indent=2) + "\n~~~\n~~~json\n" + summary("b") + "\n~~~", True),
             ("<!-- " + summary("a") + " -->\n" + summary("b"), False),
             (summary("a") + "\r\n" + summary("b") + "\r\n", True),
             (summary("a") + "\n{" + "[" * 100000 + "\n" + summary("b"), True),

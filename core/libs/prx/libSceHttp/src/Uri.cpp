@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cctype>
 #include <charconv>
 #include <cstdint>
 #include <cstddef>
@@ -34,10 +33,22 @@ struct UriParts {
     uint16_t port = 0;
 };
 
+bool isAsciiAlpha(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+bool isAsciiDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+char toAsciiLower(char c) {
+    return c >= 'A' && c <= 'Z' ? static_cast<char>(c + ('a' - 'A')) : c;
+}
+
 bool equalsIgnoreCase(std::string_view left, std::string_view right) {
     if (left.size() != right.size()) return false;
     for (size_t i = 0; i < left.size(); ++i) {
-        if (std::tolower(static_cast<unsigned char>(left[i])) != std::tolower(static_cast<unsigned char>(right[i]))) return false;
+        if (toAsciiLower(left[i]) != toAsciiLower(right[i])) return false;
     }
     return true;
 }
@@ -49,7 +60,7 @@ uint16_t defaultPort(std::string_view scheme) {
 }
 
 bool isHostCharacter(char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '.' || c == '_';
+    return isAsciiAlpha(c) || isAsciiDigit(c) || c == '-' || c == '.' || c == '_';
 }
 
 std::string removeDotSegments(std::string_view input) {
@@ -76,9 +87,9 @@ std::string removeDotSegments(std::string_view input) {
 
 size_t schemeLength(std::string_view uri) {
     size_t schemeEnd = 0;
-    if (!uri.empty() && std::isalpha(static_cast<unsigned char>(uri[0]))) {
+    if (!uri.empty() && isAsciiAlpha(uri[0])) {
         schemeEnd = 1;
-        while (schemeEnd < uri.size() && (std::isalnum(static_cast<unsigned char>(uri[schemeEnd])) || uri[schemeEnd] == '+'
+        while (schemeEnd < uri.size() && (isAsciiAlpha(uri[schemeEnd]) || isAsciiDigit(uri[schemeEnd]) || uri[schemeEnd] == '+'
             || uri[schemeEnd] == '-' || uri[schemeEnd] == '.')) ++schemeEnd;
     }
     return schemeEnd > 0 && schemeEnd < uri.size() && uri[schemeEnd] == ':' ? schemeEnd : 0;
@@ -133,7 +144,7 @@ int parseUri(std::string_view uri, UriParts& parts) {
     if (port.size() > 5) return ERROR_INVALID_URL;
     uint32_t portValue = 0;
     for (const char c : port) {
-        if (!std::isdigit(static_cast<unsigned char>(c))) return ERROR_INVALID_URL;
+        if (!isAsciiDigit(c)) return ERROR_INVALID_URL;
         portValue = portValue * 10 + static_cast<uint32_t>(c - '0');
     }
     if (portValue > 0xFFFF) return ERROR_INVALID_URL;
@@ -218,21 +229,31 @@ int APS5_VABI sceHttpUriEscape(char* out, size_t* require, size_t prepare, const
 }
 
 int APS5_VABI sceHttpUriUnescape(char* out, size_t* require, size_t prepare, const char* in) {
-    if (!in) return ERROR_INVALID_VALUE;
+    if (!in || (!out && !require)) return ERROR_INVALID_VALUE;
 
+    const auto hexDigit = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
     const std::string_view input(in);
     std::string decoded;
     for (size_t i = 0; i < input.size(); ++i) {
-        if (input[i] == '%' && input.size() - i >= 3) {
-            unsigned int value = 0;
-            const auto result = std::from_chars(input.data() + i + 1, input.data() + i + 3, value, 16);
-            if (result.ec == std::errc{} && result.ptr == input.data() + i + 3) {
-                decoded.push_back(static_cast<char>(value));
-                i += 2;
-                continue;
-            }
+        if (input[i] != '%') {
+            decoded.push_back(input[i]);
+            continue;
         }
-        decoded.push_back(input[i]);
+        if (input.size() - i < 3) return ERROR_INVALID_URL;
+        const int high = hexDigit(input[i + 1]);
+        const int low = hexDigit(input[i + 2]);
+        if (high < 0 || low < 0) return ERROR_INVALID_URL;
+        decoded.push_back(static_cast<char>(high * 16 + low));
+        i += 2;
+    }
+    if (out && prepare < decoded.size() + 1) {
+        std::memcpy(out, decoded.data(), std::min(prepare, decoded.size()));
+        return ERROR_OUT_OF_MEMORY;
     }
     return copyOut(decoded, out, require, prepare);
 }
@@ -355,7 +376,7 @@ int APS5_VABI sceHttpUriSweepPath(char* dst, const char* src, size_t srcSize) {
     if (!dst || !src) return ERROR_INVALID_VALUE;
 
     const size_t length = srcSize - 1;
-    if (length == 0 || src[0] != '/') {
+    if (src[0] != '/') {
         std::memcpy(dst, src, length);
         dst[length] = '\0';
         return 0;
@@ -370,7 +391,7 @@ int APS5_VABI sceHttpUriSweepPath(char* dst, const char* src, size_t srcSize) {
             pos += 2;
             continue;
         }
-        if (src[pos] == '.' && pos + 2 < length && src[pos + 1] == '.' && src[pos + 2] == '/') {
+        if (src[pos] == '.' && pos + 2 <= length && src[pos + 1] == '.' && src[pos + 2] == '/') {
             if (end != 0) {
                 dst[end] = '\0';
                 end = static_cast<size_t>(std::strrchr(dst, '/') - dst);

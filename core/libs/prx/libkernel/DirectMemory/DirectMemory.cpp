@@ -662,7 +662,8 @@ void RequireAliasesUnpinned(GuestAllocations::Mutation& mutation, std::uint64_t 
     std::vector<std::pair<std::uintptr_t, std::size_t>> aliases;
     {
         std::lock_guard lock(g_directLock);
-        for (const auto& [base, mapping] : g_directMappings) {
+        for (const auto base : MappingsSharingPhys(phys, phys + len)) {
+            const auto& mapping = g_directMappings.at(base);
             const auto first = std::max(phys, mapping.phys);
             const auto last = std::min(phys + len, mapping.phys + (mapping.end - base));
             if (first < last) aliases.emplace_back(base + (first - mapping.phys), last - first);

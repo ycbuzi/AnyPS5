@@ -2,6 +2,7 @@
 #include "prx/libc/include/general/VabiMacros.hpp"
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 
 extern "C" {
@@ -27,12 +28,36 @@ int APS5_VABI sceVoiceDisableChat(void);
 
 namespace {
 
+constexpr int NotInitialized = static_cast<int>(0x804E0801u);
+constexpr int AlreadyInitialized = static_cast<int>(0x804E0802u);
+
 void Require(bool value) { if (!value) std::abort(); }
 
 template <typename TFunction>
 void RequireThrows(TFunction function) {
     try { function(); } catch (const std::logic_error&) { return; }
     std::abort();
+}
+
+void TestNotInitialized() {
+    Require(sceVoiceStart(nullptr) == NotInitialized);
+    VoiceStartParam start{};
+    Require(sceVoiceStart(&start) == NotInitialized);
+    Require(sceVoiceCreatePort(nullptr, nullptr) == NotInitialized);
+    VoicePortParam badType{};
+    badType.port_type = 99;
+    std::uint32_t id = 0xA5A5A5A5u;
+    Require(sceVoiceCreatePort(&id, &badType) == NotInitialized);
+    VoicePortParam param{};
+    param.port_type = 3;
+    Require(sceVoiceCreatePort(&id, &param) == NotInitialized);
+    Require(id == 0xA5A5A5A5u);
+    Require(sceVoiceGetPortInfo(0, nullptr) == NotInitialized);
+    VoicePortInfo info{};
+    std::memset(&info, 0xA5, sizeof(info));
+    VoicePortInfo sentinel = info;
+    Require(sceVoiceGetPortInfo(0, &info) == NotInitialized);
+    Require(std::memcmp(&info, &sentinel, sizeof(info)) == 0);
 }
 
 std::uint32_t CreatePort(std::int32_t type, float volume) {
@@ -48,6 +73,7 @@ std::uint32_t CreatePort(std::int32_t type, float volume) {
 } // namespace
 
 int main() {
+    TestNotInitialized();
     RequireThrows([] { sceVoiceResetPort(0); });
     RequireThrows([] { sceVoicePausePort(0); });
     RequireThrows([] { sceVoiceResumePort(0); });
@@ -57,6 +83,7 @@ int main() {
     VoiceInitParam init{};
     VoiceStartParam start{};
     Require(sceVoiceInit(&init, 0) == 0);
+    Require(sceVoiceInit(&init, 0) == AlreadyInitialized);
     Require(sceVoiceStart(&start) == 0);
     RequireThrows([] { sceVoiceGetResourceInfo(nullptr); });
     VoiceResourceInfo resourceInfo{};
@@ -106,6 +133,7 @@ int main() {
     RequireThrows([&] { sceVoicePausePort(input); });
     Require(sceVoiceResetPort(output) == 0);
     Require(sceVoiceEnd_nid_postfix() == 0);
+    TestNotInitialized();
     RequireThrows([&] { sceVoiceResetPort(output); });
     RequireThrows([&] { sceVoiceResumePort(output); });
     RequireThrows([] { VoiceResourceInfo info{}; sceVoiceGetResourceInfo(&info); });
