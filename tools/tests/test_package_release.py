@@ -49,6 +49,18 @@ class ReleasePackageTests(unittest.TestCase):
         self.addCleanup(patch.stopall)
         patch.object(package_release, "ROOT", self.source, create=True).start()
 
+    def test_ajm_vibration_decoder_license_in_archives(self):
+        (self.source / "core/libs/prx/libSceAjm.native").mkdir()
+        (self.build / "core/libs/libs/libSceAjm.native.prx").write_bytes(b"ajm")
+        license_file = self.source / "3rdparty/vgmstream/COPYING"
+        license_file.parent.mkdir(parents=True)
+        license_file.write_bytes(b"decoder license")
+        package_release.package("linux", self.build, self.output, "v1")
+        with zipfile.ZipFile(self.output / "prx-linux-v1.zip") as archive:
+            self.assertEqual(archive.read("libs/licenses/vgmstream.txt"), b"decoder license")
+        with tarfile.open(self.output / "prx-linux-v1.tar.gz") as archive:
+            self.assertEqual(archive.extractfile("libs/licenses/vgmstream.txt").read(), b"decoder license")
+
     def test_windows_runtime_follows_the_configured_compiler_directory(self):
         runtime = self.root / "custom toolchain" / "bin"
         runtime.mkdir(parents=True)
@@ -81,6 +93,17 @@ class ReleasePackageTests(unittest.TestCase):
             package_release.package("windows", self.build, self.output, "v1")
         self.assertEqual(list(self.output.iterdir()), [previous])
         self.assertEqual(previous.read_bytes(), b"existing output")
+
+    def test_windows_runtime_decodes_cmake_cache_with_utf8_bom(self):
+        compiler = self.root / "custom toolchain" / "bin" / "g++.exe"
+        (self.build / "CMakeCache.txt").write_bytes(b"\xef\xbb\xbfCMAKE_CXX_COMPILER:STRING=" + compiler.as_posix().encode("utf-8") + b"\n")
+        self.assertEqual(package_release.windows_runtime(self.build), compiler.parent)
+
+    def test_tracy_runtime_decodes_cmake_cache_with_utf8_bom(self):
+        client = self.build / "core/libs/libs/libTracyClient.dll"
+        client.write_bytes(b"client")
+        (self.build / "CMakeCache.txt").write_bytes(b"\xef\xbb\xbfAPS5_ENABLE_TRACY:BOOL=ON\n")
+        self.assertEqual(package_release.tracy_runtime("windows", self.build), [client])
 
     def test_tracy_packages_include_only_the_target_platform_client(self):
         directory = self.build / "core/libs/libs"
@@ -556,9 +579,10 @@ class ReleaseNotesEdgeCaseTests(unittest.TestCase):
             directory = Path(directory)
             source_path = directory / "source.json"
             source_path.write_text(source, encoding="utf-8")
-            body_path = directory / "nested" / "body.md"
-            full_path = directory / "nested" / "full.md"
+            body_path = directory / "nested_body" / "body.md"
+            full_path = directory / "nested_full" / "full.md"
             prepare_release_notes.prepare_notes(source_path, body_path, full_path)
+            self.assertEqual(body_path.read_text(encoding="utf-8"), notes)
             self.assertEqual(full_path.read_text(encoding="utf-8"), notes)
 
     def test_body_over_limit_without_whats_changed_is_returned_unchanged(self):

@@ -196,12 +196,15 @@ void CopyInto(Value& destination, const Value& source) {
 }
 
 void SetType(Node& n, ValueType type) {
-    Clear(n);
-    n.type = type;
-    if (type == TypeString) Construct(n.string, std::string());
-    if (type == TypeArray) Construct(n.array);
-    if (type == TypeObject) Construct(n.object);
     if (type < TypeNull || type > TypeObject) throw std::invalid_argument("sce::Json::Value::set: invalid value type");
+    Node pending{};
+    pending.type = type;
+    if (type == TypeString) Construct(pending.string, std::string());
+    if (type == TypeArray) Construct(pending.array);
+    if (type == TypeObject) Construct(pending.object);
+    Clear(n);
+    pending.handlers = n.handlers;
+    n = pending;
 }
 
 const Value& Defaults(ValueType type) {
@@ -604,8 +607,12 @@ String* APS5_VABI _ZN3sce4Json6StringaSERKS1_(String* self, const String* other)
 const char* APS5_VABI _ZNK3sce4Json6String5c_strEv(const String* self) { return self->text->c_str(); }
 bool APS5_VABI _ZNK3sce4Json6String5emptyEv(const String* self) { return self->text->empty(); }
 std::size_t APS5_VABI _ZNK3sce4Json6String6lengthEv(const String* self) { return self->text->size(); }
+std::size_t APS5_VABI _ZNK3sce4Json6String4sizeEv(const String* self) { return self->text->size(); }
+std::size_t APS5_VABI _ZNK3sce4Json6String8capacityEv(const String* self) { return self->text->capacity(); }
 bool APS5_VABI _ZNK3sce4Json6StringeqEPKc(const String* self, const char* text) { return text != nullptr && *self->text == text; }
+bool APS5_VABI _ZNK3sce4Json6StringeqERKS1_(const String* self, const String* other) { return other != nullptr && other->text != nullptr && *self->text == *other->text; }
 void APS5_VABI _ZN3sce4Json6String5clearEv(String* self) { self->text->clear(); }
+void APS5_VABI _ZN3sce4Json6String6resizeEm(String* self, std::size_t count) { self->text->resize(count); }
 void APS5_VABI _ZN3sce4Json6String7reserveEm(String* self, std::size_t capacity) { self->text->reserve(capacity); }
 String* APS5_VABI _ZN3sce4Json6String6appendERKS1_(String* self, const String* other) {
     const std::string copy = *other->text;
@@ -615,6 +622,18 @@ String* APS5_VABI _ZN3sce4Json6String6appendERKS1_(String* self, const String* o
 String* APS5_VABI _ZN3sce4Json6String6appendEPKc(String* self, const char* text) {
     if (text == nullptr) throw std::invalid_argument("sce::Json::String::append: null text");
     self->text->append(text);
+    return self;
+}
+String* APS5_VABI _ZN3sce4Json6String6appendEPKcm(String* self, const char* text, std::size_t length) {
+    if (text == nullptr && length > 0) throw std::invalid_argument("sce::Json::String::append: null text");
+    self->text->append(text, length);
+    return self;
+}
+String* APS5_VABI _ZN3sce4Json6StringpLEPKc(String* self, const char* text) {
+    return _ZN3sce4Json6String6appendEPKc(self, text);
+}
+String* APS5_VABI _ZN3sce4Json6StringpLEh(String* self, unsigned char ch) {
+    self->text->push_back(static_cast<char>(ch));
     return self;
 }
 String* APS5_VABI _ZNK3sce4Json6String6substrEmm(String* result, const String* self, std::size_t position, std::size_t length) {
@@ -627,6 +646,10 @@ std::size_t APS5_VABI _ZNK3sce4Json6String5rfindEcm(const String* self, char cha
 int APS5_VABI _ZNK3sce4Json6String7compareEPKc(const String* self, const char* text) {
     if (text == nullptr) throw std::invalid_argument("sce::Json::String::compare: null text");
     return self->text->compare(text);
+}
+int APS5_VABI _ZNK3sce4Json6String7compareERKS1_(const String* self, const String* other) {
+    if (other == nullptr || other->text == nullptr) throw std::invalid_argument("sce::Json::String::compare: null other");
+    return self->text->compare(*other->text);
 }
 
 void APS5_VABI _ZN3sce4Json5ArrayC1Ev(Array* self) { Construct(*self); }
@@ -663,6 +686,11 @@ ArrayIterator* APS5_VABI _ZN3sce4Json5Array8iteratorppEv(ArrayIterator* self) { 
 Value* APS5_VABI _ZNK3sce4Json5Array8iteratordeEv(const ArrayIterator* self) { return &*self->it; }
 Value* APS5_VABI _ZNK3sce4Json5Array8iteratorptEv(const ArrayIterator* self) { return &*self->it; }
 bool APS5_VABI _ZNK3sce4Json5Array8iteratorneERKS2_(const ArrayIterator* self, const ArrayIterator* other) { return self->it != other->it; }
+void APS5_VABI _ZN3sce4Json5Array8iteratorC1ERKS2_(ArrayIterator* self, const ArrayIterator* other) { self->it = other->it; }
+ArrayIterator* APS5_VABI _ZN3sce4Json5Array8iterator7advanceEm(ArrayIterator* self, std::size_t count) {
+    std::advance(self->it, count);
+    return self;
+}
 
 void APS5_VABI _ZN3sce4Json6ObjectC1Ev(Object* self) { Construct(*self); }
 void APS5_VABI _ZN3sce4Json6ObjectC1ERKS1_(Object* self, const Object* other) { CopyObject(*self, *other); }
@@ -694,8 +722,23 @@ ObjectIterator* APS5_VABI _ZNK3sce4Json6Object4findERKNS0_6StringE(ObjectIterato
     return result;
 }
 bool APS5_VABI _ZNK3sce4Json6Object8iteratorneERKS2_(const ObjectIterator* self, const ObjectIterator* other) { return self->it != other->it; }
+bool APS5_VABI _ZNK3sce4Json6Object8iteratoreqERKS2_(const ObjectIterator* self, const ObjectIterator* other) { return self->it == other->it; }
+void APS5_VABI _ZN3sce4Json6Object8iteratorC1ERKS2_(ObjectIterator* self, const ObjectIterator* other) { self->it = other->it; }
+ObjectIterator* APS5_VABI _ZN3sce4Json6Object8iterator7advanceEm(ObjectIterator* self, std::size_t count) {
+    std::advance(self->it, count);
+    return self;
+}
 bool APS5_VABI _ZNK3sce4Json6Object5emptyEv(const Object* self) { return self->items->empty(); }
 std::size_t APS5_VABI _ZNK3sce4Json6Object4sizeEv(const Object* self) { return self->items->size(); }
+std::size_t APS5_VABI _ZN3sce4Json6Object5eraseERKNS0_6StringE(Object* self, const String* key) {
+    if (key == nullptr || key->text == nullptr) throw std::invalid_argument("sce::Json::Object::erase: null key");
+    auto it = std::find_if(self->items->begin(), self->items->end(), [&](const Pair& pair) { return *pair.key.text == *key->text; });
+    if (it == self->items->end()) return 0;
+    Destroy(it->key);
+    Destroy(it->value);
+    self->items->erase(it);
+    return 1;
+}
 
 void APS5_VABI _ZN3sce4Json5ValueC1Ev(Value* self) { Construct(*self); }
 void APS5_VABI _ZN3sce4Json5ValueC1Eb(Value* self, bool value) { Construct(*self); self->node->type = TypeBoolean; self->node->boolean = value; }
@@ -732,6 +775,9 @@ void APS5_VABI _ZN3sce4Json5ValueD1Ev(Value* self) { Destroy(*self); }
 Value* APS5_VABI _ZN3sce4Json5ValueaSERKS1_(Value* self, const Value* other) {
     if (self != other) AssignNode(NodeOf(*self), NodeOf(*other));
     return self;
+}
+void APS5_VABI _ZN3sce4Json5Value4swapERS1_(Value* self, Value* other) {
+    std::swap(self->node, other->node);
 }
 
 int APS5_VABI _ZN3sce4Json5Value3setENS0_9ValueTypeE(Value* self, ValueType type) { SetType(NodeOf(*self), type); return 0; }
@@ -1009,13 +1055,16 @@ int APS5_VABI _ZN3sce4Json5Value22setTypeMismatchHandlerEPFRKS1_NS0_9ValueTypeEP
     return 0;
 }
 
-int APS5_VABI _ZNK3sce4Json5ValuecvbEv(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+bool APS5_VABI _ZNK3sce4Json5ValuecvbEv(const Value* self) {
+    const Node& n = NodeOf(*self);
+    if (n.type == TypeNull) return false;
+    if (n.type == TypeBoolean) return n.boolean;
+    return true;
 }
 
 void APS5_VABI _ZN3sce4Json6Object4PairC1ERKNS0_6StringERKNS0_5ValueE(Pair* self, const String* key, const Value* value) {
     Pair pair{};
+    pair.reserved = 0;
     Construct(pair.key, *key->text);
     try {
         CopyInto(pair.value, *value);
@@ -1031,9 +1080,25 @@ void APS5_VABI _ZN3sce4Json6Object4PairD1Ev(Pair* self) {
     Destroy(self->value);
 }
 
-int APS5_VABI _ZN3sce4Json6Object6insertERKNS1_4PairE() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+ObjectIterator* APS5_VABI _ZN3sce4Json6Object6insertERKNS1_4PairE(ObjectIterator* result, Object* self, const Pair* pair) {
+    auto it = std::find_if(self->items->begin(), self->items->end(), [&](const Pair& p) { return *p.key.text == *pair->key.text; });
+    if (it != self->items->end()) {
+        AssignNode(NodeOf(it->value), NodeOf(pair->value));
+        result->it = it;
+        return result;
+    }
+    Pair copy{};
+    copy.reserved = 0;
+    Construct(copy.key, *pair->key.text);
+    try {
+        CopyInto(copy.value, pair->value);
+        result->it = self->items->insert(self->items->end(), copy);
+        return result;
+    } catch (...) {
+        Destroy(copy.value);
+        Destroy(copy.key);
+        throw;
+    }
 }
 
 ArrayIterator* APS5_VABI _ZN3sce4Json5Array8iteratorppEi(ArrayIterator* result, ArrayIterator* self, int) {
@@ -1049,5 +1114,33 @@ ArrayIterator* APS5_VABI _ZN3sce4Json5Array8iteratoraSERKS2_(ArrayIterator* self
 
 void APS5_VABI _ZN3sce4Json5Array8iteratorC1Ev(ArrayIterator* self) {
     self->it = {};
+}
+
+ObjectIterator* APS5_VABI _ZN3sce4Json6Object8iteratorppEi(ObjectIterator* result, ObjectIterator* self, int) {
+    result->it = self->it;
+    ++self->it;
+    return result;
+}
+
+ObjectIterator* APS5_VABI _ZN3sce4Json6Object8iteratoraSERKS2_(ObjectIterator* self, const ObjectIterator* other) {
+    self->it = other->it;
+    return self;
+}
+
+void APS5_VABI _ZN3sce4Json6Object8iteratorC1Ev(ObjectIterator* self) {
+    self->it = {};
+}
+
+void APS5_VABI _ZN3sce4Json6Object4PairC1Ev(Pair* self) {
+    Pair pair{};
+    pair.reserved = 0;
+    Construct(pair.key, std::string());
+    try {
+        Construct(pair.value);
+    } catch (...) {
+        Destroy(pair.key);
+        throw;
+    }
+    *self = pair;
 }
 }

@@ -2,6 +2,7 @@
 #include "ControlFlow/GraphBuilder.hpp"
 #include "prx/libSceAgcDriver/Execution/include/PerformanceTimer.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
+#include "prx/libSceAgcDriver/Execution/include/Driver/Draw/DrawPipeline.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Shaders/ShaderRegistry.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Diagnostics.hpp"
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
@@ -32,6 +33,13 @@
 #include <mutex>
 #include <atomic>
 #include <pthread.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <process.h>
+#endif
 #ifdef __GLIBC__
 #include <malloc.h>
 #endif
@@ -69,6 +77,11 @@ std::shared_ptr<const ShaderRecompiler::SourceHandle> PrepareShaderWithDiagnosti
 }
 
 std::shared_ptr<const ShaderSnapshot> ReadRawShader(std::uint64_t address) {
+    const auto drain = [](std::uint64_t first, std::size_t bytes) {
+        if (!DrawPipeline::Active()) return;
+        auto& pipeline = DrawPipeline::Queue0();
+        if (pipeline.Busy() && pipeline.Overlaps(first, bytes)) pipeline.Drain(DrawPipeline::DrainReason::Capture);
+    };
     GuestMemory::CheckRange(reinterpret_cast<const void*>(address), sizeof(std::uint32_t), 256);
     static std::mutex cacheMutex;
     static std::list<std::shared_ptr<const ShaderSnapshot>> cache;
@@ -81,6 +94,7 @@ std::shared_ptr<const ShaderSnapshot> ReadRawShader(std::uint64_t address) {
     }
     if (cached) {
         const auto code = std::as_bytes(std::span(cached->code));
+        drain(address, code.size());
         GuestMemory::FlushGpuWrites(address, code.size());
         if (GuestMemory::CompareMapped(address, code) == GuestMemory::Compare::Equal) {
             std::lock_guard lock(cacheMutex);
@@ -101,6 +115,7 @@ std::shared_ptr<const ShaderSnapshot> ReadRawShader(std::uint64_t address) {
     while (snapshot.code.size() < available) {
         const auto previous = snapshot.code.size();
         snapshot.code.resize(std::min(available, std::max<std::size_t>(64, previous * 2)));
+        drain(address + previous * sizeof(std::uint32_t), (snapshot.code.size() - previous) * sizeof(std::uint32_t));
         GuestMemory::Read(address + previous * sizeof(std::uint32_t),
             std::as_writable_bytes(std::span(snapshot.code).subspan(previous)), alignof(std::uint32_t));
         try {
@@ -803,7 +818,7 @@ std::optional<ShaderRecompiler::ShaderFloatMode> DecodeFloatMode(const Registers
     case 0: rsrc1 = 0x212; fp16OverflowBit = 26; break;
     case 1: rsrc1 = 0x00a; fp16OverflowBit = 29; break;
     case 2: case 4: case 6: rsrc1 = 0x08a; fp16OverflowBit = 31; break;
-    case 5: case 7: rsrc1 = 0x10a; fp16OverflowBit = 30; break;
+    case 3: case 5: case 7: rsrc1 = 0x10a; fp16OverflowBit = 30; break;
     default: return std::nullopt;
     }
     const auto found = registers.find(rsrc1);
@@ -901,7 +916,7 @@ std::unique_ptr<RegisteredPreparation> PlanRegistered(const ShaderSnapshot& snap
     case 1: stage = Stage::Fragment; programRegister = 0x008; resourceRegister = 0x00b; break;
     case 2: stage = Stage::Vertex; programRegister = 0x0c8; resourceRegister = 0x08b; firstUser = 8; break;
     case 4: stage = Stage::Mesh; programRegister = 0x0c8; resourceRegister = 0x08b; break;
-    case 5: return {};
+    case 3: case 5: return {};
     case 6: stage = Stage::Mesh; programRegister = 0x088; resourceRegister = 0x08b; break;
     case 7: stage = Stage::TessellationControl; programRegister = 0x108; resourceRegister = 0x10b; break;
     default:
@@ -1190,7 +1205,7 @@ public:
     }
 
     void Close() {
-        std::vector<pthread_t> joined;
+        std::vector<Worker> joined;
         {
             std::unique_lock lock(mutex);
             closed = true;
@@ -1198,16 +1213,45 @@ public:
             joined.swap(workers);
         }
         ready.notify_all();
-        for (const auto worker : joined) {
-            if (!pthread_equal(worker, pthread_self())) pthread_join(worker, nullptr);
-        }
+        for (const auto& worker : joined) Join(worker);
     }
 
 private:
+    static constexpr std::size_t StackBytes = 64u << 20u;
+
+#ifdef _WIN32
+    struct Worker {
+        HANDLE handle;
+        unsigned id;
+    };
+
+    static void Join(const Worker& worker) {
+        if (worker.id != GetCurrentThreadId()) WaitForSingleObject(worker.handle, INFINITE);
+        CloseHandle(worker.handle);
+    }
+#else
+    using Worker = pthread_t;
+
+    static void Join(Worker worker) {
+        if (!pthread_equal(worker, pthread_self())) pthread_join(worker, nullptr);
+    }
+#endif
+
     explicit RegistrationPreparePool(unsigned count) {
+#ifdef _WIN32
+        for (unsigned index = 0; index < count; ++index) {
+            unsigned id = 0;
+            const auto thread = _beginthreadex(nullptr, static_cast<unsigned>(StackBytes), &RegistrationPreparePool::WindowsMain, this, STACK_SIZE_PARAM_IS_A_RESERVATION, &id);
+            if (thread != 0) {
+                workers.push_back({reinterpret_cast<HANDLE>(thread), id});
+                ++threads;
+                liveWorkers.fetch_add(1, std::memory_order_acq_rel);
+            }
+        }
+#else
         pthread_attr_t attributes;
         pthread_attr_init(&attributes);
-        pthread_attr_setstacksize(&attributes, 64u << 20u);
+        pthread_attr_setstacksize(&attributes, StackBytes);
         for (unsigned index = 0; index < count; ++index) {
             pthread_t thread;
             if (pthread_create(&thread, &attributes, &RegistrationPreparePool::Main, this) == 0) {
@@ -1217,7 +1261,15 @@ private:
             }
         }
         pthread_attr_destroy(&attributes);
+#endif
     }
+
+#ifdef _WIN32
+    static unsigned __stdcall WindowsMain(void* argument) {
+        Main(argument);
+        return 0;
+    }
+#endif
 
     static void* Main(void* argument) {
         auto& pool = *static_cast<RegistrationPreparePool*>(argument);
@@ -1263,7 +1315,7 @@ private:
     std::condition_variable ready;
     std::condition_variable idle;
     std::deque<Task> tasks;
-    std::vector<pthread_t> workers;
+    std::vector<Worker> workers;
     unsigned threads = 0;
     inline static std::atomic<unsigned> liveWorkers{0};
     unsigned running = 0;
@@ -1350,13 +1402,13 @@ std::vector<PreparedGraphicsStage> PrepareGraphicsStages(const DrawDecode& decod
     require(expected == decoded.roles, "graphics ABI linked programs do not match the stage routing");
     std::vector<ShaderRecompiler::LinkedProgram> linked;
     std::vector<ShaderRecompiler::MemoryRegion> memory;
+    AppendProgramMemory(memory, decoded.programs);
     for (std::size_t index = 0; index < decoded.programs.size(); ++index) {
         const auto& program = decoded.programs[index];
         require(program.snapshot != nullptr && program.codeOffset < program.snapshot->code.size(), "graphics ABI has an invalid registered entry point");
         const auto code = std::span(program.snapshot->code).subspan(program.codeOffset);
         require(program.binary.code.data() == code.data() && program.binary.code.size() == code.size() && program.binary.codeAddress == program.snapshot->codeAddress + program.codeOffset * sizeof(std::uint32_t), "graphics ABI entry point differs from its snapshot");
         linked.push_back({decoded.roles[index], program.binary, program.userDataBase, program.firstUserSgpr, program.userData});
-        memory.insert(memory.end(), program.memory.begin(), program.memory.end());
     }
     std::vector<PreparedGraphicsStage> prepared;
     std::uint32_t pushOffset = 0;

@@ -382,8 +382,10 @@ LONG WINAPI ReportCrash(EXCEPTION_POINTERS* info) {
         const char* kind = record->ExceptionInformation[0] == 0 ? "read" : record->ExceptionInformation[0] == 1 ? "write" : "execute";
         Report("  %s of 0x%016llx\n", kind, static_cast<unsigned long long>(record->ExceptionInformation[1]));
         std::uint8_t trap[2];
-        if (record->ExceptionInformation[0] == 0 && record->ExceptionInformation[1] == ~0ull && ReadCode(context->Rip, trap, sizeof(trap)) == sizeof(trap) && trap[0] == 0xcd && trap[1] == 0x45)
-            Report("  guest abort() (int 0x45)\n");
+        if (record->ExceptionInformation[0] == 0 && record->ExceptionInformation[1] == ~0ull && ReadCode(context->Rip, trap, sizeof(trap)) == sizeof(trap) && trap[0] == 0xcd) {
+            if (trap[1] == 0x45) Report("  guest abort() (int 0x45)\n");
+            else if (trap[1] == 0x41) Report("  guest assert/break (int 0x41)\n");
+        }
     }
     Report("  rax %016llx rbx %016llx rcx %016llx rdx %016llx\n", context->Rax, context->Rbx, context->Rcx, context->Rdx);
     Report("  rsi %016llx rdi %016llx rbp %016llx rsp %016llx\n", context->Rsi, context->Rdi, context->Rbp, context->Rsp);
@@ -479,6 +481,16 @@ void ReportCallTrace() {
         Report("    #%llu thread %llu %s %s from %s\n", static_cast<unsigned long long>(entries[index].sequence),
             static_cast<unsigned long long>(entries[index].thread), entries[index].library, entries[index].name, line);
     }
+    static CallTraceEntry own[32];
+    const std::uint64_t thread = GetCurrentThreadId();
+    const std::size_t owned = CopyThreadCallTrace_nid_no_patch(thread, own, std::size(own));
+    if (owned != 0) {
+        Report("  last traced calls of thread %llu:\n", static_cast<unsigned long long>(thread));
+        for (std::size_t index = 0; index < owned; ++index) {
+            DescribeAddress(own[index].returnAddress, line, sizeof(line));
+            Report("    #%llu %s %s from %s\n", static_cast<unsigned long long>(own[index].sequence), own[index].library, own[index].name, line);
+        }
+    }
     static CallTraceCount counts[32];
     std::uint64_t total = 0;
     const std::size_t counted = CopyCallCounts_nid_no_patch(counts, std::size(counts), &total);
@@ -503,7 +515,17 @@ std::size_t CaptureFrames(const CONTEXT* context, std::uint64_t* frames, std::si
     return count;
 }
 
-void ReportThreadContext(const CONTEXT* context, DWORD threadId, const char* name, const std::uint64_t* frames, std::size_t frameCount) {
+std::size_t CaptureStackCandidates(std::uint64_t rsp, std::uint64_t* candidates, std::size_t capacity) {
+    std::size_t count = 0;
+    for (std::uint64_t slot = rsp; count < capacity && slot < rsp + 0x8000; slot += 8) {
+        if (!IsReadable(slot)) break;
+        const auto value = *reinterpret_cast<const std::uint64_t*>(slot);
+        if (IsExecutable(value)) candidates[count++] = value;
+    }
+    return count;
+}
+
+void ReportThreadContext(const CONTEXT* context, DWORD threadId, const char* name, const std::uint64_t* frames, std::size_t frameCount, const std::uint64_t* candidates, std::size_t candidateCount) {
     char line[MAX_PATH + 64];
     Report("  thread %lu '%s': rip ", static_cast<unsigned long>(threadId), name ? name : "");
     DescribeAddress(context->Rip, line, sizeof(line));
@@ -511,6 +533,11 @@ void ReportThreadContext(const CONTEXT* context, DWORD threadId, const char* nam
     for (std::size_t depth = 0; depth < frameCount; ++depth) {
         DescribeAddress(frames[depth], line, sizeof(line));
         Report("    #%llu %s\n", static_cast<unsigned long long>(depth), line);
+    }
+    if (candidateCount != 0) Report("    stack return address candidates:\n");
+    for (std::size_t index = 0; index < candidateCount; ++index) {
+        DescribeAddress(candidates[index], line, sizeof(line));
+        Report("      %s\n", line);
     }
 }
 
@@ -527,6 +554,8 @@ void ReportAllThreads() {
         CONTEXT context;
         std::uint64_t frames[12];
         std::size_t frameCount;
+        std::uint64_t candidates[24];
+        std::size_t candidateCount;
     };
     static CapturedThread captured[128];
     std::size_t capturedCount = 0;
@@ -549,6 +578,8 @@ void ReportAllThreads() {
             const BOOL haveContext = GetThreadContext(thread, &context);
             std::uint64_t frames[12] = {};
             const std::size_t frameCount = haveContext ? CaptureFrames(&context, frames, sizeof(frames) / sizeof(frames[0])) : 0;
+            std::uint64_t candidates[24] = {};
+            const std::size_t candidateCount = haveContext && frameCount < 2 ? CaptureStackCandidates(context.Rsp, candidates, sizeof(candidates) / sizeof(candidates[0])) : 0;
             ResumeThread(thread);
             char name[128] = "";
             PWSTR description = nullptr;
@@ -563,13 +594,15 @@ void ReportAllThreads() {
             captured[capturedCount].context = context;
             std::memcpy(captured[capturedCount].frames, frames, sizeof(captured[capturedCount].frames));
             captured[capturedCount].frameCount = frameCount;
+            std::memcpy(captured[capturedCount].candidates, candidates, sizeof(captured[capturedCount].candidates));
+            captured[capturedCount].candidateCount = candidateCount;
             ++capturedCount;
         } while (Thread32Next(snapshot, &entry));
     }
     CloseHandle(snapshot);
     Report("  all threads:\n");
     for (std::size_t i = 0; i < capturedCount; ++i) {
-        ReportThreadContext(&captured[i].context, captured[i].id, captured[i].name, captured[i].frames, captured[i].frameCount);
+        ReportThreadContext(&captured[i].context, captured[i].id, captured[i].name, captured[i].frames, captured[i].frameCount, captured[i].candidates, captured[i].candidateCount);
     }
     if (skippedCount != 0) Report("  %llu further thread(s) left out\n", static_cast<unsigned long long>(skippedCount));
 }

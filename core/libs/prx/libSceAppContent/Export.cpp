@@ -96,7 +96,7 @@ int APS5_VABI sceAppContentAppParamGetInt(uint32_t param_id, int32_t* value) {
 
 int APS5_VABI sceAppContentDownloadDataFormat(const AppContentMountPoint* mount_point) {
     if (!mount_point) return SCE_APP_CONTENT_ERROR_PARAMETER;
-    if (std::strncmp(mount_point->data, DOWNLOAD_MOUNT_POINT, sizeof(mount_point->data)) != 0) APS5_INVALID_ARG_EX;
+    if (std::strncmp(mount_point->data, DOWNLOAD_MOUNT_POINT, sizeof(mount_point->data)) != 0) return SCE_APP_CONTENT_ERROR_NOT_MOUNTED;
     const auto directory = ResolvePath_nid_no_patch(DOWNLOAD_MOUNT_POINT);
     if (std::filesystem::create_directories(directory)) RecordWrittenPath_nid_no_patch(directory);
     ClearDirectory(directory);
@@ -104,8 +104,8 @@ int APS5_VABI sceAppContentDownloadDataFormat(const AppContentMountPoint* mount_
 }
 
 int APS5_VABI sceAppContentDownloadDataGetAvailableSpaceKb(const AppContentMountPoint* mount_point, size_t* available_space_kb) {
-    if (!available_space_kb) return SCE_APP_CONTENT_ERROR_PARAMETER;
-    if (!mount_point || std::strncmp(mount_point->data, DOWNLOAD_MOUNT_POINT, sizeof(mount_point->data)) != 0) APS5_INVALID_ARG_EX;
+    if (!mount_point || !available_space_kb) return SCE_APP_CONTENT_ERROR_PARAMETER;
+    if (std::strncmp(mount_point->data, DOWNLOAD_MOUNT_POINT, sizeof(mount_point->data)) != 0) return SCE_APP_CONTENT_ERROR_NOT_MOUNTED;
     const std::uint64_t quotaKb = GetAppDownloadDataSizeMiB_nid_postfix() * 1024u;
     if (quotaKb == 0) {
         *available_space_kb = 0;
@@ -190,4 +190,89 @@ int APS5_VABI sceAppContentGetAddcontDownloadProgress(uint32_t service_label, co
     if (!entitlement_label || !progress) return SCE_APP_CONTENT_ERROR_PARAMETER;
     return SCE_APP_CONTENT_ERROR_NOT_FOUND;
 }
+int APS5_VABI sceAppContentAddcontEnqueueDownloadByEntitlemetId(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentAddcontEnqueueDownloadSp(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentAddcontMountByEntitlemetId(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentAddcontShrink(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentAppParamGetString(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentDownload0Expand(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentDownload0Shrink(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentDownload1Expand(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentDownload1Shrink(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetAddcontInfoByEntitlementId(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetAddcontInfoListByIroTag(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetDownloadedStoreCountry(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetEntitlementKey(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetPftFlag(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentGetRegion(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentRequestPatchInstall(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAppContentTemporaryDataMount(void) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
 }
