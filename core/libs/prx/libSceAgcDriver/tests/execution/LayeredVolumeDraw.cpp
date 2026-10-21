@@ -238,7 +238,7 @@ void Run(AgcDriver::VulkanDevice& device, const AgcDriver::Graphics::ColorTarget
     state.blend.colorWriteMask = 15;
     state.blends = {state.blend};
     state.blendConstants = {};
-    if (mesh) {
+    if (mesh && !target.meshAsCompute) {
         Require(DeclaresLayer(geometryResult.spirv), "the mesh program declares no Layer output");
         if (!executeMesh) return;
     }
@@ -463,6 +463,12 @@ int main(int argc, char** argv) {
         Run(*device, thickColor, false, PixelCode, false);
         Check(thickVolume.Data(), thickColor, "thick SW_4KB_S_X vertex draw and writeback", WhiteBands);
         if (vertexOnly) std::puts("layered volume vertex draw tests passed");
+        else if (target.meshAsCompute) {
+            const GuestVolume meshVolume((VolumeTarget(nullptr).bytes + 65535u) & ~std::size_t{65535u});
+            const auto meshColor = VolumeTarget(meshVolume.Data());
+            Run(*device, meshColor, true, PixelCode, false);
+            Check(meshVolume.Data(), meshColor, "mesh draw run as compute", WhiteBands);
+        }
         else if (meshExecution) {
             const GuestVolume meshVolume((VolumeTarget(nullptr).bytes + 65535u) & ~std::size_t{65535u});
             const auto meshColor = VolumeTarget(meshVolume.Data());

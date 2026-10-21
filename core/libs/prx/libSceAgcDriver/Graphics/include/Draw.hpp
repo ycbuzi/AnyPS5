@@ -67,6 +67,12 @@ InPlaceIndices InPlaceIndexRange(Recorder& recorder, std::uint64_t address, std:
 
 std::array<std::uint32_t, 4> MeshIndexBufferDescriptor(const Pm4::DrawParameters& draw);
 
+inline constexpr std::uint32_t MeshComputeIndirectInstances = 4;
+std::uint32_t MeshDrawLayers(const State& state);
+bool MeshDrawRunsAsCompute(bool meshShader, std::uint32_t maxMeshOutputLayers, const State& state);
+bool MeshDrawRunsAsCompute(const Context& context, const State& state);
+std::vector<CompiledShader> MeshComputeStages(const Context& context, const State& state, std::span<const CompiledShader> shaders);
+
 struct MeshArguments {
     std::uint32_t groups;
     std::uint32_t instances;
@@ -92,6 +98,7 @@ struct MeshGrid {
     std::uint32_t layerStride;
 };
 std::optional<MeshGrid> MeshGridFor(const Context& context, std::uint32_t groups, std::uint32_t instances);
+MeshArgumentRules MeshArgumentRulesFor(const Context& context, const ShaderRecompiler::MeshConfiguration& mesh, std::uint32_t indexCount, bool asCompute);
 MeshArguments ResolveMeshArguments(const Pm4::DrawArguments& record, const MeshArgumentRules& rules);
 
 // Why DrawWithRecipe did not record from the recipe (the caller then runs Draw): the draw is not
