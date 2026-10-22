@@ -171,6 +171,38 @@ The first `Select-String` must print nothing. Then compare the VUID counts and t
 - Only these two PRs have commits by the user's identity that are not in upstream `main`
   (searched across all 6,855 PR heads).
 
+### Audit of the PC session's work (cloud, 2026-10-22)
+
+**Merged upstream:**
+- boykopovar/AnyPS5#8211 (rint, 2026-10-20) and #8535 (fmax, 2026-10-21). With merged PRs the
+  intake limit is now 20 open.
+
+**Open upstream PRs by ycbuzi:**
+- #8534: Windows reparse points. oneandonlydean asks for a full Linux and Windows CI run with
+  `guest_filesystem` and `guest_kernel_sys`. The skip branch is untested.
+- #8807: frame dump wait. MarcZX10 approved.
+- #8866: `_sigintr`.
+- #8872: `siginterrupt`, depends on #8866. **EagleBearerYS asked on 2026-10-22 whether this goes
+  before or after #9499. That needs our reply.**
+- #8880: num_get/time_get. MarcZX10 approved.
+- #9336: `link` follows symbolic links on Windows.
+- #9436: vertex format widening. Paused on its overlap with #8083. Waits for Hiro_02's RX 5600 XT
+  run. The validation-layer comparison was not done; the cloud is running it on llvmpipe.
+
+**Windows runs the PC session posted on others' PRs:**
+- Merged citing our runs: #8867, #9029 and #9026 (adriadam10's comments name @ycbuzi).
+- Bug reports with no reply yet: #9345 (missing `configure_windows_unwind`, one-line fix verified)
+  and #9416 (duplicate strong definitions break the libc link).
+
+**Cloud branches checked against upstream:**
+- `agent/agc-split-library-sets` is **superseded** by jotitadev's merged #7722 (the same change).
+  Do not post.
+- `agent/agc-independent-blend` **duplicates** XairRrR's open #6782, which has the same title and
+  is older. Do not post. The cloud's llvmpipe result for that change (00605 48 → 0, 840/840) could
+  support #6782 instead.
+- `agent/libc-modfl-signed-zero` is still novel and merges cleanly into `a6dcea927`. It is the
+  next candidate to post, with the user's OK.
+
 ### Cloud Windows cross-build and Wine comparison (2026-10-20)
 
 **The cross toolchain.** The cloud now cross-builds for Windows with a Linux-hosted GCC 15.2.0 /
