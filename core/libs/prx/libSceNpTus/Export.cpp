@@ -42,6 +42,15 @@ int ValidateSlots(const std::int32_t* slotIds, int arrayLen, const void* option)
     return 0;
 }
 
+int ValidateNonEmptySlots(const std::int32_t* slotIds, int arrayLen, const void* option) {
+    if (!slotIds || arrayLen < 1) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    return ValidateSlots(slotIds, arrayLen, option);
+}
+
+bool IsEmpty(const NpOnlineId* user) {
+    return !user->data[0];
+}
+
 int StartOffline(int reqId) {
     std::lock_guard lock(tusMutex);
     const auto request = requests.find(reqId);
@@ -49,6 +58,22 @@ int StartOffline(int reqId) {
     request->second.started = true;
     request->second.result = request->second.aborted ? SCE_NP_COMMUNITY_ERROR_ABORTED : SCE_NP_ERROR_SIGNED_OUT;
     return 0;
+}
+
+int WaitOffline(int reqId, int* result) {
+    std::lock_guard lock(tusMutex);
+    const auto request = requests.find(reqId);
+    if (request == requests.end()) return SCE_NP_COMMUNITY_ERROR_INVALID_ID;
+    if (!request->second.started) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    if (result) *result = request->second.result;
+    return 0;
+}
+
+int Complete(int reqId, int asyncResult) {
+    if (asyncResult < 0) return asyncResult;
+    int result = 0;
+    if (const int error = WaitOffline(reqId, &result)) return error;
+    return result;
 }
 }
 
@@ -164,29 +189,107 @@ int APS5_VABI sceNpTusChangeModeForOtherSaveDataOwners(void) {
     return 0;
 }
 
-int APS5_VABI sceNpTusWaitAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNpTusWaitAsync(int reqId, int* result) {
+    return WaitOffline(reqId, result);
 }
 
-int APS5_VABI sceNpTusSetMultiSlotVariableAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNpTusGetMultiSlotVariableA(int reqId, std::uint64_t targetAccountId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusGetMultiSlotVariableAAsync(reqId, targetAccountId, slotIds, variableArray, variableArraySize, arrayLen, option));
 }
 
-int APS5_VABI sceNpTusSetMultiSlotVariableVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNpTusGetMultiSlotVariableAsync(int reqId, const void* targetNpId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    (void)targetNpId;
+    (void)variableArraySize;
+    if (!variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    return StartOffline(reqId);
 }
 
-int APS5_VABI sceNpTusGetMultiSlotVariableAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNpTusGetMultiSlotVariableVUserAsync(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    (void)variableArraySize;
+    if (!targetVirtualUserId || !variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateNonEmptySlots(slotIds, arrayLen, option)) return error;
+    if (IsEmpty(targetVirtualUserId)) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    return StartOffline(reqId);
 }
 
-int APS5_VABI sceNpTusGetMultiSlotVariableVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+int APS5_VABI sceNpTusGetMultiSlotVariableAVUserAsync(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    (void)variableArraySize;
+    if (!targetVirtualUserId || !variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    if (IsEmpty(targetVirtualUserId)) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusGetMultiSlotVariableAVUser(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusGetMultiSlotVariableAVUserAsync(reqId, targetVirtualUserId, slotIds, variableArray, variableArraySize, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveAsync(int reqId, std::uint64_t targetAccountId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    (void)targetAccountId;
+    (void)variableArraySize;
+    if (!variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSave(int reqId, std::uint64_t targetAccountId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusGetMultiSlotVariableForCrossSaveAsync(reqId, targetAccountId, slotIds, variableArray, variableArraySize, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveVUserAsync(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    (void)variableArraySize;
+    if (!targetVirtualUserId || !variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    if (IsEmpty(targetVirtualUserId)) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveVUser(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, void* variableArray, std::uint64_t variableArraySize, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusGetMultiSlotVariableForCrossSaveVUserAsync(reqId, targetVirtualUserId, slotIds, variableArray, variableArraySize, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusSetMultiSlotVariableA(int reqId, std::uint64_t targetAccountId, const std::int32_t* slotIds, const std::int64_t* variableArray, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusSetMultiSlotVariableAAsync(reqId, targetAccountId, slotIds, variableArray, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusSetMultiSlotVariableAsync(int reqId, const void* targetNpId, const std::int32_t* slotIds, const std::int64_t* variableArray, int arrayLen, void* option) {
+    (void)targetNpId;
+    if (!variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusSetMultiSlotVariableVUserAsync(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, const std::int64_t* variableArray, int arrayLen, void* option) {
+    if (!targetVirtualUserId || !variableArray) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateSlots(slotIds, arrayLen, option)) return error;
+    if (IsEmpty(targetVirtualUserId)) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusDeleteMultiSlotVariableA(int reqId, std::uint64_t targetAccountId, const std::int32_t* slotIds, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusDeleteMultiSlotVariableAAsync(reqId, targetAccountId, slotIds, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusDeleteMultiSlotVariableAsync(int reqId, const void* targetNpId, const std::int32_t* slotIds, int arrayLen, void* option) {
+    if (!targetNpId) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateNonEmptySlots(slotIds, arrayLen, option)) return error;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusDeleteMultiSlotVariable(int reqId, const void* targetNpId, const std::int32_t* slotIds, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusDeleteMultiSlotVariableAsync(reqId, targetNpId, slotIds, arrayLen, option));
+}
+
+int APS5_VABI sceNpTusDeleteMultiSlotVariableVUserAsync(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, int arrayLen, void* option) {
+    if (!targetVirtualUserId) return SCE_NP_COMMUNITY_ERROR_INSUFFICIENT_ARGUMENT;
+    if (const int error = ValidateNonEmptySlots(slotIds, arrayLen, option)) return error;
+    if (IsEmpty(targetVirtualUserId)) return SCE_NP_COMMUNITY_ERROR_INVALID_ARGUMENT;
+    return StartOffline(reqId);
+}
+
+int APS5_VABI sceNpTusDeleteMultiSlotVariableVUser(int reqId, const NpOnlineId* targetVirtualUserId, const std::int32_t* slotIds, int arrayLen, void* option) {
+    return Complete(reqId, sceNpTusDeleteMultiSlotVariableVUserAsync(reqId, targetVirtualUserId, slotIds, arrayLen, option));
 }
 
 int APS5_VABI sceNpTusGetMultiUserVariable(void) {
@@ -255,26 +358,6 @@ int APS5_VABI sceNpTusTryAndSetVariableAsync(void) {
 }
 
 int APS5_VABI sceNpTusTryAndSetVariableVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusDeleteMultiSlotVariable(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusDeleteMultiSlotVariableVUser(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusDeleteMultiSlotVariableAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusDeleteMultiSlotVariableVUserAsync(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
@@ -425,41 +508,6 @@ int APS5_VABI sceNpTusAddAndGetVariableForCrossSaveVUser(void) {
 }
 
 int APS5_VABI sceNpTusAddAndGetVariableForCrossSaveVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableA(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableAVUser(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableAVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSave(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveVUser(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusGetMultiSlotVariableForCrossSaveVUserAsync(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
@@ -664,11 +712,6 @@ int APS5_VABI sceNpTusGetFriendsDataStatusForCrossSaveAsync(void) {
     return 0;
 }
 
-int APS5_VABI sceNpTusSetMultiSlotVariableA(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
 int APS5_VABI sceNpTusSetDataA(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
@@ -685,11 +728,6 @@ int APS5_VABI sceNpTusSetDataAVUser(void) {
 }
 
 int APS5_VABI sceNpTusSetDataAVUserAsync(void) {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
-}
-
-int APS5_VABI sceNpTusDeleteMultiSlotVariableA(void) {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }

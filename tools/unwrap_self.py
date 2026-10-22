@@ -249,10 +249,13 @@ def unwrap(path, output, verbose=False):
     check_decrypted(data, headers)
 
     regions = []
+    load_regions = {}
     for header in headers:
         if header["type"] == PT_LOAD and header["size"]:
-            regions.append({"old": header["source"], "size": header["size"],
-                            "vaddr": header["vaddr"], "align": header["align"]})
+            region = {"old": header["source"], "size": header["size"],
+                      "vaddr": header["vaddr"], "align": header["align"]}
+            regions.append(region)
+            load_regions[header["index"]] = region
 
     def region_for(offset, size):
         for region in regions:
@@ -292,7 +295,10 @@ def unwrap(path, output, verbose=False):
         if header["size"] == 0 and (header["type"] == PT_LOAD or header["source"] == 0):
             header["new"] = header["vaddr"] % max(header["align"], 1) if header["type"] == PT_LOAD else 0
             continue
-        region = region_for(header["source"], header["size"])
+        host = header if header["type"] == PT_LOAD else header["host"]
+        region = load_regions.get(host["index"]) if host is not None else None
+        if region is None:
+            region = region_for(header["source"], header["size"])
         header["new"] = header["source"] if region is None else region["new"] + (header["source"] - region["old"])
         if header["new"] + header["size"] > len(result):
             raise Refused("segment %d escaped the output" % header["index"])

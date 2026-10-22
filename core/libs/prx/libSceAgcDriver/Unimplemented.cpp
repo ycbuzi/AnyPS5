@@ -147,3 +147,71 @@ int APS5_VABI sceAgcDriverGetAllocatedToolMemoryForGpuReset(uint64_t, void* rang
 }
 
 }
+extern "C" {
+
+int APS5_VABI sceAgcDriverAcquireHDRScopesACQ() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverGetCoredumpAddress() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverHp3dLockEnd() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverHp3dLockStart() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverIsEsvmProcess() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverNopDataWritePacket() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverReleaseHDRScopesACQ() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSetTargetRingForDiag() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSetValueToSharedGds() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSetWorkloadStreamInactive() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSubmitReprojectionAcb() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSuspendPointSubmitCdbg() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+int APS5_VABI sceAgcDriverSysGetGfxAppGpuResetStatus() {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+}

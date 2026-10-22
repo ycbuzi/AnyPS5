@@ -49,6 +49,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Strings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/AllocatingStrings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WideConversion.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/BoundsChecking.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Multibyte.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RuneLocale.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/StringExtensions.cpp
@@ -81,6 +82,7 @@ target_sources(libc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ApplicationProcessParameters.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/JumpBuffer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Formatting.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ScanWideField.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/FormattingWide.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ScanningWide.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/RuntimeSupport.cpp
@@ -306,6 +308,16 @@ if(BUILD_TESTING)
         set_tests_properties(guest_wide_conversion PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
+    add_test_executable(guest_bounds_checking_tests ${LIBS_INCLUDE_DIR}/tests/GuestBoundsChecking.cpp)
+    target_include_directories(guest_bounds_checking_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_bounds_checking_tests PRIVATE libc)
+    configure_windows_unwind(guest_bounds_checking_tests)
+    add_test(NAME guest_bounds_checking COMMAND guest_bounds_checking_tests guest_bounds_checking.tmp)
+    set_tests_properties(guest_bounds_checking PROPERTIES TIMEOUT 10)
+    if(WIN32)
+        set_tests_properties(guest_bounds_checking PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
     add_test_executable(guest_float_builtins_tests ${LIBS_INCLUDE_DIR}/tests/GuestFloatBuiltins.cpp)
     target_include_directories(guest_float_builtins_tests PRIVATE ${LIBS_INCLUDE_DIR})
     target_link_libraries(guest_float_builtins_tests PRIVATE libc)
@@ -349,6 +361,15 @@ if(BUILD_TESTING)
     add_test(NAME guest_integer_builtins COMMAND guest_integer_builtins_tests)
     if(WIN32)
         set_tests_properties(guest_integer_builtins PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+    add_test_executable(guest_wide_stream_scan_tests ${LIBS_INCLUDE_DIR}/tests/GuestWideStreamScan.cpp)
+    target_include_directories(guest_wide_stream_scan_tests PRIVATE ${LIBS_INCLUDE_DIR})
+    target_link_libraries(guest_wide_stream_scan_tests PRIVATE libc)
+    configure_windows_unwind(guest_wide_stream_scan_tests)
+    add_test(NAME guest_wide_stream_scan COMMAND guest_wide_stream_scan_tests)
+    if(WIN32)
+        set_tests_properties(guest_wide_stream_scan PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
     endif()
     add_test_executable(guest_stdio_variadic_tests ${LIBS_INCLUDE_DIR}/tests/GuestStdioVariadic.cpp)

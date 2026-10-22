@@ -1,5 +1,6 @@
 #include "TestProgress.hpp"
 #include <relinker/pipeline/Conversion.hpp>
+#include <relinker/guest/GuestImage.hpp>
 #include <relinker/analysis/SyscallScanner.hpp>
 #include <relinker/analysis/CodeInstructionCollector.hpp>
 #include <io/BufferUtils.hpp>
@@ -10,6 +11,7 @@
 #include <array>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 
@@ -23,7 +25,7 @@ void reject(TAction action) {
     throw std::runtime_error("Invalid conversion was accepted");
 }
 
-std::vector<std::uint8_t> fixture() {
+std::vector<std::uint8_t> fixture(const std::string& needed = {}) {
     std::vector<std::uint8_t> bytes(0x3000);
     const std::array<std::uint8_t, 7> magic{0x7f, 'E', 'L', 'F', 2, 1, 1};
     std::copy(magic.begin(), magic.end(), bytes.begin());
@@ -51,7 +53,12 @@ std::vector<std::uint8_t> fixture() {
     header(1, 1, 6, 0x2000, 0x1000);
     for (std::size_t index = 3; index < 8; ++index) header(index, 0x6fffff01, 0, 0, 0);
     bytes[0x1000] = 0xc3;
-    const std::array<std::pair<std::uint64_t, std::uint64_t>, 9> tags{{{5, 0x2600}, {10, 1}, {6, 0x2620}, {11, 24}, {7, 0x2700}, {8, 0}, {9, 24}, {4, 0x2680}, {0, 0}}};
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> tags{{5, 0x2600}, {10, needed.empty() ? 1 : needed.size() + 2}, {6, 0x2620}, {11, 24}, {7, 0x2700}, {8, 0}, {9, 24}, {4, 0x2680}};
+    if (!needed.empty()) {
+        std::copy(needed.begin(), needed.end(), bytes.begin() + 0x2601);
+        tags.push_back({1, 1});
+    }
+    tags.push_back({0, 0});
     header(2, 2, 6, 0x2000, tags.size() * 16);
     for (std::size_t index = 0; index < tags.size(); ++index) {
         Io::WriteU64(bytes, 0x2000 + index * 16, tags[index].first);
@@ -246,6 +253,45 @@ void baseRelocations() {
     reject([&] { (void)builder.BuildBaseRelocations({0x10fff}); });
 }
 
+std::size_t fileOffset(const std::vector<std::uint8_t>& pe, std::uint32_t address) {
+    const auto header = Io::ReadU32(pe, 0x3c);
+    const auto sections = header + 24 + Io::ReadU16(pe, header + 20);
+    for (std::size_t index = 0; index < Io::ReadU16(pe, header + 6); ++index) {
+        const auto at = sections + index * 40;
+        const auto start = Io::ReadU32(pe, at + 12);
+        if (address >= start && address - start < Io::ReadU32(pe, at + 16)) return Io::ReadU32(pe, at + 20) + address - start;
+    }
+    throw std::runtime_error("Unmapped PE address");
+}
+
+bool exports(const std::vector<std::uint8_t>& pe, std::string_view name) {
+    const auto address = Io::ReadU32(pe, Io::ReadU32(pe, 0x3c) + 24 + 112);
+    if (address == 0) return false;
+    const auto directory = fileOffset(pe, address);
+    const auto names = fileOffset(pe, Io::ReadU32(pe, directory + 32));
+    for (std::size_t index = 0; index < Io::ReadU32(pe, directory + 24); ++index) {
+        if (reinterpret_cast<const char*>(pe.data() + fileOffset(pe, Io::ReadU32(pe, names + index * 4))) == name) return true;
+    }
+    return false;
+}
+
+void runtimeDirectories() {
+    TestProgress progress;
+    const Relinker::Conversion converter(progress);
+    Relinker::ConversionOptions options;
+    options.Target = Relinker::TargetSystem::Windows;
+    for (const auto* directory : {"sce_module", "sce_modules", "prx", "Media/Modules"}) {
+        auto source = input();
+        const auto parent = source.ModuleRoot / directory;
+        source.Executable = fixture("needed.prx");
+        source.Modules.push_back({parent / "needed.prx", fixture()});
+        source.RuntimeDirectories.push_back(parent);
+        const auto output = converter.Convert(std::move(source), options);
+        require(output.Modules.size() == 1, "Module was not converted");
+        require(exports(output.Modules.front().Bytes, Relinker::GuestInitializeExport) == (std::string_view(directory) == "Media/Modules"), "Wrong start of a runtime module the executable needs");
+    }
+}
+
 }
 
 int main() {
@@ -256,6 +302,7 @@ int main() {
         diagnosticContext();
         cancellation();
         baseRelocations();
+        runtimeDirectories();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';
         return 1;

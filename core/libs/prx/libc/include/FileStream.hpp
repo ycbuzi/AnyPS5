@@ -1,6 +1,7 @@
 #ifndef CORE_LIBS_PRX_LIBC_INCLUDE_FILESTREAM_HPP
 #define CORE_LIBS_PRX_LIBC_INCLUDE_FILESTREAM_HPP
 
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <filesystem>
@@ -16,8 +17,18 @@
 #include "prx/libc/include/FileLock.hpp"
 extern "C" void* HostStandardHandle_nid_no_patch(int descriptor);
 extern "C" void KeepStandardHandle_nid_no_patch(int descriptor, void* handle);
+struct UcrtStreamState {
+    char* pointer;
+    char* base;
+    int count;
+    long flags;
+};
 #else
 #include <unistd.h>
+#endif
+#if defined(__GLIBC__)
+#include <stdio_ext.h>
+extern "C" int _IO_switch_to_get_mode(std::FILE* stream);
 #endif
 extern "C" int DuplicateHostDescriptor_nid_no_patch(int descriptor);
 
@@ -210,6 +221,43 @@ public:
 #endif
         _guest.flags = static_cast<std::int16_t>((_guest.flags & ~0x60) |
             (endOfFile ? 0x20 : 0) | (error || guestError ? 0x40 : 0));
+    }
+
+    bool SwitchToReading() {
+#ifdef _WIN32
+        ::_lock_file(GetHandle());
+        const bool switched = SwitchToReadingUnlocked();
+        ::_unlock_file(GetHandle());
+        return switched;
+#else
+        ::flockfile(GetHandle());
+        const bool switched = SwitchToReadingUnlocked();
+        ::funlockfile(GetHandle());
+        return switched;
+#endif
+    }
+
+    bool SwitchToReadingUnlocked() {
+#ifdef _WIN32
+        constexpr long UcrtReading = 0x0001;
+        constexpr long UcrtWriting = 0x0002;
+        constexpr long UcrtUpdate = 0x0004;
+        auto* native = GetHandle();
+        std::atomic_ref<long> state(reinterpret_cast<UcrtStreamState*>(native)->flags);
+        if ((state.load() & (UcrtReading | UcrtUpdate)) != UcrtUpdate) return true;
+        const bool switched = (state.load() & UcrtWriting) == 0 || ::_fflush_nolock(native) == 0;
+        if (switched) state.fetch_or(UcrtReading);
+        SyncUnlockedStatus();
+        return switched;
+#elif defined(__GLIBC__)
+        auto* native = GetHandle();
+        if (!::__freadable(native) || !::__fwriting(native)) return true;
+        const bool switched = ::_IO_switch_to_get_mode(native) == 0;
+        SyncUnlockedStatus();
+        return switched;
+#else
+        return true;
+#endif
     }
 
     void SetError() {

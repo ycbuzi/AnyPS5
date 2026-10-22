@@ -88,6 +88,9 @@ target_include_directories(relinker_core PUBLIC
 
 target_compile_features(relinker_core PUBLIC cxx_std_20)
 set_target_properties(relinker_core PROPERTIES CXX_EXTENSIONS OFF)
+if(WIN32)
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/io/src/FileIdentity.cpp PROPERTIES COMPILE_DEFINITIONS _WIN32_WINNT=0x0602)
+endif()
 
 if(BUILD_TESTING)
     add_test_executable(andn_lowering_tests ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/AndnLoweringTests.cpp)
@@ -296,6 +299,14 @@ if(BUILD_TESTING)
     )
     target_include_directories(buffer_bounds_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/io/include)
     add_test(NAME buffer_bounds COMMAND buffer_bounds_tests)
+
+    add_test_executable(file_identity_tests
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/tests/FileIdentityTests.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/io/src/FileIdentity.cpp
+    )
+    target_include_directories(file_identity_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/io/include)
+    add_test(NAME file_identity COMMAND file_identity_tests)
+    set_tests_properties(file_identity PROPERTIES TIMEOUT 20)
 
     add_test_executable(param_json_utf8_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/../libs/tests/ParamJsonParser.cpp

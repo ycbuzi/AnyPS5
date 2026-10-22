@@ -291,3 +291,8 @@ std::unique_lock<std::mutex> HoldAsyncLog() {
 }
 
 }
+
+extern "C" void* AgcDriverStaticTable_nid_postfix() {
+    static_cast<void>(AgcDriver::DriverDetail::Driver::Get());
+    return reinterpret_cast<void*>(AgcDriver::DriverDetail::FsTableAddress);
+}

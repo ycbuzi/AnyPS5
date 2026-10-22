@@ -224,10 +224,14 @@ public:
         return true;
     }
 
-    void ForgetSection(HANDLE section) {
+    bool ForgetSection(HANDLE section) {
         std::lock_guard lock(mutex);
         const auto key = reinterpret_cast<std::uintptr_t>(section);
-        physical.erase(physical.lower_bound(std::make_pair(key, std::uint64_t{0})), physical.lower_bound(std::make_pair(key + 1, std::uint64_t{0})));
+        const auto first = physical.lower_bound(std::make_pair(key, std::uint64_t{0}));
+        const auto last = physical.lower_bound(std::make_pair(key + 1, std::uint64_t{0}));
+        const bool blank = std::none_of(first, last, [](const auto& entry) { return entry.second->stored || !entry.second->page.expired(); });
+        physical.erase(first, last);
+        return blank;
     }
 
     bool BeginHostWrite(std::uintptr_t address, std::size_t bytes, bool store = true) {

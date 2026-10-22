@@ -513,6 +513,10 @@ bool GuestArenaResidentSpan_nid_postfix(std::uintptr_t address, std::size_t byte
 void GuestArenaForgetSection_nid_postfix(void* section) {
     WindowsMappings::Get().ForgetSection(section);
 }
+
+bool GuestArenaForgetReusableSection_nid_no_patch(void* section) {
+    return WindowsMappings::Get().ForgetSection(section);
+}
 #endif
 
 #if defined(__linux__) || defined(__APPLE__)

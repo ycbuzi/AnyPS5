@@ -442,6 +442,7 @@ size_t APS5_VABI fread_nid_postfix(void* buffer, size_t size, size_t count, File
         stream->SyncStatus();
         return count;
     }
+    if (!stream->SwitchToReading()) return 0;
     const auto result = std::fread(buffer, size, count, handle);
     stream->SyncStatus();
     return result;

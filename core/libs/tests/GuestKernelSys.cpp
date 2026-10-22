@@ -395,6 +395,12 @@ int main() {
     Require(chroot_nid_postfix((root / "file.txt" / "..").string().c_str()) == -1 && Error() == 20);
     Require(chroot_nid_postfix((root / std::string(256, 'n')).string().c_str()) == -1 && Error() == 63);
     Require(chroot_nid_postfix(("/" + std::string(1024, 'p')).c_str()) == -1 && Error() == 63);
+    const std::string throughFile = (root / "file.txt" / "child").string();
+    Require(pathconf_nid_postfix(throughFile.c_str(), 4) == -1 && Error() == 20);
+    Require(fchmodat_nid_postfix(-100, throughFile.c_str(), 0600, 0) == -1 && Error() == 20);
+    Require(symlink_nid_postfix("target", throughFile.c_str()) == -1 && Error() == 20);
+    Require(link_nid_postfix(file.c_str(), throughFile.c_str()) == -1 && Error() == 20);
+    Require(link_nid_postfix(throughFile.c_str(), (root / "linked").string().c_str()) == -1 && Error() == 20);
     Require(ChrootThrows(root.string()));
     Require(ChrootThrows("/" + root.filename().string() + "/."));
     const auto guestRoot = "/" + root.filename().string();

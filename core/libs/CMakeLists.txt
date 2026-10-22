@@ -186,6 +186,8 @@ foreach(LIB_DIR ${LIBS_DIRS})
     endif()
 endforeach()
 
+target_link_libraries(libSceUsbStorageDialog PRIVATE libSceUserService)
+
 if(APS5_ENABLE_TRACY)
     set_target_properties(TracyClient PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY ${UNPATCHED_DIR}
@@ -382,7 +384,7 @@ if(BUILD_TESTING)
 
     add_test_executable(guest_offline_imports_tests tests/GuestOfflineImports.cpp)
     target_include_directories(guest_offline_imports_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(guest_offline_imports_tests PRIVATE libSceHttp libSceNpEntitlementAccess libSceRudp libc)
+    target_link_libraries(guest_offline_imports_tests PRIVATE libSceHttp libSceNpEntitlementAccess libSceRudp libSceVideoRecordingP libc)
     configure_windows_unwind(guest_offline_imports_tests)
     add_test(NAME guest_offline_imports COMMAND guest_offline_imports_tests)
     if(Python3_Interpreter_FOUND)
@@ -406,7 +408,7 @@ if(BUILD_TESTING)
 
     add_test_executable(guest_usb_storage_dialog_tests tests/GuestUsbStorageDialog.cpp)
     target_include_directories(guest_usb_storage_dialog_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-    target_link_libraries(guest_usb_storage_dialog_tests PRIVATE libSceUsbStorageDialog libc)
+    target_link_libraries(guest_usb_storage_dialog_tests PRIVATE libSceUsbStorageDialog libSceUserService libc)
     configure_windows_unwind(guest_usb_storage_dialog_tests)
     add_test(NAME guest_usb_storage_dialog COMMAND guest_usb_storage_dialog_tests)
     if(WIN32)
@@ -681,5 +683,15 @@ if(BUILD_TESTING)
     if(WIN32)
         set_tests_properties(guest_np_game_intent PROPERTIES ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceNpGameIntent>")
+    endif()
+
+    add_test_executable(guest_vorbis_dec_tests tests/GuestVorbisDec.cpp)
+    target_include_directories(guest_vorbis_dec_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(guest_vorbis_dec_tests PRIVATE libSceVorbisDec libc)
+    configure_windows_unwind(guest_vorbis_dec_tests)
+    add_test(NAME guest_vorbis_dec COMMAND guest_vorbis_dec_tests)
+    if(WIN32)
+        set_tests_properties(guest_vorbis_dec PROPERTIES ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:libSceVorbisDec>")
     endif()
 endif()

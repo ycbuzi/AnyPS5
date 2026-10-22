@@ -98,6 +98,8 @@ int APS5_VABI dup2_nid_postfix(int, int);
 std::int64_t APS5_VABI lseek_nid_postfix(int, std::int64_t, int);
 std::int64_t APS5_VABI read_nid_postfix(int, void*, std::size_t);
 std::int64_t APS5_VABI write_nid_postfix(int, const void*, std::size_t);
+std::int64_t APS5_VABI pread_nid_postfix(int, void*, std::size_t, std::int64_t);
+std::int64_t APS5_VABI sceKernelWrite(int, const void*, std::size_t);
 int APS5_VABI sceKernelDebugOutText(int, const char*);
 }
 #ifdef _WIN32
@@ -1022,6 +1024,8 @@ int main() {
         Require(lstat_nid_postfix(absoluteLink.string().c_str(), &absoluteStatus) == 0);
         Require((absoluteStatus.st_mode & 0170000) == 0120000 && absoluteStatus.st_size > 0 && absoluteStatus.st_nlink == 1);
         Require(stat_nid_postfix(absoluteLink.string().c_str(), &followed) == 0 && followed.st_ino == status.st_ino);
+        Require(sceKernelOpen((statLoop.generic_string() + "/inside").c_str(), 0, 0) == static_cast<int>(0x8002003eu));
+        Require(open_nid_postfix((statLoop.string() + "\\inside").c_str(), 0, 0) == -1 && *__error_nid_postfix() == 62);
         Require(std::filesystem::remove(fileLink) && std::filesystem::remove(directoryLink) && DeleteFileW(danglingLink.c_str()) != 0 &&
             DeleteFileW(statLoop.c_str()) != 0 &&
             std::filesystem::remove(absoluteLink) && std::filesystem::remove(targetDirectory));
@@ -1087,6 +1091,24 @@ int main() {
     Require(lseek_nid_postfix(-1, 0, 7) == -1 && *__error_nid_postfix() == 9);
     Require(lseek_nid_postfix(0x7fffffff, 0, -1) == -1 && *__error_nid_postfix() == 9);
     Require(lseek_nid_postfix(locked, 0, 7) == -1 && *__error_nid_postfix() == 22);
+    {
+        char transfer[4]{};
+        int transferPipe[2] = {-1, -1};
+        Require(pipe_nid_postfix(transferPipe) == 0);
+        Require(read_nid_postfix(-1, nullptr, 1) == -1 && *__error_nid_postfix() == 9);
+        Require(write_nid_postfix(-1, nullptr, 1) == -1 && *__error_nid_postfix() == 9);
+        Require(sceKernelRead(-1, nullptr, 1) == static_cast<int>(0x80020009u));
+        Require(sceKernelWrite(-1, nullptr, 1) == static_cast<int>(0x80020009u));
+        Require(read_nid_postfix(locked, nullptr, 1) == -1 && *__error_nid_postfix() == 14);
+        Require(pread_nid_postfix(-1, transfer, 1, -1) == -1 && *__error_nid_postfix() == 9);
+        Require(pread_nid_postfix(-1, nullptr, 1, 0) == -1 && *__error_nid_postfix() == 9);
+        Require(sceKernelPread(-1, transfer, 1, -1) == static_cast<int>(0x80020009u));
+        Require(pread_nid_postfix(transferPipe[0], transfer, 1, -1) == -1 && *__error_nid_postfix() == 29);
+        Require(pread_nid_postfix(locked, transfer, 1, -1) == -1 && *__error_nid_postfix() == 22);
+        Require(pread_nid_postfix(locked, nullptr, 1, -1) == -1 && *__error_nid_postfix() == 22);
+        Require(pread_nid_postfix(locked, nullptr, 1, 0) == -1 && *__error_nid_postfix() == 14);
+        Require(close_nid_postfix(transferPipe[0]) == 0 && close_nid_postfix(transferPipe[1]) == 0);
+    }
     Require(flock_nid_postfix(-1, 2 | 4) == -1 && *__error_nid_postfix() == 9);
     Require(flock_nid_postfix(0x7fffffff, 1) == -1 && *__error_nid_postfix() == 9);
     int flockPipe[2] = {-1, -1};

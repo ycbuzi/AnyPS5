@@ -154,6 +154,43 @@ class UnwrapTest(unittest.TestCase):
         self.assertEqual(tls[2], read_only[2] + 0x80)
         self.assertEqual(tls[5], 0)
 
+    def test_overlapping_load_sources_keep_each_load_alignment(self):
+        payload = b"shared load payload\0" * 16
+        for delta, size in ((0, len(payload)), (0, 0x80), (0x40, 0x80)):
+            for recorded in (False, True):
+                with self.subTest(delta=delta, size=size, recorded=recorded):
+                    source = 0x800 if recorded else 0x2000
+                    segments = [(PT_LOAD, 5, 0x2000, 0x1000, len(payload), PAGE),
+                                (PT_LOAD, 6, 0x2000 + delta, 0x4000 + delta, size, 2 * PAGE)]
+                    records = [(0x800, source, len(payload)), (0x100800, source + delta, size)] if recorded else []
+                    container = build_container(segments, records, {source: payload})
+                    result, output = self.convert(container)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    data, headers = read_program_headers(output)
+                    for header, expected in zip(headers, (payload, payload[delta:delta + size])):
+                        self.assertEqual(header[2] % header[7], header[3] % header[7])
+                        self.assertEqual(data[header[2]:header[2] + header[5]], expected)
+                    self.assertEqual((Path(self.directory) / "input.self").read_bytes(), container)
+
+    def test_overlapping_load_sources_keep_embedded_segments_in_their_host(self):
+        payload = b"overlapping load payload\0" * 16
+        for kind in (PT_DYNAMIC, PT_TLS):
+            for size in (0, 0x10):
+                with self.subTest(kind=kind, size=size):
+                    segments = [(PT_LOAD, 5, 0x1000, 0x1000, 0x100, PAGE),
+                                (PT_LOAD, 6, 0x1080, 0x3080, 0x100, PAGE),
+                                (kind, 4, 0x1090, 0x3090, size, 8)]
+                    container = build_container(segments, [], {0x1000: payload})
+                    result, output = self.convert(container)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    data, headers = read_program_headers(output)
+                    for header, start in zip(headers[:2], (0, 0x80)):
+                        self.assertEqual(header[2] % header[7], header[3] % header[7])
+                        self.assertEqual(data[header[2]:header[2] + header[5]], payload[start:start + 0x100])
+                    host, embedded = headers[1:]
+                    self.assertEqual(embedded[2] - host[2], embedded[3] - host[3])
+                    self.assertEqual(data[embedded[2]:embedded[2] + size], payload[0x90:0x90 + size])
+
     def test_segments_after_the_recorded_comment_are_read_from_the_container(self):
         segments = default_segments() + [(SCE_COMMENT, 4, 0x15A0, 0x0, 0x20, 0x10), (PT_NOTE, 4, 0x15C0, 0x0, 0x18, 4),
                                          (SCE_VERSION, 4, 0x15D8, 0x0, 0x10, 1)]

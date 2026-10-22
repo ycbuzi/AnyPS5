@@ -1669,6 +1669,11 @@ private:
         const auto stamp = directory / "last-used";
         std::ofstream(stamp, std::ios::binary | std::ios::trunc).close();
         std::filesystem::last_write_time(stamp, std::filesystem::file_time_type::clock::now(), error);
+#ifdef _WIN32
+        auto nativeRoot = root;
+        nativeRoot.make_preferred();
+        if (nativeRoot.native().starts_with(L"\\\\?\\") || nativeRoot.native().starts_with(L"\\\\.\\")) return;
+#endif
         const auto now = std::filesystem::file_time_type::clock::now();
         for (std::filesystem::directory_iterator it(root, error), end; !error && it != end; it.increment(error)) {
             const auto name = it->path().filename().string();

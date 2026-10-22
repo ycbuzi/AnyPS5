@@ -2,18 +2,14 @@
 
 ### Unknown function info
 
-- [SceNpTusVariableA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - the layout of the output array of `sceNpTusGetMultiSlotVariableAAsync` and of `outVariable` in `sceNpTusAddAndGetVariableAAsync` is not verified, so the output is never written and `variableArraySize` / `outVariableSize` are not checked. The signatures and the community error codes follow [shadPS4](https://github.com/shadps4-emu/shadPS4/tree/main/src/core/libraries/np/np_tus), which fpPS4 agrees with for the context and request calls; no console measurement.
+- [TUS variable outputs](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - the layouts of the variable arrays of the `sceNpTusGetMultiSlotVariable*` calls and of `outVariable` in `sceNpTusAddAndGetVariableAAsync` are not verified, so the output is never written and `variableArraySize` / `outVariableSize` are not checked; shadPS4, and RPCS3 in its PS3 `sceNpTusGetMultiSlotVariable*` and `sceNpTusAddAndGetVariable*` calls, return `INVALID_ALIGNMENT` unless the size is `arrayLen` variables of the call's type, or one variable for `outVariable`. The signatures and the community error codes follow [shadPS4](https://github.com/shadps4-emu/shadPS4/tree/main/src/core/libraries/np/np_tus), which fpPS4 agrees with for the context and request calls; no console measurement.
+- [Multi-slot variable calls](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - the argument checks of the multi-slot get, set and delete calls are not measured on a console; they follow [shadPS4](https://github.com/shadps4-emu/shadPS4/blob/c1b26558352b863f80142256e4df38585aa7d727/src/core/libraries/np/np_tus/np_tus.cpp), where they differ between functions: `arrayLen < 1` is `INSUFFICIENT_ARGUMENT` in the NpId and virtual-user delete calls and in `sceNpTusGetMultiSlotVariableVUserAsync`, and `INVALID_ARGUMENT` in the others; a null NpId is accepted except in delete; an empty virtual user ID is `INVALID_ARGUMENT`. RPCS3's [PS3 module](https://github.com/RPCS3/rpcs3/blob/1a9dca3a3a84a18df866e3021918322bd295160a/rpcs3/Emu/Cell/Modules/sceNpTus.cpp) has only the NpId and virtual-user calls; it returns `INVALID_ARGUMENT` for an empty array in all of them, rejects a null target in get and set and does not check for an empty virtual user ID.
 - [sceNpTusSetThreadParam](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTssCreateNpTitleCtx](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTssCreateNpTitleCtxA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusCreateTitleCtx](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusSetTimeout](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusChangeModeForOtherSaveDataOwners](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusWaitAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusSetMultiSlotVariableAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusSetMultiSlotVariableVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiUserVariable](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiUserVariableVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiUserVariableAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
@@ -28,10 +24,6 @@
 - [sceNpTusTryAndSetVariableVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusTryAndSetVariableAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusTryAndSetVariableVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusDeleteMultiSlotVariable](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusDeleteMultiSlotVariableVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusDeleteMultiSlotVariableAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusDeleteMultiSlotVariableVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusDeleteMultiSlotData](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusDeleteMultiSlotDataVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusDeleteMultiSlotDataAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
@@ -62,13 +54,6 @@
 - [sceNpTusAddAndGetVariableForCrossSaveAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusAddAndGetVariableForCrossSaveVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusAddAndGetVariableForCrossSaveVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableAVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableAVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableForCrossSave](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableForCrossSaveAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableForCrossSaveVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusGetMultiSlotVariableForCrossSaveVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiSlotDataStatusA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiSlotDataStatusAAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetMultiSlotDataStatusAVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
@@ -109,12 +94,10 @@
 - [sceNpTusGetFriendsDataStatusAAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetFriendsDataStatusForCrossSave](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusGetFriendsDataStatusForCrossSaveAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusSetMultiSlotVariableA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusSetDataA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusSetDataAAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusSetDataAVUser](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusSetDataAVUserAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
-- [sceNpTusDeleteMultiSlotVariableA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusDeleteMultiSlotDataA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusDeleteMultiSlotDataAAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
 - [sceNpTusTryAndSetVariableA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - unknown signature
@@ -130,4 +113,4 @@
 ### Functional
 
 - [sceNpTusCreateNpTitleCtxA](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - creates a title context without checking sign-in, up to 32 contexts (`TOO_MANY_OBJECTS` beyond); shadPS4 returns the `sceNpGetNpId` error instead. Requests are limited to 256, and the limits are not measured on a console.
-- [sceNpTusPollAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - there is no PSN, so the four `*Async` calls that validate their arguments start a request that finishes at once with `SCE_NP_ERROR_SIGNED_OUT` (`ABORTED` after `sceNpTusAbortRequest`), reported by the poll result. Poll returns 1 until an operation has started. The slot, option and array-length checks follow shadPS4 and are not measured on a console.
+- [sceNpTusPollAsync, sceNpTusWaitAsync](../../../core/libs/prx/libSceNpTus/Export.cpp) (libSceNpTus) - there is no PSN, so every implemented `*Async` call whose arguments pass the checks starts a request that finishes at once with `SCE_NP_ERROR_SIGNED_OUT`, which poll and wait report and the blocking calls return; shadPS4 returns `SIGNED_OUT` from the `*Async` call itself when no shadNet client is signed in, and RPCS3 returns `INVALID_ONLINE_ID` while offline, marked there as probable behaviour. An abort stays set, so every later operation on the request, blocking ones included, finishes with `ABORTED`; in shadPS4 an abort only ends the operation in progress. Until an operation has started, poll returns 1 and wait returns `INVALID_ARGUMENT` as in shadPS4; RPCS3 [blocks until a result is set](https://github.com/RPCS3/rpcs3/blob/1a9dca3a3a84a18df866e3021918322bd295160a/rpcs3/Emu/NP/np_contexts.cpp#L40-L52).

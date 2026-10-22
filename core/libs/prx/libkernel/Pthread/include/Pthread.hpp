@@ -37,14 +37,23 @@ struct PthreadMutexattrPrivate {
     int pshared = 0;
 };
 
+constexpr int ADAPTIVE_MUTEX_SPINS = 2000;
+
 struct PthreadMutexPrivate {
     std::recursive_timed_mutex _rmtx;
     std::timed_mutex _mtx;
     MutexType _type;
     std::atomic<std::thread::id> _owner;
     int _count;
+    int _spinloops = 0;
+    int _yieldloops = 0;
 
     PthreadMutexPrivate() : _type(MutexType::ErrorCheck), _owner(std::thread::id{}), _count(0) {}
+
+    void SetType(MutexType type) {
+        _type = type;
+        _spinloops = type == MutexType::Adaptive ? ADAPTIVE_MUTEX_SPINS : 0;
+    }
 };
 
 struct PthreadRwlockattrPrivate {

@@ -2452,6 +2452,14 @@ void verifyDefaultDirectory(const char* self) {
 
 int main(int argc, char** argv) {
     try {
+        if (argc == 2 && std::string_view(argv[1]) == "--housekeeping-safety") {
+            const auto directory = ShaderDiskCache::EntryDirectory();
+            require(!directory.empty(), "the housekeeping fixture cache is disabled");
+            ShaderDiskCache::Shutdown();
+            require(ShaderDiskCache::Writers() == 0, "the housekeeping writer did not stop");
+            std::cout << "housekeeping version " << directory.filename().string() << '\n';
+            return 0;
+        }
         if (argc == 2 && std::string_view(argv[1]) == "--resource-plan-codec") {
             verifyResultRoundTrip();
             verifyEntryRoundTrip();

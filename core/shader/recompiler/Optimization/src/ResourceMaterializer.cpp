@@ -1354,24 +1354,9 @@ void materializeForcedDegamma(const IrResourcePlan& plan, ResourceSnapshot& snap
 }
 
 std::uint32_t colorCompareReference(IrBufferFormat format) {
-    switch (format) {
-    case IrBufferFormat::Format16_16UNorm:
-    case IrBufferFormat::Format11_11_10UNorm: case IrBufferFormat::Format10_11_11UNorm: case IrBufferFormat::Format2_10_10_10UNorm:
-    case IrBufferFormat::Format10_10_10_2UNorm: case IrBufferFormat::Format16_16_16_16UNorm:
-        return EmulatedCompare::ReferenceUnorm;
-    case IrBufferFormat::Format8UNorm: case IrBufferFormat::Format8_8UNorm: case IrBufferFormat::Format8_8_8_8UNorm:
-    case IrBufferFormat::Format8Srgb: case IrBufferFormat::Format8_8Srgb: case IrBufferFormat::Format8_8_8_8Srgb:
-        return EmulatedCompare::ReferenceZero;
-    case IrBufferFormat::Format8SNorm: case IrBufferFormat::Format16SNorm: case IrBufferFormat::Format8_8SNorm: case IrBufferFormat::Format16_16SNorm:
-    case IrBufferFormat::Format11_11_10SNorm: case IrBufferFormat::Format10_11_11SNorm: case IrBufferFormat::Format2_10_10_10SNorm:
-    case IrBufferFormat::Format10_10_10_2SNorm: case IrBufferFormat::Format8_8_8_8SNorm: case IrBufferFormat::Format16_16_16_16SNorm:
-        return EmulatedCompare::ReferenceSnorm;
-    case IrBufferFormat::Format16Float: case IrBufferFormat::Format16_16Float: case IrBufferFormat::Format11_11_10Float:
-    case IrBufferFormat::Format10_11_11Float: case IrBufferFormat::Format32_32Float: case IrBufferFormat::Format16_16_16_16Float:
-        return EmulatedCompare::ReferenceFloat;
-    default:
-        throw std::runtime_error("comparison sampling of a color texture is implemented only for float, unorm and snorm formats (format " + std::to_string(static_cast<std::uint32_t>(format)) + ")");
-    }
+    const auto value = static_cast<std::uint32_t>(format);
+    if (((value >= 1u && value <= 77u) || (value >= 128u && value <= 130u)) && SampledTextureNumericClass(format) == IrTextureNumericClass::Float && format != IrBufferFormat::Format11_11_10UNorm && format != IrBufferFormat::Format10_11_11Float) return EmulatedCompare::ReferenceZero;
+    throw std::runtime_error("comparison sampling of a color texture is implemented only for floating-point, UNORM and SNORM formats (format " + std::to_string(value) + ")");
 }
 
 bool convertedSampleCompatible(const ImageResource& image) {

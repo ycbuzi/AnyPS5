@@ -12,6 +12,9 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #endif
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -1153,6 +1156,38 @@ void CheckImportWindowOverUnwatchedBlock() {
     Require(after != 0 && !UnchangedSince(base, Block, after), "a store after an import window over an unwatched block was missed");
 }
 
+void CheckImportWindowFootprint() {
+#ifdef __GLIBC__
+    constexpr std::size_t bytes = std::size_t{64} << 20;
+    void* memory = AllocateWatched(bytes);
+    const auto base = reinterpret_cast<std::uint64_t>(memory);
+    std::memset(memory, 0x5a, bytes);
+    Require(CollectWritesUncached(base, bytes) != 0, "the footprint import window block is not collected");
+    const auto heapBytes = [] {
+        const auto info = mallinfo2();
+        return info.uordblks + info.hblkhd;
+    };
+    const auto before = heapBytes();
+    std::size_t during = 0;
+    Require(ImportWatched(base, bytes, [&] {
+        during = heapBytes();
+        return true;
+    }), "the footprint import window import failed");
+    Require(Watched(base, bytes), "the footprint import window left its range unwatched");
+    const auto held = during > before ? during - before : 0;
+    Require(held <= bytes / 64, "an import window over " + std::to_string(bytes >> 20) + " MiB held " + std::to_string(held >> 20) + " MiB of host memory during the import: it copies the range instead of hashing its pages");
+    auto* plain = static_cast<volatile std::uint8_t*>(memory);
+    const auto synced = CollectWritesUncached(base, bytes);
+    Require(ImportWatched(base, bytes, [&] {
+        plain[0x100] = 0x5a;
+        plain[Block + 0x100] = 0x5b;
+        return true;
+    }), "the footprint import window re-import failed");
+    Require(UnchangedSince(base, Block, synced), "a page a hashed import window resolved without changing its bytes reads as written");
+    Require(WrittenSince(base + Block, Block, synced), "a store of new bytes within a hashed import window was missed");
+#endif
+}
+
 void ProtectPage(std::uint64_t address, bool readable) {
 #ifdef _WIN32
     DWORD previous = 0;
@@ -1442,6 +1477,7 @@ int main() {
         CheckImportWindowOtherThread();
         CheckImportWindowOverUnwatchedBlock();
         CheckStoreAcrossImports();
+        CheckImportWindowFootprint();
         CheckUnwatchedImport();
         CheckCommittedRanges();
         CheckAdoptLatestEpoch();

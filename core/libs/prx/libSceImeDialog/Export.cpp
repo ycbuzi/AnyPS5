@@ -22,6 +22,7 @@ constexpr int ErrorNotInUse = static_cast<int>(0x80bc0107u);
 constexpr int ErrorInvalidMaxTextLength = static_cast<int>(0x80bc0016u);
 constexpr int ErrorInvalidInputTextBuffer = static_cast<int>(0x80bc0017u);
 constexpr int ErrorInvalidAddress = static_cast<int>(0x80bc0031u);
+constexpr int ErrorInternal = static_cast<int>(0x80bc00ffu);
 
 struct Dialog {
     int status = StatusNone;
@@ -177,8 +178,7 @@ int APS5_VABI sceImeDialogTerm(void) {
 }
 
 int APS5_VABI sceImeDialogForTestFunction() {
-    NotImplemented_nid_no_patch(__func__);
-    return 0;
+    return ErrorInternal;
 }
 
 int APS5_VABI sceImeDialogForceClose(void) {
@@ -200,6 +200,12 @@ int APS5_VABI sceImeDialogInitInternal(Param* param, ExtendedParam* extended) {
 }
 
 int APS5_VABI sceImeDialogSetPanelPosition(int32_t posx, int32_t posy) {
+    NotImplemented_nid_no_patch(__func__);
+    return 0;
+}
+
+
+int APS5_VABI sceImeDialogInitInternalWithSubInfo() {
     NotImplemented_nid_no_patch(__func__);
     return 0;
 }
