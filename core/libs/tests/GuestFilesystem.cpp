@@ -321,6 +321,42 @@ static void TestRelinkedModuleNameCase() {
 }
 
 #ifdef _WIN32
+static void TestCaseSensitiveHostDirectory() {
+    const auto root = std::filesystem::temp_directory_path() / ("anyps5-sensitive-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    Require(std::filesystem::create_directory(root));
+    const auto handle = CreateFileW(root.c_str(), FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    Require(handle != INVALID_HANDLE_VALUE);
+    struct { ULONG flags; } information{FILE_CS_FLAG_CASE_SENSITIVE_DIR};
+    constexpr auto caseSensitiveInfo = static_cast<FILE_INFO_BY_HANDLE_CLASS>(23);
+    const bool enabled = SetFileInformationByHandle(handle, caseSensitiveInfo, &information, sizeof(information));
+    const auto error = GetLastError();
+    CloseHandle(handle);
+    if (!enabled && (error == ERROR_NOT_SUPPORTED || error == ERROR_INVALID_PARAMETER || error == ERROR_ACCESS_DENIED)) {
+        std::printf("case-sensitive host directory unavailable: %lu\n", error);
+        std::filesystem::remove(root);
+        return;
+    }
+    Require(enabled);
+    { std::ofstream file(root / "File.txt"); file << "payload"; }
+    Require(std::filesystem::create_directory(root / "Sub"));
+    Require(std::filesystem::create_directory(root / "Both"));
+    Require(std::filesystem::create_directory(root / "both"));
+    { std::ofstream file(root / "libCase.prx.guest.prx"); file << "module"; }
+    const auto host = root.string();
+    AddPathAlias_nid_no_patch("/sensitive-host", host.c_str());
+    Require(ResolvePath_nid_no_patch("/sensitive-host/file.txt") == root / "File.txt");
+    Require(ResolvePath_nid_no_patch("/sensitive-host/sub") == root / "Sub");
+    Require(ResolvePathOrRelinkedModule_nid_no_patch("/sensitive-host/libcase.prx") == root / "libCase.prx.guest.prx");
+    bool ambiguous = false;
+    try { ResolvePath_nid_no_patch("/sensitive-host/BOTH/file.txt"); }
+    catch (const std::runtime_error& failure) { ambiguous = std::strstr(failure.what(), "Ambiguous case-insensitive guest path") != nullptr; }
+    Require(ambiguous);
+    RemovePathAlias_nid_no_patch("/sensitive-host");
+    std::filesystem::remove_all(root);
+}
+
 static std::filesystem::path ExtendedPath(const std::filesystem::path& path) {
     const auto& native = path.native();
     if (native.starts_with(L"\\\\?\\") || native.starts_with(L"\\\\.\\")) return path;
@@ -411,6 +447,7 @@ int main() {
     TestRelinkedModuleNames();
     TestRelinkedModuleNameCase();
 #ifdef _WIN32
+    TestCaseSensitiveHostDirectory();
     TestLongHostPathStat();
 #endif
 #ifdef __linux__
@@ -961,6 +998,11 @@ int main() {
     Require((junctionStatus.st_mode & 0170000) == 0120000 && junctionStatus.st_size > 0);
     FileStat junctionFollowed{};
     Require(stat_nid_postfix(junction.string().c_str(), &junctionFollowed) == 0 && (junctionFollowed.st_mode & 0170000) == 0040000);
+    constexpr int noFollow = 0x100;
+    Require(sceKernelOpen(junction.string().c_str(), noFollow, 0) == static_cast<int>(0x8002001Fu));
+    Require(open_nid_postfix(junction.string().c_str(), noFollow, 0) == -1 && *__error_nid_postfix() == 31);
+    const int followedJunction = sceKernelOpen(junction.string().c_str(), 0, 0);
+    Require(followedJunction >= 0 && sceKernelClose(followedJunction) == 0);
     Require(std::filesystem::remove(junction) && std::filesystem::remove(junctionTarget));
 #endif
     FileStat identity{};
@@ -1117,6 +1159,19 @@ int main() {
     Require(creat_nid_postfix(rootName.c_str(), 0644) == -1 && *__error_nid_postfix() == 21);
     Require(creat_nid_postfix("", 0644) == -1 && *__error_nid_postfix() == 2);
     Require(creat_nid_postfix(nullptr, 0644) == -1 && *__error_nid_postfix() == 14);
+    const auto presentSize = std::filesystem::file_size(present);
+    for (const char* suffix : {"/", "//", "/.", "/./"}) {
+        const auto name = present.generic_string() + suffix;
+        Require(sceKernelOpen(name.c_str(), 0, 0) == static_cast<int>(0x80020014u));
+        Require(open_nid_postfix(name.c_str(), 0, 0) == -1 && *__error_nid_postfix() == 20);
+        Require(sceKernelOpen(name.c_str(), 0x401, 0) == static_cast<int>(0x80020014u));
+        Require(sceKernelOpen(name.c_str(), 0x601, 0644) < 0 && creat_nid_postfix(name.c_str(), 0644) == -1);
+        Require(std::filesystem::file_size(present) == presentSize);
+    }
+    Require(sceKernelOpen((missing.generic_string() + "/").c_str(), 0x201, 0644) < 0 && !std::filesystem::exists(missing));
+    Require(creat_nid_postfix((missing.generic_string() + "/").c_str(), 0644) == -1 && !std::filesystem::exists(missing));
+    const int slashedDirectory = sceKernelOpen((root.generic_string() + "/").c_str(), 0, 0);
+    Require(slashedDirectory >= 0 && sceKernelClose(slashedDirectory) == 0);
     Require(rmdir_nid_postfix(rootName.c_str()) == -1 && *__error_nid_postfix() == 66);
     Require(sceKernelRmdir(rootName.c_str()) == static_cast<int>(0x80020042u));
     Require(rmdir_nid_postfix(presentName.c_str()) == -1 && *__error_nid_postfix() == 20);
@@ -1131,6 +1186,18 @@ int main() {
     Require(unlink_nid_postfix(lockedPosix.string().c_str()) == 0 && !std::filesystem::exists(lockedPosix));
     const auto lockedKernel = lockedFile("locked-kernel");
     Require(sceKernelUnlink(lockedKernel.string().c_str()) == 0 && !std::filesystem::exists(lockedKernel));
+    const auto slashed = root / "slashed";
+    { std::ofstream stream(slashed); stream << "kept"; }
+    for (const char* suffix : {"/", "//", "/.", "/./"}) {
+        const auto name = slashed.generic_string() + suffix;
+        Require(sceKernelUnlink(name.c_str()) == static_cast<int>(0x80020014u));
+        Require(unlink_nid_postfix(name.c_str()) == -1 && *__error_nid_postfix() == 20);
+        Require(std::filesystem::file_size(slashed) == 4);
+    }
+    Require(sceKernelUnlink((presentName + "/").c_str()) == static_cast<int>(0x80020014u) && std::filesystem::exists(present));
+    Require(sceKernelUnlink((rootName + "/").c_str()) == static_cast<int>(0x80020001u));
+    Require(sceKernelUnlink((missingName + "/").c_str()) == static_cast<int>(0x80020002u));
+    Require(sceKernelUnlink(slashed.generic_string().c_str()) == 0 && !std::filesystem::exists(slashed));
     const auto lockedDirectory = [&](const char* name) {
         const auto locked = root / name;
         Require(mkdir_nid_postfix(locked.string().c_str(), 0700) == 0);

@@ -297,7 +297,14 @@ static std::int64_t NativeTransferBuffer(int descriptor, void* buf, std::size_t 
             if (appended != -2) return appended;
         }
     }
-    return write ? ::_write(descriptor, buf, static_cast<unsigned int>(nbytes)) : ::_read(descriptor, buf, static_cast<unsigned int>(nbytes));
+    if (write) {
+        const int result = ::_write(descriptor, buf, static_cast<unsigned int>(nbytes));
+        if (result < 0 && errno == ENOSPC && _doserrno == 0 && ::GetFileType(reinterpret_cast<HANDLE>(::_get_osfhandle(descriptor))) == FILE_TYPE_PIPE) errno = EAGAIN;
+        return result;
+    }
+    const int result = ::_read(descriptor, buf, static_cast<unsigned int>(nbytes));
+    if (result < 0 && _doserrno == ERROR_NO_DATA) errno = EAGAIN;
+    return result;
 }
 static std::int64_t NativeTransfer(int descriptor, void* buf, std::size_t nbytes, bool write) {
     const auto positioned = File::LockPositionedTransfer(descriptor);

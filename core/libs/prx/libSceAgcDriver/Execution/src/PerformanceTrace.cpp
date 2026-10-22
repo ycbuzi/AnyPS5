@@ -64,8 +64,7 @@ std::unique_ptr<ProfileOutput>& summaryWriter() {
 }
 
 std::filesystem::path traceDirectory() {
-    const char* directory = std::getenv("APS5_TRACE_DIR");
-    return std::filesystem::path(directory != nullptr ? directory : ".");
+    return TraceFile::Directory();
 }
 
 std::uint64_t processId() {

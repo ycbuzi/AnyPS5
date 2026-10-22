@@ -77,6 +77,9 @@ int APS5_VABI __cxa_thread_atexit_impl_nid_postfix(void (APS5_VABI *func)(void*)
     auto* context = new (std::nothrow) ThreadAtexitContext{func, arg};
     if (context == nullptr)
         return -1;
+#ifdef _WIN32
+    dso = nullptr;
+#endif
     const int result = __cxxabiv1::__cxa_thread_atexit(
         [](void* opaque) {
             auto* context = static_cast<ThreadAtexitContext*>(opaque);

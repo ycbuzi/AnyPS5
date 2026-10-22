@@ -148,6 +148,10 @@ struct PthreadPrivate {
         bool _joining = false;
     std::mutex _join_mtx;
     TimedWait::Condition _join_cv;
+#ifdef _WIN32
+    std::condition_variable reapCondition;
+    bool reaped = false;
+#endif
     std::atomic<bool> cancelPending{false};
     std::mutex cancelLock;
     TimedWait::Condition* cancelWait = nullptr;
