@@ -900,6 +900,7 @@ int main() {
         request.target.fusedExactArithmetic = fused;
         request.target.largePixelFunctionLdsBuffer = false;
         auto bytes = DecodeBase64(serializer.Serialize(request));
+        DropMeshAsCompute(bytes);
         Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic == fused && bytes[bytes.size() - 13u] == (fused ? 1u : 0u) && bytes[bytes.size() - 12u] == 0u);
         bytes.pop_back();
         bytes.pop_back();
@@ -915,6 +916,7 @@ int main() {
         bytes[4] = 44u;
         Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic == fused);
         bytes[4] = 43u;
+        bytes.pop_back();
         bytes.pop_back();
         Require(!serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic);
     }
