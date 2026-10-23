@@ -901,6 +901,7 @@ CompiledVariant emitVariant(const RecompileRequest& request, IrProgram& program)
     targetOptions.float16NarrowNans = request.target.float16NarrowNans;
     targetOptions.meshInlineFunctions = request.target.meshInlineFunctions;
     targetOptions.meshAsCompute = request.target.meshAsCompute;
+    if (targetOptions.meshAsCompute && request.shader.stage == ShaderStage::Mesh && request.graphics && request.graphics->mesh && request.graphics->mesh->outputPrimitiveSize == 1u) throw std::runtime_error("mesh-path points in a mesh program run as compute are not implemented");
 
     constexpr SpirvEmitter spirvEmitter;
     CompiledShaderArtifact result;

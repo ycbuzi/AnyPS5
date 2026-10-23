@@ -1019,6 +1019,7 @@ int VerifyVersion56Compatibility() {
         Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic == fused);
         bytes[4] = 43u;
         bytes.pop_back();
+        bytes.pop_back();
         Require(!serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic);
     }
 
