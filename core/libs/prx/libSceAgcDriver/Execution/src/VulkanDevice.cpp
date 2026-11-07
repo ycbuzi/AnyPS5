@@ -1434,9 +1434,11 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
     state->float32DenormPreserve = floatControls.shaderDenormPreserveFloat32 == VK_TRUE && floatControls.denormBehaviorIndependence != VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE && std::getenv("APS5_NO_HW_F32_PRESERVE") == nullptr;
     if ((state->float16DenormPreserve || state->float32DenormPreserve) && std::find(state->capabilities.begin(), state->capabilities.end(), static_cast<std::uint32_t>(spv::CapabilityDenormPreserve)) == state->capabilities.end()) state->capabilities.push_back(spv::CapabilityDenormPreserve);
     deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-    deviceExtensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
-    state->capabilities.push_back(4448);
-    state->spirvExtensions.push_back("SPV_KHR_8bit_storage");
+    if (byteFeatures.storageBuffer8BitAccess == VK_TRUE) {
+        deviceExtensions.push_back(VK_KHR_8BIT_STORAGE_EXTENSION_NAME);
+        state->capabilities.push_back(4448);
+        state->spirvExtensions.push_back("SPV_KHR_8bit_storage");
+    }
     state->capabilities.push_back(11);
     state->capabilities.push_back(5347);
     state->spirvExtensions.push_back("SPV_KHR_physical_storage_buffer");
@@ -2010,7 +2012,7 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
         deviceInfo.enabledExtensionCount = static_cast<std::uint32_t>(deviceExtensions.size());
         deviceInfo.ppEnabledExtensionNames = deviceExtensions.data();
     }
-    bdaFeatures.pNext = &byteFeatures;
+    bdaFeatures.pNext = byteFeatures.storageBuffer8BitAccess == VK_TRUE ? &byteFeatures : byteFeatures.pNext;
     VkPhysicalDeviceRobustness2FeaturesEXT robustness2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT};
     if (hasExtension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME)) {
         VkPhysicalDeviceFeatures2 queried{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &robustness2};
