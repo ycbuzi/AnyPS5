@@ -184,7 +184,9 @@ void Run(AgcDriver::VulkanDevice& device, const AgcDriver::Graphics::ColorTarget
     if (mesh) geometry.graphics = ShaderRecompiler::GraphicsCompileContext{0, {}, Subgroup, std::nullopt, {draw.indexAddress, draw.indexCount, draw.indexSize, draw.instanceCount}};
     geometry.useCache = false;
     auto geometryResult = ShaderRecompiler::Recompile(geometry);
-    if (mesh) {
+    // Layer windows (MeshLayerBase/MeshLayerCount) split a draw only on the native mesh stage: a mesh program run as
+    // compute (no VK_EXT_mesh_shader) writes its layer into the vertex record and has no window to specialize.
+    if (mesh && !target.meshAsCompute) {
         for (const auto required : {ShaderRecompiler::PipelineSpecialization::MeshLayerBase, ShaderRecompiler::PipelineSpecialization::MeshLayerCount}) {
             bool found = false;
             for (std::size_t at = 5; at < geometryResult.spirv.size();) {
