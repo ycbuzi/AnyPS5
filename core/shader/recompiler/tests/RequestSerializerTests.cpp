@@ -861,6 +861,7 @@ int main() {
     const auto sampledPoint = serializer.Deserialize(serializer.Serialize(pointRequest));
     Require(sampledPoint.request.context.vertex->pointList && sampledPoint.request.context.pixel->sampleOrder == pixel.sampleOrder);
     auto legacy43 = DecodeBase64(serializer.Serialize(pointRequest));
+    DropMeshAsCompute(legacy43);
     const auto mergeOffset = std::search(legacy43.begin(), legacy43.end(), pixel.sampleLocations.begin(), pixel.sampleLocations.end()) - legacy43.begin() + static_cast<std::ptrdiff_t>(pixel.sampleLocations.size() + 1u + sizeof(pixel.sampleOrder));
     EraseDefaultTargetMerge(legacy43, mergeOffset);
     legacy43.pop_back();
@@ -885,6 +886,7 @@ int main() {
     pixel.sampleOrder = {};
     pointRequest.context.pixel = pixel;
     auto legacy34 = DecodeBase64(serializer.Serialize(pointRequest));
+    DropMeshAsCompute(legacy34);
     legacy34.resize(legacy34.size() - 33u);
     const auto stencil34 = std::search(legacy34.begin(), legacy34.end(), pixel.sampleLocations.begin(), pixel.sampleLocations.begin() + 4) + pixel.sampleLocations.size();
     const auto legacyPixelTail = static_cast<std::ptrdiff_t>(1u + sizeof(pixel.sampleOrder));
@@ -917,7 +919,6 @@ int main() {
         Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic == fused);
         bytes[4] = 43u;
         bytes.pop_back();
-        bytes.pop_back();
         Require(!serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic);
     }
 
@@ -949,6 +950,7 @@ int main() {
         return false;
     };
     auto version46Dither = twoSample;
+    DropMeshAsCompute(version46Dither);
     version46Dither.pop_back();
     version46Dither.pop_back();
     version46Dither.pop_back();
