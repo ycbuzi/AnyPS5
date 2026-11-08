@@ -572,6 +572,19 @@ void BdaResources::checkSrtGuard(const BdaResources& faults) const {
     throw std::runtime_error(message.str());
 }
 
+std::optional<std::vector<std::pair<std::uint64_t, std::uint64_t>>> BdaResources::TakeWrittenPages() const {
+    if (reportOnly) return std::nullopt;
+    auto pages = std::move(writtenPages);
+    writtenPages.clear();
+    std::sort(pages.begin(), pages.end());
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> merged;
+    for (const auto& page : pages) {
+        if (!merged.empty() && page.first <= merged.back().second) merged.back().second = std::max(merged.back().second, page.second);
+        else merged.push_back(page);
+    }
+    return merged;
+}
+
 void BdaResources::markWrittenPages(const BdaResources& record) const {
     namespace Abi = ShaderRecompiler::BdaAbi;
     auto* words = reinterpret_cast<std::uint32_t*>(record.faultBytes().data());
@@ -588,6 +601,7 @@ void BdaResources::markWrittenPages(const BdaResources& record) const {
             }
         }
         GuestMemory::MarkPossiblyWritten(begin, bytes);
+        writtenPages.emplace_back(begin, end);
     }), "invalid BDA written-page record");
     for (std::uint32_t claim = 0; claim < count; ++claim) {
         const auto slot = words[Abi::WrittenListWord + claim];
