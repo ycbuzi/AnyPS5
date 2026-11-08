@@ -1322,6 +1322,7 @@ std::optional<MeshGrid> MeshGridFor(const Context& context, std::uint32_t groups
     const auto columns = (groups - 1u) / layers + 1u;
     if (layers > limits.maxMeshWorkGroupCount[2] || (instances != 0 && columns > limits.maxMeshWorkGroupTotalCount / instances / layers)) return std::nullopt;
     return MeshGrid{columns, instances, layers, layers > 1u ? columns : 0u};
+}
 
 std::vector<CompiledShader> MeshComputeStages(const Context& context, const State& state, std::span<const CompiledShader> shaders) {
     using Stage = ShaderRecompiler::ShaderStage;
@@ -2232,7 +2233,9 @@ bool recordDrawCommandsImpl(const Context& context, VkCommandBuffer commands, co
     const auto* args = indirect != nullptr ? indirect->args : nullptr;
     if (MeshDrawRunsAsCompute(context, state)) {
         context.Function<PFN_vkCmdDrawIndirect>("vkCmdDrawIndirect")(commands, argumentBuffer, argumentOffset, 1, sizeof(VkDrawIndirectCommand));
-        return;
+        recorded(subdraw++);
+        emitted = true;
+        return true;
     }
     if (state.stages.mesh && (args != nullptr || state.tessellationCapture != nullptr)) {
         context.Function<PFN_vkCmdDrawMeshTasksIndirectEXT>("vkCmdDrawMeshTasksIndirectEXT")(commands, argumentBuffer, argumentOffset, 1, sizeof(VkDrawMeshTasksIndirectCommandEXT));

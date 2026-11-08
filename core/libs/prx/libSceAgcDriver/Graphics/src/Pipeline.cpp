@@ -150,6 +150,7 @@ bool FragmentInterlock(std::span<const CompiledShader> shaders) {
         }
         return false;
     });
+}
 
 namespace {
 
