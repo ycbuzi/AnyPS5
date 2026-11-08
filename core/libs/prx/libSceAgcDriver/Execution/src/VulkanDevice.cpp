@@ -74,10 +74,13 @@
 #include <unistd.h>
 #endif
 #include <atomic>
+#include "ShaderCacheDirectory.hpp"
+#include "ShaderDiskCache.hpp"
 #include <chrono>
 #include <charconv>
 #include <condition_variable>
 #include <future>
+#include <filesystem>
 #include <fstream>
 #include <cctype>
 #include <cstdio>
@@ -111,6 +114,65 @@ void ResetCheckpointSnapshots() noexcept;
 #include <utility>
 
 namespace AgcDriver {
+
+namespace {
+
+constexpr unsigned FloatControlsCacheVersion = 1;
+
+std::filesystem::path FloatControlsCachePath(const VkPhysicalDeviceProperties& properties) {
+    if (std::getenv("APS5_NO_FLOAT_CONTROLS_CACHE") != nullptr) return {};
+    const auto directory = ShaderRecompiler::ShaderCacheDirectory();
+    if (directory.empty()) return {};
+    std::string uuid;
+    for (const auto byte : properties.pipelineCacheUUID) {
+        char digits[3];
+        std::snprintf(digits, sizeof(digits), "%02x", static_cast<unsigned>(byte));
+        uuid += digits;
+    }
+    char version[17];
+    std::snprintf(version, sizeof(version), "%016llx", static_cast<unsigned long long>(ShaderRecompiler::ShaderDiskCache::SourceVersion()));
+    char name[160];
+    std::snprintf(name, sizeof(name), "float-controls-v%u-%04x-%04x-%08x-%s.txt", FloatControlsCacheVersion, properties.vendorID, properties.deviceID, properties.driverVersion, uuid.c_str());
+    return std::filesystem::path(directory) / version / name;
+}
+
+std::optional<bool> CachedFloatControl(const std::filesystem::path& path, std::string_view key) {
+    if (path.empty()) return std::nullopt;
+    std::ifstream file(path);
+    for (std::string line; std::getline(file, line);) {
+        if (line.size() != key.size() + 2 || line.compare(0, key.size(), key) != 0 || line[key.size()] != '=') continue;
+        if (line.back() == '1') return true;
+        if (line.back() == '0') return false;
+    }
+    return std::nullopt;
+}
+
+void StoreFloatControl(const std::filesystem::path& path, std::string_view key, bool value) {
+    if (path.empty()) return;
+    std::error_code error;
+    std::filesystem::create_directories(path.parent_path(), error);
+    std::string text;
+    {
+        std::ifstream file(path);
+        for (std::string line; std::getline(file, line);)
+            if (!(line.size() > key.size() && line.compare(0, key.size(), key) == 0 && line[key.size()] == '=')) text += line + "\n";
+    }
+    text += std::string(key) + (value ? "=1\n" : "=0\n");
+    auto temporary = path;
+    temporary += ".tmp" + std::to_string(static_cast<unsigned long long>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    {
+        std::ofstream file(temporary, std::ios::trunc);
+        file << text;
+        if (!file) {
+            std::filesystem::remove(temporary, error);
+            return;
+        }
+    }
+    std::filesystem::rename(temporary, path, error);
+    if (error) std::filesystem::remove(temporary, error);
+}
+
+}
 
 DeviceQueuePlan PlanDeviceQueues(std::span<const VkQueueFamilyProperties> families, std::uint32_t family, bool settles, bool sparseBinding, bool presents) {
     DeviceQueuePlan plan;
@@ -2695,21 +2757,34 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
         state->scaler = std::make_unique<PresentationScaler>(graphicsContext(), VK_FORMAT_B8G8R8A8_UNORM, state->surfaceFormat);
         state->presentation = std::make_unique<PresentationPass>(graphicsContext(), state->presentSlots.size());
     }
+    const auto floatControlsCache = state->float32FlushToZeroCandidate || state->float32DenormPreserve ? FloatControlsCachePath(state->properties) : std::filesystem::path{};
     if (state->float32FlushToZeroCandidate) {
-        const auto probeStart = std::chrono::steady_clock::now();
-        state->probingFloatControls = true;
-        const auto probe = ProbeFloat32FlushToZero(*this, Target());
-        state->probingFloatControls = false;
-        state->float32FlushToZero = probe.mismatches == 0u;
-        std::fprintf(stderr, "[float-controls] f32 denormal flush: %s (%u of %u probe results differ from the emulated flush, %.0f ms)\n", state->float32FlushToZero ? "hardware" : "emulated", probe.mismatches, probe.compared, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - probeStart).count());
+        if (const auto cached = CachedFloatControl(floatControlsCache, "f32-flush")) {
+            state->float32FlushToZero = *cached;
+            std::fprintf(stderr, "[float-controls] f32 denormal flush: %s (cached in %s)\n", state->float32FlushToZero ? "hardware" : "emulated", floatControlsCache.string().c_str());
+        } else {
+            const auto probeStart = std::chrono::steady_clock::now();
+            state->probingFloatControls = true;
+            const auto probe = ProbeFloat32FlushToZero(*this, Target());
+            state->probingFloatControls = false;
+            state->float32FlushToZero = probe.mismatches == 0u;
+            if (probe.compared != 0u) StoreFloatControl(floatControlsCache, "f32-flush", state->float32FlushToZero);
+            std::fprintf(stderr, "[float-controls] f32 denormal flush: %s (%u of %u probe results differ from the emulated flush, %.0f ms)\n", state->float32FlushToZero ? "hardware" : "emulated", probe.mismatches, probe.compared, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - probeStart).count());
+        }
     }
     if (state->float32DenormPreserve) {
-        const auto probeStart = std::chrono::steady_clock::now();
-        state->probingFloatControls = true;
-        const auto probe = ProbeFloat32DenormPreserve(*this, Target());
-        state->probingFloatControls = false;
-        state->float32DenormPreserve = probe.mismatches == 0u;
-        std::fprintf(stderr, "[float-controls] f32 denormal preserve: %s (%u of %u probe results on normal values differ from the default mode by more than the Vulkan precision bounds, %.0f ms)\n", state->float32DenormPreserve ? "requested" : "not requested", probe.mismatches, probe.compared, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - probeStart).count());
+        if (const auto cached = CachedFloatControl(floatControlsCache, "f32-preserve")) {
+            state->float32DenormPreserve = *cached;
+            std::fprintf(stderr, "[float-controls] f32 denormal preserve: %s (cached in %s)\n", state->float32DenormPreserve ? "requested" : "not requested", floatControlsCache.string().c_str());
+        } else {
+            const auto probeStart = std::chrono::steady_clock::now();
+            state->probingFloatControls = true;
+            const auto probe = ProbeFloat32DenormPreserve(*this, Target());
+            state->probingFloatControls = false;
+            state->float32DenormPreserve = probe.mismatches == 0u;
+            if (probe.compared != 0u) StoreFloatControl(floatControlsCache, "f32-preserve", state->float32DenormPreserve);
+            std::fprintf(stderr, "[float-controls] f32 denormal preserve: %s (%u of %u probe results on normal values differ from the default mode by more than the Vulkan precision bounds, %.0f ms)\n", state->float32DenormPreserve ? "requested" : "not requested", probe.mismatches, probe.compared, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - probeStart).count());
+        }
     }
     if (std::getenv("APS5_NO_NATIVE_F16_NANS") == nullptr) {
         const auto probeStart = std::chrono::steady_clock::now();
