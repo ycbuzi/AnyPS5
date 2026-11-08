@@ -396,6 +396,20 @@ public:
     // place by imports and mirrors. Opaque outside GuestBufferMemory.cpp.
     struct AddressSpace;
     void WriteBack();
+    // For a build whose shaders store through unresolved addresses (FLAT/GLOBAL, GPU-selected
+    // descriptors): declares every leased range that is guest-writable but not imported in place
+    // (a mirror or a copy) as written, so it gets a reference at upload, Write in the BDA table and
+    // the compare-based write-back. Without it such a store faults ("read-only in the BDA table")
+    // and its result is lost, which is every store on a device that imports nothing in place.
+    // Over APS5_TRACKED_STORE_MIB (default 512) of such ranges the build keeps that behaviour;
+    // APS5_NO_TRACKED_STORES turns the rule off.
+    void TrackAddressStores();
+    // Narrows the ranges TrackAddressStores declared to the guest pages the GPU recorded storing to
+    // (the BDA written-page record), before WriteBack: the compare and the guest stores then happen
+    // only where the GPU stored. Ranges declared by AddWritable are left as they are.
+    void LimitTrackedWrites(std::vector<std::pair<std::uint64_t, std::uint64_t>> pages);
+    // The [first, first + count) entries of `writes` that TrackAddressStores declared.
+    std::pair<std::size_t, std::size_t> TrackedWrites() const { return {trackedFirst, trackedCount}; }
     bool WritesOverlap(std::uint64_t address, std::size_t bytes) const;
     bool CopiedWritesOverlap(std::uint64_t address, std::size_t bytes) const;
     // Guest ranges the shader may write through descriptors, as [begin, end).
@@ -605,6 +619,8 @@ private:
     bool regionsSorted = false;
     bool regionsOverlap = false;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> writes;
+    std::size_t trackedFirst = 0;
+    std::size_t trackedCount = 0;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> readsOverBase;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> servedInsideBase;
     std::vector<std::pair<std::uint64_t, std::vector<std::byte>>> heapReferences;

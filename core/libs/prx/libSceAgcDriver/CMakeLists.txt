@@ -720,6 +720,17 @@ function(agc_add_draw_pipeline_test agcTestName)
     endif()
 endfunction()
 
+# The same test with host imports disabled: no guest range is imported in place, as on a device
+# without VK_EXT_external_memory_host (Turnip on the Adreno 650), so every leased range is a
+# mirror or a copy and stores through addresses must reach guest memory by the tracked write-back.
+function(agc_add_no_host_import_test agcTestName)
+    add_test(NAME ${agcTestName}_no_host_import COMMAND ${agcTestName}_tests)
+    set_tests_properties(${agcTestName}_no_host_import PROPERTIES ENVIRONMENT "ANYPS5_NO_SHADER_CACHE=1;APS5_NO_HOST_IMPORT=1" SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    if(WIN32)
+        set_tests_properties(${agcTestName}_no_host_import PROPERTIES ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:$<TARGET_FILE_DIR:libc>")
+    endif()
+endfunction()
+
 function(agc_add_spirv_mode_tests agcTest)
     if(NOT TARGET ${agcTest})
         return()

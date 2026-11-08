@@ -5357,6 +5357,59 @@ void GuestBufferMemory::AddReadable(std::uint64_t address, std::size_t bytes) {
     addDescriptorRegion(address, bytes, false, false, true);
 }
 
+void GuestBufferMemory::TrackAddressStores() {
+    static const bool disabled = std::getenv("APS5_NO_TRACKED_STORES") != nullptr;
+    static const std::uint64_t budget = [] {
+        const char* value = std::getenv("APS5_TRACKED_STORE_MIB");
+        return (value != nullptr ? std::strtoull(value, nullptr, 10) : 512ull) << 20u;
+    }();
+    trackedFirst = writes.size();
+    trackedCount = 0;
+    if (disabled) return;
+    // A store through an unresolved address can reach any leased range the table serves; the ones
+    // imported in place need nothing (the GPU writes guest memory), read-only ones stay read-only.
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> tracked;
+    std::uint64_t bytes = 0;
+    const auto consider = [&](const Region& region) {
+        if (!region.writable || region.direct != nullptr || (region.mirror != nullptr && !region.mirror->writable)) return;
+        const auto end = region.mirror != nullptr && region.mirror->heap ? std::min(region.end, servedEnd(region)) : region.end;
+        if (end <= region.begin) return;
+        if (region.sparse) {
+            for (const auto& [first, last] : region.backed) bytes += std::min(last, end) > std::max(first, region.begin) ? std::min(last, end) - std::max(first, region.begin) : 0u;
+        } else {
+            bytes += end - region.begin;
+        }
+        tracked.emplace_back(region.begin, end);
+    };
+    if (space != nullptr) {
+        for (const auto& region : space->base) consider(region);
+    }
+    for (const auto& region : regions) consider(region);
+    if (tracked.empty()) return;
+    if (bytes > budget) {
+        static std::atomic<bool> logged{false};
+        if (!logged.exchange(true)) std::fprintf(stderr, "[gpu] tracked address stores: a build stores through addresses into %llu MiB of guest-writable ranges that are not imported in place, over APS5_TRACKED_STORE_MIB (%llu MiB): such stores still fault\n", static_cast<unsigned long long>(bytes >> 20u), static_cast<unsigned long long>(budget >> 20u));
+        return;
+    }
+    writes.insert(writes.end(), tracked.begin(), tracked.end());
+    trackedCount = tracked.size();
+}
+
+void GuestBufferMemory::LimitTrackedWrites(std::vector<std::pair<std::uint64_t, std::uint64_t>> pages) {
+    if (trackedCount == 0) return;
+    Require(trackedFirst + trackedCount <= writes.size(), "tracked address stores exceed the written ranges");
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>> tracked(writes.begin() + static_cast<std::ptrdiff_t>(trackedFirst), writes.begin() + static_cast<std::ptrdiff_t>(trackedFirst + trackedCount));
+    writes.erase(writes.begin() + static_cast<std::ptrdiff_t>(trackedFirst), writes.begin() + static_cast<std::ptrdiff_t>(trackedFirst + trackedCount));
+    std::sort(pages.begin(), pages.end());
+    const auto first = writes.size();
+    for (const auto& [begin, end] : tracked) {
+        auto at = std::partition_point(pages.begin(), pages.end(), [&](const auto& page) { return page.second <= begin; });
+        for (; at != pages.end() && at->first < end; ++at) writes.emplace_back(std::max(begin, at->first), std::min(end, at->second));
+    }
+    trackedFirst = first;
+    trackedCount = writes.size() - first;
+}
+
 bool GuestBufferMemory::SpaceOnly() const {
     return space != nullptr && lease.empty() && regions.empty() && space->sparseMirrors.empty() && space->copied.empty();
 }

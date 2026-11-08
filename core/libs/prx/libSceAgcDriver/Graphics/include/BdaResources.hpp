@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -29,6 +30,10 @@ public:
     bool TableGuardCurrent(VkDevice device, std::span<const ShaderRecompiler::BdaAbi::Range> ranges);
     VkDescriptorBufferInfo Fault() const;
     void CheckFault() const;
+    // The guest pages (sorted, merged [begin, end)) the last checked use recorded storing to, read
+    // by CheckFault/CheckUse before they clear the record; empty when nothing was stored, and
+    // nullopt for a report-only fault buffer, which keeps no page record.
+    std::optional<std::vector<std::pair<std::uint64_t, std::uint64_t>>> TakeWrittenPages() const;
     void CheckUse(const BdaResources* record) const;
     void NoteUse(std::uint64_t serial);
     bool TakeFaultSlot(const Context& context);
@@ -87,6 +92,7 @@ private:
     std::shared_ptr<BdaFaultChunk> faultChunk;
     VkDeviceSize faultOffset = 0;
     bool reportOnly = false;
+    mutable std::vector<std::pair<std::uint64_t, std::uint64_t>> writtenPages;
     std::uint64_t lastUse = 0;
     std::size_t tableBytes = 0;
     std::uint64_t tableGuardSerial = 0;

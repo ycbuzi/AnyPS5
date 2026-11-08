@@ -1,3 +1,5 @@
 if(BUILD_TESTING)
     set_tests_properties(agc_driver_flat_store PROPERTIES RUN_SERIAL TRUE)
+    agc_add_no_host_import_test(agc_driver_flat_store)
+    set_tests_properties(agc_driver_flat_store_no_host_import PROPERTIES RUN_SERIAL TRUE)
 endif()
