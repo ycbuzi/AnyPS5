@@ -2,6 +2,7 @@
 #define _CRT_RAND_S
 #endif
 #include "prx/libc/include/HostEntropy.hpp"
+#include "prx/libc/include/GuestArena.hpp"
 
 #include <algorithm>
 #include <cerrno>
@@ -24,6 +25,8 @@ void HostEntropy_nid_no_patch(void* buffer, std::size_t size) {
         std::memcpy(bytes + offset, &value, std::min(sizeof(value), size - offset));
     }
 #else
+    const GuestArena::HostWrite destination(buffer, size);
+    if (!destination.Open()) throw std::system_error(EFAULT, std::generic_category(), "HostEntropy: the buffer is not writable");
     constexpr std::size_t MaxChunk = 256;
     for (std::size_t offset = 0; offset < size; offset += MaxChunk) {
         if (getentropy(bytes + offset, std::min(MaxChunk, size - offset)) != 0)

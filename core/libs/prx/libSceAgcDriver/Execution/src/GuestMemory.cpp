@@ -55,6 +55,7 @@
 #include <pthread.h>
 #include <sstream>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include "prx/libc/include/specifics/linux/HostMapping.hpp"
@@ -776,9 +777,16 @@ bool describePages(std::uintptr_t address, std::size_t bytes, Emit&& emit) {
                     cursor = gapEnd;
                     continue;
                 }
-                const bool readable = (query.vma_flags & PROCMAP_QUERY_VMA_READABLE) != 0;
-                const bool writable = readable && (query.vma_flags & PROCMAP_QUERY_VMA_WRITABLE) != 0;
-                const auto next = std::min<std::uintptr_t>(end, query.vma_end);
+                bool readable = (query.vma_flags & PROCMAP_QUERY_VMA_READABLE) != 0;
+                bool writable = readable && (query.vma_flags & PROCMAP_QUERY_VMA_WRITABLE) != 0;
+                auto next = std::min<std::uintptr_t>(end, query.vma_end);
+                std::uintptr_t watchedEnd = next;
+                const int logical = GuestWriteWatch::GuestWriteWatchProtection_nid_postfix(cursor, next, &watchedEnd);
+                if (logical >= 0) {
+                    readable = readable && (logical & PROT_READ) != 0;
+                    writable = readable && (logical & PROT_WRITE) != 0;
+                }
+                if (watchedEnd > cursor && watchedEnd < next) next = watchedEnd;
                 recordRun(next, readable, writable);
                 if (!emit(PageRun{cursor, next, readable, writable})) return true;
                 cursor = next;
@@ -845,9 +853,16 @@ bool describePages(std::uintptr_t address, std::size_t bytes, Emit&& emit) {
                 found = true;
                 break;
             }
-            const bool readable = permissions[0] == 'r';
-            const bool writable = readable && permissions[1] == 'w';
-            const auto next = std::min(end, last);
+            bool readable = permissions[0] == 'r';
+            bool writable = readable && permissions[1] == 'w';
+            auto next = std::min(end, last);
+            std::uintptr_t watchedEnd = next;
+            const int logical = GuestWriteWatch::GuestWriteWatchProtection_nid_postfix(cursor, next, &watchedEnd);
+            if (logical >= 0) {
+                readable = readable && (logical & PROT_READ) != 0;
+                writable = readable && (logical & PROT_WRITE) != 0;
+            }
+            if (watchedEnd > cursor && watchedEnd < next) next = watchedEnd;
             recordRun(next, readable, writable);
             if (!emit(PageRun{cursor, next, readable, writable})) return true;
             cursor = next;
@@ -2065,11 +2080,11 @@ bool ImportWatched(std::uint64_t address, std::size_t bytes, const std::function
     const auto stop = (address + bytes + page - 1) & ~(page - 1);
     const bool covered = tracker.covers(first, static_cast<std::size_t>(stop - first));
     const auto runImport = [&] {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         std::optional<GuestArena::HostWrite> open;
         if (importMayWriteGuest) open.emplace(reinterpret_cast<void*>(first), static_cast<std::size_t>(stop - first));
 #endif
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(__linux__)
         static_cast<void>(importMayWriteGuest);
 #endif
         return import();

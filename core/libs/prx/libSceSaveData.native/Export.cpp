@@ -1090,7 +1090,11 @@ int APS5_VABI sceSaveDataLoadIcon(const SaveDataMountPoint* mount_point, SaveDat
     const auto count = std::min(icon->buf_size, static_cast<std::size_t>(size));
     if (count > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) return SAVE_DATA_ERROR_INTERNAL;
     file.seekg(0);
-    if (count != 0) file.read(static_cast<char*>(icon->buf), static_cast<std::streamsize>(count));
+    if (count != 0) {
+        const GuestArena::HostWrite destination(icon->buf, count);
+        if (!destination.Open()) return SAVE_DATA_ERROR_INTERNAL;
+        file.read(static_cast<char*>(icon->buf), static_cast<std::streamsize>(count));
+    }
     if (!file) return SAVE_DATA_ERROR_INTERNAL;
     icon->data_size = static_cast<std::size_t>(size);
     return SAVE_DATA_OK;

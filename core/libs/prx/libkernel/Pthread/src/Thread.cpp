@@ -1,4 +1,5 @@
 #include "prx/libc/include/GuestGs.hpp"
+#include "prx/libc/include/GuestWriteWatch.hpp"
 #include "prx/libkernel/Pthread/include/ThreadLifecycle.hpp"
 #include "prx/libkernel/Pthread/include/Cancel.hpp"
 #include "prx/libkernel/include/Api.hpp"
@@ -84,7 +85,7 @@ struct ThreadArgs {
     GuestSignalSet guestSignalMask{};
 };
 
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 static void KeepHostFaultSignalsUnblocked(sigset_t& mask) {
     for (const int signal : {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP}) sigdelset(&mask, signal);
 }
@@ -182,6 +183,9 @@ static bool DiscardFinishedStackPages(const FinishedStack& stack) {
 }
 
 static void CollectFinishedStack(void* address, std::size_t bytes) {
+#ifdef __linux__
+    GuestWriteWatch::GuestWriteWatchEndHostWrite_nid_postfix(address, bytes);
+#endif
     UnregisterGuestStackMapping(address);
     const FinishedStack finished{address, bytes};
     if (!DiscardFinishedStackPages(finished)) {
@@ -286,6 +290,9 @@ static void AllocateGuestStack(PthreadPrivate* thread, std::size_t usableBytes) 
         if (DoMprotect(spare.address, spare.bytes, 3) == 0 && DoMprotect(spare.address, GUEST_STACK_GUARD, 0) == 0) {
             thread->guestStack = spare.address;
             thread->guestStackBytes = spare.bytes;
+#ifdef __linux__
+            GuestWriteWatch::GuestWriteWatchBeginHostWrite_nid_postfix(thread->guestStack, thread->guestStackBytes);
+#endif
             return;
         }
         UnregisterGuestStackMapping(spare.address);
@@ -303,6 +310,9 @@ static void AllocateGuestStack(PthreadPrivate* thread, std::size_t usableBytes) 
     }
     thread->guestStack = stack;
     thread->guestStackBytes = bytes;
+#ifdef __linux__
+    GuestWriteWatch::GuestWriteWatchBeginHostWrite_nid_postfix(thread->guestStack, thread->guestStackBytes);
+#endif
 }
 
 static void FreeGuestStack(PthreadPrivate* thread) {
@@ -913,7 +923,7 @@ static void RunThread(std::unique_ptr<ThreadArgs> args) {
 #ifdef _WIN32
     DeliverPendingException_nid_no_patch(self);
 #else
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     sigset_t hostMask = signalMask;
     KeepHostFaultSignalsUnblocked(hostMask);
     pthread_sigmask(SIG_SETMASK, &hostMask, nullptr);
@@ -1207,7 +1217,7 @@ int APS5_VABI scePthreadCreate(Pthread* thread, const PthreadAttr* attr, Pthread
     if (created == 0) {
         sigset_t allSignals;
         sigfillset(&allSignals);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         KeepHostFaultSignalsUnblocked(allSignals);
 #endif
         pthread_sigmask(SIG_BLOCK, &allSignals, nullptr);

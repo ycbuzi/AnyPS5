@@ -7,6 +7,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 find_package(Threads REQUIRED)
+if(APPLE)
 add_executable(write_watch_backing_tests ../WriteWatchBacking.cpp ../../prx/libc/src/GuestWriteWatch.cpp)
 target_include_directories(write_watch_backing_tests PRIVATE ../..)
 target_compile_features(write_watch_backing_tests PRIVATE cxx_std_20)
@@ -20,6 +21,8 @@ foreach(mode shared private writable late restore)
     set_tests_properties(write_watch_backing_${mode} PROPERTIES TIMEOUT 30)
 endforeach()
 
+endif()
+
 add_executable(write_watch_tests ../WriteWatch.cpp ../../prx/libc/src/GuestWriteWatch.cpp)
 target_include_directories(write_watch_tests PRIVATE ../..)
 target_compile_features(write_watch_tests PRIVATE cxx_std_20)
@@ -28,6 +31,7 @@ set_target_properties(write_watch_tests PROPERTIES
     CXX_EXTENSIONS OFF
     RUNTIME_OUTPUT_DIRECTORY "$<1:${ANYPS5_TEST_OUTPUT_DIRECTORY}>")
 
+if(APPLE)
 foreach(mode collect fresh armed register mapped host empty protection overlaps threads raised fault-ahead read-trap read-trap-threads read-trap-fault read-trap-late read-trap-fault-bound)
     add_test(NAME write_watch_${mode} COMMAND write_watch_tests ${mode})
     set_tests_properties(write_watch_${mode} PROPERTIES TIMEOUT 30)
@@ -40,3 +44,13 @@ foreach(mode execute-fault read-fault)
     add_test(NAME write_watch_${mode} COMMAND write_watch_tests ${mode})
     set_tests_properties(write_watch_${mode} PROPERTIES TIMEOUT 30)
 endforeach()
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    foreach(mode collect fresh armed register mapped host empty protection overlaps threads raised fault-ahead execute-fault read-fault)
+        add_test(NAME write_watch_soft_${mode} COMMAND write_watch_tests ${mode})
+        set_tests_properties(write_watch_soft_${mode} PROPERTIES TIMEOUT 30 ENVIRONMENT APS5_SOFT_WRITE_WATCH=1)
+    endforeach()
+    add_test(NAME write_watch_soft_fault-ahead-off COMMAND write_watch_tests fault-ahead-off)
+    set_tests_properties(write_watch_soft_fault-ahead-off PROPERTIES TIMEOUT 30 ENVIRONMENT "APS5_SOFT_WRITE_WATCH=1;APS5_WRITE_WATCH_FAULT_AHEAD=0")
+endif()
