@@ -1,0 +1,153 @@
+name: Fork PR tests
+
+on:
+  push:
+    branches: [prtest-runner]
+    paths: [queue.json]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-prtest
+  cancel-in-progress: false
+
+env:
+  CONFIGURE: >-
+    -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+  WINLIBS_RELEASE: 15.2.0posix-14.0.0-ucrt-r7
+  WINLIBS_ZIP: winlibs-x86_64-posix-seh-gcc-15.2.0-mingw-w64ucrt-14.0.0-r7.zip
+  WINLIBS_SHA256: cb2fbad6162540cdf5e1facdce08d4dac359e8cf64f7f696a99274291763b815
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.q.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: q
+        run: echo "matrix=$(jq -c . queue.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: plan
+    name: ${{ matrix.pr }} ${{ matrix.os }} ${{ matrix.kind }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+    env:
+      PR: ${{ matrix.pr }}
+      HEAD: ${{ matrix.head }}
+      MAIN: ${{ matrix.main }}
+      KIND: ${{ matrix.kind }}
+      OS: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: boykopovar/AnyPS5
+          ref: ${{ matrix.main }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge the pull request into main
+        id: merge
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          if [ "$PR" = "0" ]; then echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"; echo ok=1 >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR"
+          if [ "$(git rev-parse "refs/remotes/pull/$PR")" != "$HEAD" ]; then echo "stale" > "$RUNNER_TEMP/out/status"; echo "::warning::#$PR has newer commits than $HEAD"; exit 0; fi
+          if ! git -c user.name=ci -c user.email=ci@localhost merge --no-ff --no-edit "refs/remotes/pull/$PR"; then echo "conflict" > "$RUNNER_TEMP/out/status"; exit 0; fi
+          echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"
+          echo ok=1 >> "$GITHUB_OUTPUT"
+      - name: Check out the submodules
+        if: steps.merge.outputs.ok == '1'
+        run: git submodule update --init --recursive --depth 1 --jobs 8
+      - name: Point the WinLibs CMake at the CA bundle of Git for Windows
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          for prefix in ucrt64 mingw64; do
+            bundle="C:/Program Files/Git/$prefix/etc/ssl/certs/ca-bundle.crt"
+            if [ -f "$bundle" ]; then echo "SSL_CERT_FILE=$bundle" >> "$GITHUB_ENV"; exit 0; fi
+          done
+      - id: toolchain
+        if: steps.merge.outputs.ok == '1'
+        uses: actions/cache@v4
+        with:
+          path: C:\winlibs
+          key: ${{ env.WINLIBS_ZIP }}
+      - if: steps.merge.outputs.ok == '1' && steps.toolchain.outputs.cache-hit != 'true'
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/winlibs.zip" "https://github.com/brechtsanders/winlibs_mingw/releases/download/$WINLIBS_RELEASE/$WINLIBS_ZIP"
+          echo "$WINLIBS_SHA256  $RUNNER_TEMP/winlibs.zip" | sha256sum -c -
+          7z x "$RUNNER_TEMP/winlibs.zip" -oC:/winlibs > /dev/null
+      - if: steps.merge.outputs.ok == '1'
+        run: echo 'C:\winlibs\mingw64\bin' >> "$GITHUB_PATH"
+      - if: steps.merge.outputs.ok == '1'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: fork-${{ matrix.os }}-${{ matrix.kind }}
+          save: ${{ matrix.pr == '0' }}
+          max-size: 2G
+      - name: Configure
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          if [ "$KIND" = relinker ]; then extra=-DANYPS5_RELINKER_ONLY=ON; else extra='-DANYPS5_AGC_EXECUTION_TESTS=F16ToF32Unpack;F64FmaSubnormals;RegistrationPrepareShutdown'; fi
+          cmake -S . -B build $CONFIGURE "$extra" > "$RUNNER_TEMP/out/configure.log" 2>&1 || echo "configure-failed" > "$RUNNER_TEMP/out/status"
+          tail -n 30 "$RUNNER_TEMP/out/configure.log"
+      - name: Build
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          start=$(date +%s)
+          set +e
+          cmake --build build -- -k 0 > "$RUNNER_TEMP/out/build.log" 2>&1
+          echo $? > "$RUNNER_TEMP/out/build-rc"
+          if [ "$KIND" = full ]; then cmake --build build --target libs -- -k 0 >> "$RUNNER_TEMP/out/build.log" 2>&1 || echo 1 > "$RUNNER_TEMP/out/build-rc"; fi
+          echo $(( $(date +%s) - start )) > "$RUNNER_TEMP/out/build-sec"
+          echo "failed targets: $(grep -c '^FAILED:' "$RUNNER_TEMP/out/build.log" || true)"
+      - name: Test twice
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          for i in 1 2; do ctest --test-dir build --output-on-failure --timeout 300 --parallel 4 > "$RUNNER_TEMP/out/ctest-$i.log" 2>&1 || true; done
+          grep 'tests passed' "$RUNNER_TEMP/out/ctest-1.log" "$RUNNER_TEMP/out/ctest-2.log" || true
+      - name: Write the report
+        if: always()
+        run: |
+          o="$RUNNER_TEMP/out"
+          fails() { awk '/^The following tests FAILED:/{f=1;next} f&&/^[ \t]+[0-9]+ - /{sub(/^[ \t]+[0-9]+ - /,"");sub(/ \(.*\)$/,"");print;next} f&&!/^[ \t]/{f=0}' "$@" 2>/dev/null | sort -u; }
+          {
+            echo "pr=$PR"
+            echo "os=$OS"
+            echo "kind=$KIND"
+            echo "head=$HEAD"
+            echo "main=$MAIN"
+            echo "merged=${{ steps.merge.outputs.merged }}"
+            echo "status=$(cat "$o/status" 2>/dev/null || echo tested)"
+            echo "build_rc=$(cat "$o/build-rc" 2>/dev/null)"
+            echo "build_sec=$(cat "$o/build-sec" 2>/dev/null)"
+            echo "failed_targets=$(grep -c '^FAILED:' "$o/build.log" 2>/dev/null || true)"
+            echo "run1=$(grep -h 'tests passed' "$o/ctest-1.log" 2>/dev/null)"
+            echo "run2=$(grep -h 'tests passed' "$o/ctest-2.log" 2>/dev/null)"
+            echo "gcc=$(gcc -dumpfullversion 2>/dev/null)"
+            echo "runner=${ImageOS:-$OS} ${ImageVersion:-}"
+            echo "url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$o/report.txt"
+          fails "$o/ctest-1.log" "$o/ctest-2.log" > "$o/failures.txt"
+          grep -h '^FAILED:' -A 8 "$o/build.log" 2>/dev/null | head -n 60 > "$o/build-errors.txt" || true
+          for t in $(head -n 10 "$o/failures.txt"); do grep -h -A 25 "Test *#[0-9]*: $t " "$o/ctest-1.log" | head -n 40; done > "$o/failure-output.txt" 2>/dev/null || true
+          rm -f "$o/build.log" "$o/configure.log" "$o/ctest-1.log" "$o/ctest-2.log"
+          cat "$o/report.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r-${{ matrix.pr }}-${{ matrix.os }}-${{ matrix.kind }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
