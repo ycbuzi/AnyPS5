@@ -1,131 +1,139 @@
 [
  {
-  "pr": "17455",
-  "head": "07fd9c868483ead192563cecb3cbacd68989d2ba",
+  "pr": "18136",
+  "head": "3051fded6bfa1bf9fd28339e94ab6e429efbb3ea",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-2022",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "18136",
+  "head": "3051fded6bfa1bf9fd28339e94ab6e429efbb3ea",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-11-arm",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "18137",
+  "head": "56f7639843d0c21bff98aa09939de44cf54df953",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-2022",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "18137",
+  "head": "56f7639843d0c21bff98aa09939de44cf54df953",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-11-arm",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "18476",
+  "head": "7b84f85167feab995efa4382a60f086f52242226",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "17455",
-  "head": "07fd9c868483ead192563cecb3cbacd68989d2ba",
+  "pr": "18476",
+  "head": "7b84f85167feab995efa4382a60f086f52242226",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "18462",
-  "head": "78e8bb7fa6e33adea018a60f07bc551540d2056f",
+  "pr": "18475",
+  "head": "034888fed552365222870a862606adaecba838a3",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "18462",
-  "head": "78e8bb7fa6e33adea018a60f07bc551540d2056f",
+  "pr": "18475",
+  "head": "034888fed552365222870a862606adaecba838a3",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "16782",
-  "head": "42c8561f53abde931e18845d746995fa2046d6b2",
+  "pr": "14856",
+  "head": "8e3f13657aeb77a95818b2fd1e5c2dc4a86d1698",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "16782",
-  "head": "42c8561f53abde931e18845d746995fa2046d6b2",
+  "pr": "14856",
+  "head": "8e3f13657aeb77a95818b2fd1e5c2dc4a86d1698",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "17104",
-  "head": "5a70c34d17ceee49d94acab9686706235ce64e00",
+  "pr": "18474",
+  "head": "45d177c61f240840d3f6d091fc752059e3aeb164",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "17104",
-  "head": "5a70c34d17ceee49d94acab9686706235ce64e00",
+  "pr": "18474",
+  "head": "45d177c61f240840d3f6d091fc752059e3aeb164",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "18470",
-  "head": "b249a39f9adae46c557b7b841d2c7ce331e44167",
+  "pr": "18152",
+  "head": "c1fb87f5d4833b39b6725879c4ee760e8d4f7d25",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-2022",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "18152",
+  "head": "c1fb87f5d4833b39b6725879c4ee760e8d4f7d25",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-11-arm",
+  "kind": "relinker",
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "16841",
+  "head": "808671c8452b0863e2b18b5539b7b0c26f91939f",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "18470",
-  "head": "b249a39f9adae46c557b7b841d2c7ce331e44167",
+  "pr": "16841",
+  "head": "808671c8452b0863e2b18b5539b7b0c26f91939f",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  },
  {
-  "pr": "18464",
-  "head": "c55efff15f505306c697595fe04904dfb509893a",
+  "pr": "0",
+  "head": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2025",
-  "kind": "full",
-  "batch": "20261111-102220"
- },
- {
-  "pr": "18464",
-  "head": "c55efff15f505306c697595fe04904dfb509893a",
-  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2022",
-  "kind": "full",
-  "batch": "20261111-102220"
- },
- {
-  "pr": "18414",
-  "head": "2203d0f823a68b2d5721ba587769dcdd32f5a66e",
-  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2025",
-  "kind": "full",
-  "batch": "20261111-102220"
- },
- {
-  "pr": "18414",
-  "head": "2203d0f823a68b2d5721ba587769dcdd32f5a66e",
-  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2022",
-  "kind": "full",
-  "batch": "20261111-102220"
- },
- {
-  "pr": "17459",
-  "head": "c5df20acbdefd4d461d8213c44706075731aeff5",
-  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2025",
-  "kind": "full",
-  "batch": "20261111-102220"
- },
- {
-  "pr": "17459",
-  "head": "c5df20acbdefd4d461d8213c44706075731aeff5",
-  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
-  "os": "windows-2022",
-  "kind": "full",
-  "batch": "20261111-102220"
+  "os": "windows-11-arm",
+  "kind": "relinker",
+  "batch": "20261111-112215"
  },
  {
   "pr": "0",
@@ -133,7 +141,15 @@
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2022",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
+ },
+ {
+  "pr": "0",
+  "head": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
+  "os": "windows-2022",
+  "kind": "relinker",
+  "batch": "20261111-112215"
  },
  {
   "pr": "0",
@@ -141,6 +157,6 @@
   "main": "f57c971559a8dcacdb7b090ad5f4a82b7633ea96",
   "os": "windows-2025",
   "kind": "full",
-  "batch": "20261111-102220"
+  "batch": "20261111-112215"
  }
 ]
