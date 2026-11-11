@@ -141,8 +141,10 @@ jobs:
             echo "url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           } > "$o/report.txt"
           fails "$o/ctest-1.log" "$o/ctest-2.log" > "$o/failures.txt"
+          fails "$o/ctest-1.log" > "$o/failures-1.txt"
+          fails "$o/ctest-2.log" > "$o/failures-2.txt"
           grep -h '^FAILED:' -A 8 "$o/build.log" 2>/dev/null | head -n 60 > "$o/build-errors.txt" || true
-          for t in $(head -n 10 "$o/failures.txt"); do grep -h -A 25 "Test *#[0-9]*: $t " "$o/ctest-1.log" | head -n 40; done > "$o/failure-output.txt" 2>/dev/null || true
+          for t in $(head -n 10 "$o/failures.txt"); do grep -h -A 25 "Test *#[0-9]*: $t " "$o/ctest-1.log" "$o/ctest-2.log" | head -n 40; done > "$o/failure-output.txt" 2>/dev/null || true
           rm -f "$o/build.log" "$o/configure.log" "$o/ctest-1.log" "$o/ctest-2.log"
           cat "$o/report.txt"
       - uses: actions/upload-artifact@v4
