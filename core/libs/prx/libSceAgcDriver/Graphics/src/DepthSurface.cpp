@@ -3638,12 +3638,34 @@ DepthPlaneStoreStatistics DepthPlaneStoreCounts() {
     return statistics;
 }
 
-std::uint64_t HtileDepthClearAddress(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const std::array<std::uint32_t, 3>& numThreads) {
+namespace {
+
+bool matchesHtileMaskKernel(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const std::array<std::uint32_t, 3>& numThreads) {
     static constexpr std::array<std::uint32_t, 17> htileMaskKernel{0xd7460000u, 0x04010c06u, 0x34000084u, 0xdc388000u, 0x04020000u, 0xbf8c3f70u, 0xd7710008u, 0x00120805u, 0xd7710009u, 0x00120a05u, 0xd771000au, 0x00120c05u, 0xd771000bu, 0x00120e05u, 0xdc788000u, 0x00020800u, 0xbf810000u};
-    if (userData.size() < 6 || numThreads[0] != 64 || numThreads[1] != 1 || numThreads[2] != 1) return 0;
-    if (code.size() < htileMaskKernel.size() || !std::equal(htileMaskKernel.begin(), htileMaskKernel.end(), code.begin())) return 0;
+    if (userData.size() < 6 || numThreads[0] != 64 || numThreads[1] != 1 || numThreads[2] != 1) return false;
+    return code.size() >= htileMaskKernel.size() && std::equal(htileMaskKernel.begin(), htileMaskKernel.end(), code.begin());
+}
+
+}
+
+std::uint64_t HtileDepthClearAddress(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const std::array<std::uint32_t, 3>& numThreads) {
+    if (!matchesHtileMaskKernel(code, userData, numThreads)) return 0;
     if ((userData[5] & 0xfu) != 0 || (userData[4] & 0xfu) != 0) return 0;
     return userData[2] | (static_cast<std::uint64_t>(userData[3]) << 32u);
+}
+
+std::optional<HtileMaskClear> MatchHtileMaskUpdate(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, std::span<const std::uint32_t> packet, std::uint64_t indirectArguments) {
+    if (!matchesHtileMaskKernel(code, userData, compute.numThreads)) return std::nullopt;
+    if (packet.size() < 5u || indirectArguments != 0u || compute.PartialGroups() || !compute.groupIdEnable[0] || compute.threadIdComponentCount == 0u || compute.threadIdComponentCount > 3u) return std::nullopt;
+    if (packet[1] == 0u || packet[1] > 0x400000u || packet[2] != 1u || packet[3] != 1u || (packet[4] & 0x23u) != 1u) return std::nullopt;
+    const auto address = userData[2] | (static_cast<std::uint64_t>(userData[3]) << 32u);
+    const auto bytes = static_cast<std::uint64_t>(packet[1]) * 64u * 16u;
+    if (address == 0u || (address & 15u) != 0u || address > std::numeric_limits<std::uint64_t>::max() - bytes) return std::nullopt;
+    return HtileMaskClear{address, static_cast<std::size_t>(bytes), userData[5], userData[4]};
+}
+
+void ApplyHtileMask(std::span<std::uint32_t> words, std::uint32_t mask, std::uint32_t value) {
+    for (auto& word : words) word = (word & mask) | value;
 }
 
 std::optional<HtileMaskClear> MatchHtileBufferMaskClear(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, std::span<const std::uint32_t> packet, std::uint64_t indirectArguments) {

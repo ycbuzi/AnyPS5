@@ -258,6 +258,44 @@ void drainPendingInputWrites(std::uint32_t queueId, std::initializer_list<std::p
 
 }
 
+bool Driver::matchesHtileMaskUpdate(std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute) {
+    static const bool enabled = std::getenv("APS5_NO_HTILE_MASK_HLE") == nullptr;
+    if (!enabled || Graphics::HtileDepthClearAddress(code, userData, compute.numThreads) != 0) return false;
+    return Graphics::MatchHtileMaskUpdate(code, userData, compute, packet, 0).has_value();
+}
+
+bool Driver::updateHtileMask(std::uint32_t queueId, std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, const std::shared_ptr<VulkanDevice>& localDevice) {
+    if (!matchesHtileMaskUpdate(packet, code, userData, compute)) return false;
+    const auto update = *Graphics::MatchHtileMaskUpdate(code, userData, compute, packet, 0);
+    const auto store = [this, queueId, update, localDevice] {
+        GuestMemory::TagGpuLockSite(GuestMemory::GpuLockSite::Fill);
+        std::lock_guard gpuLock(GuestMemory::GpuMutex());
+        recordLabelsForPacket(localDevice.get(), queueId);
+        GuestMemory::CheckRange(reinterpret_cast<const void*>(update.address), update.bytes, 16, true);
+        static thread_local std::vector<std::uint32_t>* wordsSlot = nullptr;
+        auto& words = ShaderRecompiler::ThreadOwned(wordsSlot);
+        constexpr std::size_t chunk = std::size_t{1} << 20;
+        for (std::size_t done = 0; done < update.bytes; done += chunk) {
+            const auto bytes = std::min(chunk, update.bytes - done);
+            words.resize(bytes / 4u);
+            GuestMemory::Read(update.address + done, std::as_writable_bytes(std::span(words)), 16);
+            Graphics::ApplyHtileMask(words, update.mask, update.value);
+            GuestMemory::Write(update.address + done, std::as_bytes(std::span(words)), 16);
+        }
+        noteForeignWriter(update.address, update.address + update.bytes, queueId);
+    };
+    static const bool orderedFills = std::getenv("APS5_PIPELINE_DRAIN_FILLS") == nullptr;
+    if (orderedFills && queueId == 0 && DrawPipeline::Active()) {
+        DrawPipeline::Queue0().Enqueue(DrawPipeline::CommitKind::BufferFill, [store, queueId] {
+            GuestMemory::SetCurrentPacket(0x15, queueId);
+            store();
+        }, {{update.address, update.address + update.bytes}});
+        return true;
+    }
+    store();
+    return true;
+}
+
 bool Driver::fillBuffer(QueueState& queue, std::uint32_t queueId, std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, const std::shared_ptr<VulkanDevice>& localDevice) {
     auto dwordFill = MatchDwordPatternFill(packet, code, userData, compute);
     if (!dwordFill) dwordFill = MatchConstantDwordFill(packet, code, userData, compute);
