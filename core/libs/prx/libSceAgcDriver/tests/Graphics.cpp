@@ -2934,7 +2934,6 @@ void htileDepthClearTests() {
     Require(address(other, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a different kernel was taken for RADV's HTILE update");
     Require(address(std::span(kernel).first(16), {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a truncated kernel was taken for RADV's HTILE update");
 
-    // The same kernel for any value and mask, over its exact range (MatchHtileMaskUpdate): groups * 64 threads * 16 bytes.
     ShaderRecompiler::ShaderComputeStageInfo compute{};
     compute.numThreads = {64u, 1u, 1u};
     compute.groupIdEnable = {true, false, false};

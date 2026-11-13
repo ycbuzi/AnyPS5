@@ -258,12 +258,6 @@ void drainPendingInputWrites(std::uint32_t queueId, std::initializer_list<std::p
 
 }
 
-// RADV's HTILE mask kernel with a value and mask that do not make it a depth fast clear (stencil bits, ZMASK set
-// to expanded): applied to guest memory over the exact range the kernel addresses (groups * 64 * 16 bytes) instead
-// of dispatched. Dispatched, it is an address-based dispatch whose reach is not known, so it mirrors the whole heap
-// around the pointer, and every GPU-resident image in that heap is first stored back to guest memory (a 4K target
-// and its depth: ~160 ms of CPU per dispatch on a Quest 2). Depth fast clears keep the dispatch and the depth
-// surface's clear bookkeeping (HtileDepthClearAddress). Debug aid: APS5_NO_HTILE_MASK_HLE=1 dispatches them all.
 bool Driver::matchesHtileMaskUpdate(std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute) {
     static const bool enabled = std::getenv("APS5_NO_HTILE_MASK_HLE") == nullptr;
     if (!enabled || Graphics::HtileDepthClearAddress(code, userData, compute.numThreads) != 0) return false;
@@ -278,7 +272,6 @@ bool Driver::updateHtileMask(std::uint32_t queueId, std::span<const std::uint32_
         std::lock_guard gpuLock(GuestMemory::GpuMutex());
         recordLabelsForPacket(localDevice.get(), queueId);
         GuestMemory::CheckRange(reinterpret_cast<const void*>(update.address), update.bytes, 16, true);
-        // Read and Write store pending GPU results overlapping the range first (the flush hook), and only this range.
         static thread_local std::vector<std::uint32_t>* wordsSlot = nullptr;
         auto& words = ShaderRecompiler::ThreadOwned(wordsSlot);
         constexpr std::size_t chunk = std::size_t{1} << 20;

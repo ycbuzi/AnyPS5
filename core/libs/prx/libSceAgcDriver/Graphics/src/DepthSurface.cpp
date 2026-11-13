@@ -3344,8 +3344,6 @@ DepthPlaneStoreStatistics DepthPlaneStoreCounts() {
 
 namespace {
 
-// RADV's HTILE mask kernel: off = (group * 64 + lane) * 16; load dwordx4 [s[2:3] + off]; each dword (v & s5) | s4;
-// store dwordx4 back.
 bool matchesHtileMaskKernel(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const std::array<std::uint32_t, 3>& numThreads) {
     static constexpr std::array<std::uint32_t, 17> htileMaskKernel{0xd7460000u, 0x04010c06u, 0x34000084u, 0xdc388000u, 0x04020000u, 0xbf8c3f70u, 0xd7710008u, 0x00120805u, 0xd7710009u, 0x00120a05u, 0xd771000au, 0x00120c05u, 0xd771000bu, 0x00120e05u, 0xdc788000u, 0x00020800u, 0xbf810000u};
     if (userData.size() < 6 || numThreads[0] != 64 || numThreads[1] != 1 || numThreads[2] != 1) return false;
