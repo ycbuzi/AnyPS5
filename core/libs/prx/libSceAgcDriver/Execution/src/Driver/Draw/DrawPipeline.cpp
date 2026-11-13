@@ -2,6 +2,7 @@
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
 #include "prx/libSceAgcDriver/Execution/include/HandoffSpin.hpp"
+#include "prx/libSceAgcDriver/Execution/include/HtileProfile.hpp"
 #include "prx/libSceAgcDriver/Execution/include/PerformanceTrace.hpp"
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
 #include "prx/libSceAgcDriver/Execution/include/WorkerSampler.hpp"
@@ -458,6 +459,14 @@ void DrawPipeline::ReleaseRetired() {
 }
 
 void DrawPipeline::Drain(DrainReason reason, std::uint32_t opcode) {
+    struct HtileDrainTimer {
+        std::uintptr_t pc;
+        bool waited;
+        std::uint64_t start;
+        ~HtileDrainTimer() {
+            if (pc != 0) HtileProfile::NoteDrain(pc, waited, HtileProfile::Now() - start);
+        }
+    } htileDrainTimer{HtileProfile::Enabled() && opcode == 0x15 ? reinterpret_cast<std::uintptr_t>(__builtin_return_address(0)) : 0, Busy(), HtileProfile::Now()};
     drainRequests[std::min<std::uint32_t>(opcode, 0x100)].fetch_add(1, std::memory_order_relaxed);
     reasonRequests[static_cast<std::size_t>(reason)].fetch_add(1, std::memory_order_relaxed);
     const bool finisherBusy = DrawFinisher::Busy() && !DrawFinisher::OnFinisherThread();

@@ -1,5 +1,6 @@
 #include "prx/libSceAgcDriver/Execution/include/ProfileOutput.hpp"
 #include "prx/libSceAgcDriver/Execution/include/PerformanceTimer.hpp"
+#include "prx/libSceAgcDriver/Execution/include/HtileProfile.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Draw/DrawPipeline.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Memory/DrawWriteRanges.hpp"
@@ -80,6 +81,7 @@ bool Driver::pipelineDispatch() {
 
 void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, const Submission& submission, std::uint64_t indirectArguments) {
     PerformanceTimer timing("Driver.Dispatch");
+    const auto htileStart = HtileProfile::Enabled() ? HtileProfile::Now() : 0;
     const auto address = (static_cast<std::uint64_t>(readRegister(queue.shader, 0x20c)) << 8u) | (static_cast<std::uint64_t>(readRegister(queue.shader, 0x20d) & 0xffu) << 40u);
     if (SkippedShader(address)) return;
     auto registeredShader = RegisteredProgram(*submission.shaders, address, {0});
@@ -158,7 +160,12 @@ void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, 
             if (resolvedAhead().empty()) gateOpened() = true;
             return;
         }
+        const auto htileMaskStart = htileStart != 0 ? HtileProfile::Now() : 0;
         if (!partialLastGroup && indirectArguments == 0 && updateHtileMask(submission.queue, packet, std::span(snapshot.code).subspan(codeOffset), userData, compute, localDevice)) {
+            if (htileStart != 0) {
+                HtileProfile::Add(HtileProfile::DispatchPrologue, htileMaskStart - htileStart);
+                HtileProfile::Add(HtileProfile::DispatchHle, HtileProfile::Now() - htileMaskStart);
+            }
             pendingDispatchPhases().outcome = DispatchOutcome::FillHle;
             if (resolvedAhead().empty()) gateOpened() = true;
             return;
@@ -170,7 +177,12 @@ void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, 
             const auto bytes = static_cast<std::size_t>(threads * 16u);
             if (Graphics::NoteHtileDepthClear(htile, bytes, nativeBytes)) htileClearCompletion = std::pair{htile, bytes};
             if (nativeBytes != 0u) htileMask = {htile, nativeBytes, userData[5], userData[4]};
+            const auto depthStart = htileStart != 0 ? HtileProfile::Now() : 0;
             if (!htileClearCompletion.has_value() && !partialLastGroup && indirectArguments == 0 && nativeBytes != 0u && nativeBytes == bytes && storeHtileMask(submission.queue, htileMask, localDevice)) {
+                if (htileStart != 0) {
+                    HtileProfile::Add(HtileProfile::DepthPrologue, depthStart - htileStart);
+                    HtileProfile::Add(HtileProfile::DepthHle, HtileProfile::Now() - depthStart);
+                }
                 pendingDispatchPhases().outcome = DispatchOutcome::FillHle;
                 if (resolvedAhead().empty()) gateOpened() = true;
                 return;

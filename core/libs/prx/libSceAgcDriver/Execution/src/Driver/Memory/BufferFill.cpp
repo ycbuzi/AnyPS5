@@ -1,6 +1,7 @@
 #include "prx/libSceAgcDriver/Execution/include/Driver/Driver.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Memory/BufferFill.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Mutex.hpp"
+#include "prx/libSceAgcDriver/Execution/include/HtileProfile.hpp"
 #include "ThreadOwned.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Diagnostics.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Memory/DwordPatternFill.hpp"
@@ -280,8 +281,12 @@ bool Driver::updateHtileMask(std::uint32_t queueId, std::span<const std::uint32_
 bool Driver::storeHtileMask(std::uint32_t queueId, const Graphics::HtileMaskClear& update, const std::shared_ptr<VulkanDevice>& localDevice) {
     if (!htileMaskHleEnabled() || update.bytes == 0u || (update.address & 15u) != 0u || (update.bytes & 15u) != 0u) return false;
     const auto store = [this, queueId, update, localDevice] {
+        const bool profile = HtileProfile::Enabled();
+        const auto storeStart = profile ? HtileProfile::Now() : 0;
+        std::uint64_t readNs = 0, applyNs = 0, writeNs = 0;
         GuestMemory::TagGpuLockSite(GuestMemory::GpuLockSite::Fill);
         std::lock_guard gpuLock(GuestMemory::GpuMutex());
+        if (profile) HtileProfile::Add(HtileProfile::StoreLock, HtileProfile::Now() - storeStart);
         recordLabelsForPacket(localDevice.get(), queueId);
         GuestMemory::CheckRange(reinterpret_cast<const void*>(update.address), update.bytes, 16, true);
         static thread_local std::vector<std::uint32_t>* wordsSlot = nullptr;
@@ -290,11 +295,24 @@ bool Driver::storeHtileMask(std::uint32_t queueId, const Graphics::HtileMaskClea
         for (std::size_t done = 0; done < update.bytes; done += chunk) {
             const auto bytes = std::min(chunk, update.bytes - done);
             words.resize(bytes / 4u);
+            auto mark = profile ? HtileProfile::Now() : 0;
             GuestMemory::Read(update.address + done, std::as_writable_bytes(std::span(words)), 16);
+            if (profile) { const auto t = HtileProfile::Now(); readNs += t - mark; mark = t; }
             Graphics::ApplyHtileMask(words, update.mask, update.value);
+            if (profile) { const auto t = HtileProfile::Now(); applyNs += t - mark; mark = t; }
             GuestMemory::Write(update.address + done, std::as_bytes(std::span(words)), 16);
+            if (profile) writeNs += HtileProfile::Now() - mark;
         }
+        const auto noteStart = profile ? HtileProfile::Now() : 0;
         noteForeignWriter(update.address, update.address + update.bytes, queueId);
+        if (profile) {
+            const auto end = HtileProfile::Now();
+            HtileProfile::Add(HtileProfile::StoreRead, readNs, update.bytes);
+            HtileProfile::Add(HtileProfile::StoreApply, applyNs);
+            HtileProfile::Add(HtileProfile::StoreWrite, writeNs, update.bytes);
+            HtileProfile::Add(HtileProfile::StoreNote, end - noteStart);
+            HtileProfile::Add(HtileProfile::StoreTotal, end - storeStart, update.bytes);
+        }
     };
     static const bool orderedFills = std::getenv("APS5_PIPELINE_DRAIN_FILLS") == nullptr;
     if (orderedFills && queueId == 0 && DrawPipeline::Active()) {
