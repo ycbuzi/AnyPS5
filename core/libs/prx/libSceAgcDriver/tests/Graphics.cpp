@@ -3061,38 +3061,6 @@ void htileDepthClearTests() {
     other[6] ^= 1u;
     Require(address(other, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a different kernel was taken for RADV's HTILE update");
     Require(address(std::span(kernel).first(16), {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a truncated kernel was taken for RADV's HTILE update");
-
-    // The same kernel for any value and mask, over its exact range (MatchHtileMaskUpdate): groups * 64 threads * 16 bytes.
-    ShaderRecompiler::ShaderComputeStageInfo compute{};
-    compute.numThreads = {64u, 1u, 1u};
-    compute.groupIdEnable = {true, false, false};
-    compute.threadIdComponentCount = 1u;
-    const std::array<std::uint32_t, 5> packet{0u, 640u, 1u, 1u, 0x1u};
-    const auto update = [&](std::span<const std::uint32_t> code, std::array<std::uint32_t, 6> userData, std::span<const std::uint32_t> dispatch, std::uint64_t indirect) {
-        return AgcDriver::Graphics::MatchHtileMaskUpdate(code, userData, compute, dispatch, indirect);
-    };
-    const auto stencil = update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0);
-    Require(stencil.has_value() && stencil->address == 0x4002850000ull && stencil->bytes == 640u * 64u * 16u && stencil->mask == 0xfffffc0fu && stencil->value == 0x000003f0u, "a stencil-bit HTILE update was not recognized with its exact range, mask and value");
-    const auto depth = update(kernel, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, packet, 0);
-    Require(depth.has_value() && depth->address == 0x400dc50000ull && depth->bytes == 0xa0000u && depth->mask == 0x00000ff0u && depth->value == 0u, "a depth HTILE clear was not recognized as a mask update with its range");
-    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0x1000u).has_value(), "an indirect HTILE mask dispatch was recognized");
-    auto partial = packet;
-    partial[4] = 0x3u;
-    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, partial, 0).has_value(), "a partial-group HTILE mask dispatch was recognized");
-    auto threads = packet;
-    threads[4] = 0x21u;
-    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, threads, 0).has_value(), "a thread-count HTILE mask dispatch was recognized");
-    auto rows = packet;
-    rows[2] = 2u;
-    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, rows, 0).has_value(), "a two-dimensional HTILE mask dispatch was recognized");
-    Require(!update(kernel, {0, 0, 0x02850008u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0).has_value(), "an HTILE mask update at a misaligned address was recognized");
-    Require(!update(other, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0).has_value(), "a different kernel was taken for the HTILE mask update");
-    std::array<std::uint32_t, 4> words{0xffffffffu, 0u, 0x12345678u, 0x00000c0fu};
-    AgcDriver::Graphics::ApplyHtileMask(words, 0xfffffc0fu, 0x000003f0u);
-    Require(words == std::array<std::uint32_t, 4>{0xffffffffu, 0x000003f0u, 0x123457f8u, 0x00000fffu}, "the stencil-bit HTILE update did not apply (word & mask) | value");
-    words = {0xffffffffu, 0x0000000fu, 0x12345678u, 0x00000ff5u};
-    AgcDriver::Graphics::ApplyHtileMask(words, 0x00000ff0u, 0u);
-    Require(words == std::array<std::uint32_t, 4>{0x00000ff0u, 0u, 0x00000670u, 0x00000ff0u}, "the depth HTILE clear did not keep only the masked bits");
 }
 
 void memoryValueFillTests() {
