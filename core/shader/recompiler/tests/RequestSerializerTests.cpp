@@ -202,8 +202,8 @@ void VerifyTessellationInstancePatches() {
 
 std::string SerializeVersion56(const ShaderRecompiler::RecompileRequest& request) {
     auto bytes = DecodeBase64(ShaderRecompiler::RequestSerializer{}.Serialize(request));
-    Require(bytes.size() > 13u && bytes[4] == 57u);
-    bytes.resize(bytes.size() - 5u);
+    Require(bytes.size() > 14u && bytes[4] == 58u);
+    bytes.resize(bytes.size() - 6u);
     bytes[4] = 56u;
     return EncodeBase64(bytes);
 }
@@ -226,8 +226,8 @@ void VerifyTargetOptions() {
                     Require(replay.request.target.float16WidenNans == widen && replay.request.target.float16NarrowNans == narrow);
                     Require(serializer.Serialize(replay.request) == encoded);
                     auto bytes = DecodeBase64(encoded);
-                    Require(bytes[4] == 57u);
-                    for (std::size_t missing = 1u; missing <= 5u; ++missing) {
+                    Require(bytes[4] == 58u);
+                    for (std::size_t missing = 1u; missing <= 6u; ++missing) {
                         auto truncated = bytes;
                         truncated.resize(truncated.size() - missing);
                         bool rejected = false;
@@ -238,6 +238,10 @@ void VerifyTargetOptions() {
                         }
                         Require(rejected);
                     }
+                    bytes.pop_back();
+                    bytes[4] = 57u;
+                    const auto legacy57 = serializer.Deserialize(EncodeBase64(bytes));
+                    Require(legacy57.request.target.fixedPushSlots == fixed && legacy57.request.target.maxImageArrayLayers == layers && legacy57.request.target.fragmentSubgroups);
                     bytes.resize(bytes.size() - 5u);
                     bytes[4] = 56u;
                     const auto legacy56 = serializer.Deserialize(EncodeBase64(bytes));
@@ -772,7 +776,7 @@ int VerifyVersion56Compatibility() {
         const auto replay40 = serializer.Deserialize(EncodeBase64(version40));
         Require(!replay40.request.target.float32DenormPreserve && replay40.request.target.float32FlushToZero == !preserve);
         auto future = bytes;
-        future[4] = 58u;
+        future[4] = 59u;
         bool futureRejected = false;
         try {
             static_cast<void>(serializer.Deserialize(EncodeBase64(future)));
@@ -1040,6 +1044,19 @@ int VerifyVersion56Compatibility() {
     auto unknownDither = twoSample;
     unknownDither[ditherByte] = 3u;
     Require(rejectsDither(unknownDither));
+
+    ShaderRecompiler::RecompileRequest fragment{};
+    fragment.shader.stage = ShaderRecompiler::ShaderStage::Fragment;
+    for (const bool subgroups : {false, true}) {
+        fragment.target.fragmentSubgroups = subgroups;
+        const auto encoded = serializer.Serialize(fragment);
+        auto bytes = DecodeBase64(encoded);
+        Require(bytes[4] == 58u && bytes.back() == (subgroups ? 1u : 0u));
+        Require(serializer.Deserialize(encoded).request.target.fragmentSubgroups == subgroups);
+        bytes.pop_back();
+        bytes[4] = 57u;
+        Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fragmentSubgroups);
+    }
 
     ShaderRecompiler::RecompileRequest domain{};
     domain.shader.stage = ShaderRecompiler::ShaderStage::TessellationEvaluation;
