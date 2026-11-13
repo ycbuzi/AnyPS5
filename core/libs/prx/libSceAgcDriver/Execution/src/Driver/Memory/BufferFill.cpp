@@ -258,15 +258,27 @@ void drainPendingInputWrites(std::uint32_t queueId, std::initializer_list<std::p
 
 }
 
-bool Driver::matchesHtileMaskUpdate(std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute) {
+namespace {
+
+bool htileMaskHleEnabled() {
     static const bool enabled = std::getenv("APS5_NO_HTILE_MASK_HLE") == nullptr;
-    if (!enabled || Graphics::HtileDepthClearAddress(code, userData, compute.numThreads) != 0) return false;
+    return enabled;
+}
+
+}
+
+bool Driver::matchesHtileMaskUpdate(std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute) {
+    if (!htileMaskHleEnabled() || Graphics::HtileDepthClearAddress(code, userData, compute.numThreads) != 0) return false;
     return Graphics::MatchHtileMaskUpdate(code, userData, compute, packet, 0).has_value();
 }
 
 bool Driver::updateHtileMask(std::uint32_t queueId, std::span<const std::uint32_t> packet, std::span<const std::uint32_t> code, const std::vector<std::uint32_t>& userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, const std::shared_ptr<VulkanDevice>& localDevice) {
     if (!matchesHtileMaskUpdate(packet, code, userData, compute)) return false;
-    const auto update = *Graphics::MatchHtileMaskUpdate(code, userData, compute, packet, 0);
+    return storeHtileMask(queueId, *Graphics::MatchHtileMaskUpdate(code, userData, compute, packet, 0), localDevice);
+}
+
+bool Driver::storeHtileMask(std::uint32_t queueId, const Graphics::HtileMaskClear& update, const std::shared_ptr<VulkanDevice>& localDevice) {
+    if (!htileMaskHleEnabled() || update.bytes == 0u || (update.address & 15u) != 0u || (update.bytes & 15u) != 0u) return false;
     const auto store = [this, queueId, update, localDevice] {
         GuestMemory::TagGpuLockSite(GuestMemory::GpuLockSite::Fill);
         std::lock_guard gpuLock(GuestMemory::GpuMutex());
