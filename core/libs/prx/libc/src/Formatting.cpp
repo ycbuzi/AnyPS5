@@ -868,22 +868,21 @@ int APS5_VABI vsprintf_nid_postfix(char* str, const char* format, VaList* args) 
 }
 
 #ifndef _WIN32
-namespace LibcDetail {
 struct RecentFormat {
     std::atomic<std::uint64_t> sequence{0};
     std::uint64_t thread = 0;
     char format[96]{};
     char output[160]{};
 };
-RecentFormat g_recentFormats[256];
-std::atomic<std::uint64_t> g_recentFormatSequence{0};
+static RecentFormat g_recentFormats[256];
+static std::atomic<std::uint64_t> g_recentFormatSequence{0};
 
-bool TraceFormats() {
+bool TraceFormats_nid_no_patch() {
     static const bool enabled = std::getenv("APS5_TRACE_FORMAT") != nullptr;
     return enabled;
 }
 
-void NoteFormat(const char* format, const char* output, std::size_t size, int result) {
+void NoteFormat_nid_no_patch(const char* format, const char* output, std::size_t size, int result) {
     const auto sequence = g_recentFormatSequence.fetch_add(1, std::memory_order_relaxed) + 1;
     auto& slot = g_recentFormats[sequence % std::size(g_recentFormats)];
     slot.sequence.store(0, std::memory_order_release);
@@ -894,7 +893,7 @@ void NoteFormat(const char* format, const char* output, std::size_t size, int re
     slot.sequence.store(sequence, std::memory_order_release);
 }
 
-std::size_t CopyRecentFormats(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity) {
+std::size_t CopyRecentFormats_nid_no_patch(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity) {
     const auto last = g_recentFormatSequence.load(std::memory_order_acquire);
     const auto span = std::min<std::uint64_t>(last, std::size(g_recentFormats));
     std::size_t count = 0;
@@ -908,7 +907,6 @@ std::size_t CopyRecentFormats(std::uint64_t thread, const char** formats, const 
     std::reverse(formats, formats + count);
     std::reverse(outputs, outputs + count);
     return count;
-}
 }
 #endif
 
@@ -926,7 +924,7 @@ int APS5_VABI vsnprintf_nid_postfix(char* str, size_t size, const char* format, 
         result = std::vsnprintf(str, HostFormatSize(size), format, copy);
         va_end(copy);
     }
-    if (LibcDetail::TraceFormats()) LibcDetail::NoteFormat(format, str, size, result);
+    if (TraceFormats_nid_no_patch()) NoteFormat_nid_no_patch(format, str, size, result);
     return result;
 #endif
 }

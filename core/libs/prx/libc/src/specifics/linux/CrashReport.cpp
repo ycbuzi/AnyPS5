@@ -16,9 +16,7 @@
 #include <ucontext.h>
 #include <unistd.h>
 
-namespace LibcDetail {
-std::size_t CopyRecentFormats(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity);
-}
+extern "C" std::size_t CopyRecentFormats_nid_no_patch(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity);
 
 namespace {
 
@@ -247,7 +245,7 @@ void ReportRecentFormats() {
     static const char* outputs[256];
     ReportLine line;
     const auto thread = static_cast<std::uint64_t>(syscall(SYS_gettid));
-    const std::size_t count = LibcDetail::CopyRecentFormats(thread, formats, outputs, std::size(formats));
+    const std::size_t count = CopyRecentFormats_nid_no_patch(thread, formats, outputs, std::size(formats));
     if (count == 0) return;
     line.Text("  last vsnprintf results of thread ").Decimal(thread).Text(" (APS5_TRACE_FORMAT):").Write();
     for (std::size_t index = 0; index < count; ++index) line.Text("    [").Text(formats[index]).Text("] -> [").Text(outputs[index]).Text("]").Write();
