@@ -2,6 +2,7 @@
 #define CODEGEN_X86_VEXLEGACYLOWERING_HPP
 
 #include <codegen/x86/StubBodyBuilder.hpp>
+#include <codegen/x86/FmaLowering.hpp>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -23,6 +24,8 @@ struct VexShadow {
     std::vector<std::uint8_t> Original;
 };
 
+[[nodiscard]] std::optional<FmaOperands> DecodeFmaSse(const std::uint8_t* data, std::size_t length, bool shadow);
+void EmitFmaSse(StubBodyBuilder& body, const FmaOperands& operands, std::optional<std::int32_t> shadow);
 [[nodiscard]] bool VexWide(const std::uint8_t* data, std::size_t length);
 [[nodiscard]] std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, std::size_t length, bool shadow);
 void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, std::optional<std::int32_t> shadow);

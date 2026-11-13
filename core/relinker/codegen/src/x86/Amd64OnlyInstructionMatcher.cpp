@@ -322,6 +322,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitFma(body, *fma);
         return fma->Name;
     }
+    if (const auto fma = _target == Amd64OnlyTarget::Sse ? DecodeFmaSse(instr.Data, instr.Length, _shadow.has_value()) : std::nullopt) {
+        EmitFmaSse(body, *fma, _shadow);
+        return fma->Name;
+    }
     if (const auto site = _target == Amd64OnlyTarget::Sse ? DecodeVexShadow(instr.Data, instr.Length, _shadow.has_value()) : std::nullopt) {
         EmitVexShadow(body, *site, _shadow);
         return site->Name;
@@ -555,6 +559,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
 
     if (const auto widen = _target == Amd64OnlyTarget::Avx ? DecodeWidenBroadcast(data, length) : std::nullopt)
         return _trampoline(widen->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitWidenBroadcast(body, *widen); }), false, true);
+
+    if (const auto fma = _target == Amd64OnlyTarget::Sse ? DecodeFmaSse(data, length, _shadow.has_value()) : std::nullopt)
+        return _trampoline(fma->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitFmaSse(body, *fma, _shadow); }), true, true);
 
     if (const auto site = _target == Amd64OnlyTarget::Sse ? DecodeVexShadow(data, length, _shadow.has_value()) : std::nullopt)
         return _trampoline(site->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitVexShadow(body, *site, _shadow); }), true, true);

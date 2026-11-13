@@ -149,25 +149,26 @@ void StubBodyBuilder::RipOperand(const std::initializer_list<std::uint8_t> opcod
 }
 
 void StubBodyBuilder::Load(const std::uint8_t reg, const MemoryOperand& operand) {
-    _vectorMemory(kMovdqu, reg, operand);
+    MemoryOp(kPrefixScalar, {X64OpcodeConstants::TwoByteOpcodeEscape, kMovdqu}, reg, operand);
 }
 
 void StubBodyBuilder::Store(const std::uint8_t reg, const MemoryOperand& operand) {
-    _vectorMemory(0x7F, reg, operand);
+    MemoryOp(kPrefixScalar, {X64OpcodeConstants::TwoByteOpcodeEscape, 0x7F}, reg, operand);
 }
 
-void StubBodyBuilder::_vectorMemory(const std::uint8_t opcode, const std::uint8_t reg, const MemoryOperand& operand) {
+void StubBodyBuilder::MemoryOp(const std::uint8_t prefix, const std::initializer_list<std::uint8_t> opcode, const std::uint8_t reg, const MemoryOperand& operand) {
     using namespace X64OpcodeConstants;
     const auto displacement = static_cast<std::int64_t>(operand.Displacement) + static_cast<std::int64_t>(operand.StackBase ? _stackDepth : 0);
     if (displacement > std::numeric_limits<std::int32_t>::max())
         throw CodegenException("Stack displacement does not fit after spilling");
     const auto mod = operand.StackBase && _stackDepth != 0 ? ModRmModDisp32 : operand.Mod;
     _bytes.insert(_bytes.end(), operand.Prefixes.begin(), operand.Prefixes.end());
-    _bytes.push_back(kPrefixScalar);
+    if (prefix != 0) _bytes.push_back(prefix);
     const auto rex = static_cast<std::uint8_t>(kRexBase | ((reg & 8) != 0 ? kRexR : 0) | operand.RexIndexBase);
     if (rex != kRexBase)
         _bytes.push_back(rex);
-    _bytes.insert(_bytes.end(), {TwoByteOpcodeEscape, opcode, static_cast<std::uint8_t>((mod << ModRmModShift) | ((reg & 7) << ModRmRegShift) | operand.Rm)});
+    _bytes.insert(_bytes.end(), opcode);
+    _bytes.insert(_bytes.end(), {static_cast<std::uint8_t>((mod << ModRmModShift) | ((reg & 7) << ModRmRegShift) | operand.Rm)});
     if (operand.Rm == ModRmRmSibPresent)
         _bytes.push_back(operand.Sib);
     if (operand.RipRelative) {

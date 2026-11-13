@@ -2,7 +2,9 @@
 #include <codegen/x86/IAmd64OnlyInstructionMatcher.hpp>
 #include <codegen/x86/StubBodyBuilder.hpp>
 #include "VectorExecution.hpp"
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -169,6 +171,24 @@ const std::vector<Bytes> kShadowed{
     Bytes{0xC5, 0xFE, 0x7F, 0x18},
 };
 
+const std::vector<Bytes> kFma{
+    Bytes{0xC4, 0xE2, 0x71, 0xA9, 0xC3},
+    Bytes{0xC4, 0xE2, 0x61, 0xB9, 0x00},
+    Bytes{0xC4, 0xE2, 0x79, 0xBB, 0x08},
+    Bytes{0xC4, 0xE2, 0x79, 0xBF, 0x48, 0x04},
+    Bytes{0xC4, 0xE2, 0x69, 0xBD, 0xC1},
+    Bytes{0xC4, 0xE2, 0x71, 0x99, 0xC2},
+    Bytes{0xC4, 0xE2, 0x51, 0xA8, 0xD9},
+    Bytes{0xC4, 0x42, 0x41, 0xB8, 0xCA},
+    Bytes{0xC4, 0x42, 0x2D, 0xB8, 0xCB},
+    Bytes{0xC4, 0xE2, 0x6D, 0xA8, 0x08},
+    Bytes{0xC4, 0xE2, 0xF1, 0x99, 0xC2},
+    Bytes{0xC4, 0xE2, 0xE9, 0xAC, 0x08},
+    Bytes{0xC4, 0xE2, 0x71, 0xA6, 0xC2},
+    Bytes{0xC4, 0xE2, 0xF5, 0xB7, 0xC2},
+    Bytes{0xC4, 0xE2, 0x65, 0xAA, 0xDB},
+};
+
 void rewriting() {
     for (const auto& [vex, legacy] : kPairs) {
         const auto decoded = Codegen::DecodeVexLegacy(vex.data(), vex.size());
@@ -294,8 +314,79 @@ void shadowExecution() {
     }
 }
 
+void fmaExecution() {
+    const auto offset = shadowOffset();
+    for (const auto& vex : kFma) {
+        const auto fma = Codegen::DecodeFmaSse(vex.data(), vex.size(), true);
+        require(fma.has_value(), "VEX " + hex(vex) + " has no FMA lowering");
+        Codegen::StubBodyBuilder body;
+        Codegen::EmitFmaSse(body, *fma, offset);
+        const auto finished = body.Finish();
+        const VectorExecution::Runner reference(vex);
+        require(finished.Relocations.empty(), "test stubs must not relocate");
+        constexpr std::size_t kRunnerPrologue = 7 + 16 * 9 + 16 * 15;
+        Bytes code((16 - kRunnerPrologue % 16) % 16, 0x90);
+        const auto start = code.size();
+        code.insert(code.end(), finished.Bytes.begin(), finished.Bytes.end());
+        const auto skip = static_cast<std::int32_t>(finished.Bytes.size() - finished.ReturnBranchOffset - 5);
+        std::memcpy(code.data() + start + finished.ReturnBranchOffset + 1, &skip, sizeof(skip));
+        const VectorExecution::Runner stub(code);
+        const bool doubles = fma->Double;
+        for (int seed = 0; seed < 4; ++seed) {
+            auto start = VectorExecution::Initial();
+            std::uint64_t state = 0x9E3779B97F4A7C15ull * static_cast<std::uint64_t>(seed + 1);
+            const auto next = [&](const double low, const double high) {
+                state = state * 6364136223846793005ull + 1442695040888963407ull;
+                return low + (high - low) * static_cast<double>(state >> 11) / 9007199254740992.0;
+            };
+            const auto fill = [&](std::uint64_t* words, const std::size_t count, const double low, const double high) {
+                for (std::size_t q = 0; q < count; ++q) {
+                    if (doubles) {
+                        const double value = next(low, high);
+                        std::memcpy(&words[q], &value, sizeof(value));
+                    } else {
+                        const float pair[2]{static_cast<float>(next(low, high)), static_cast<float>(next(low, high))};
+                        std::memcpy(&words[q], pair, sizeof(pair));
+                    }
+                }
+            };
+            for (auto& reg : start.Ymm) fill(reg.data(), 4, 1.5, 2.0);
+            fill(start.Memory.data(), 4, 0.25, 0.5);
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                shadowArea[reg * 2] = start.Ymm[reg][2];
+                shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+            }
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                const std::array<std::uint64_t, 4> lowered{got.Ymm[reg][0], got.Ymm[reg][1], shadowArea[reg * 2], shadowArea[reg * 2 + 1]};
+                for (std::size_t q = 0; q < 4; ++q) {
+                    if (lowered[q] == wanted.Ymm[reg][q]) continue;
+                    bool close = reg == fma->Destination;
+                    if (close && doubles) {
+                        double x = 0, y = 0;
+                        std::memcpy(&x, &lowered[q], sizeof(x));
+                        std::memcpy(&y, &wanted.Ymm[reg][q], sizeof(y));
+                        close = std::fabs(x - y) <= 1e-13;
+                    } else if (close) {
+                        float x[2], y[2];
+                        std::memcpy(x, &lowered[q], sizeof(x));
+                        std::memcpy(y, &wanted.Ymm[reg][q], sizeof(y));
+                        close = std::fabs(x[0] - y[0]) <= 1e-5f && std::fabs(x[1] - y[1]) <= 1e-5f;
+                    }
+                    require(close, "FMA stub of " + hex(vex) + " differs in register " + std::to_string(reg) + " quadword " + std::to_string(q));
+                }
+            }
+            require(got.Memory == wanted.Memory, "FMA stub of " + hex(vex) + " changed memory");
+        }
+    }
+}
+
 #else
 
+void fmaExecution() { std::cout << "FMA execution checks require a Linux/macOS x86-64 build\n"; }
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
 void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
 
@@ -324,6 +415,7 @@ int main() {
         stubbing();
         execution();
         shadowExecution();
+        fmaExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

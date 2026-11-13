@@ -1,4 +1,5 @@
 #include <codegen/x86/VexLegacyLowering.hpp>
+#include <codegen/x86/FmaLowering.hpp>
 #include <codegen/x86/ScalarLowering.hpp>
 #include <codegen/x86/X64InstructionDecoder.hpp>
 #include <codegen/CodegenException.hpp>
@@ -673,6 +674,155 @@ bool VexWide(const std::uint8_t* data, const std::size_t length) {
     while (vex < length && ScalarLowering::LegacyPrefix(data[vex])) ++vex;
     if (vex + 3 > length || (data[vex] != 0xC4 && data[vex] != 0xC5)) return false;
     return (data[vex + (data[vex] == 0xC4 ? 2 : 1)] & 4) != 0;
+}
+
+namespace {
+
+constexpr StubConstant kDoubleSigns{0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0x80};
+
+struct FmaRegisters {
+    std::uint8_t First;
+    std::uint8_t Second;
+    std::uint8_t Addend;
+};
+
+FmaRegisters FmaOrderOf(const FmaOperands& f, const std::uint8_t a, const std::uint8_t b, const std::uint8_t c) {
+    switch (f.Order) {
+    case FmaOrder::Order132: return {a, c, b};
+    case FmaOrder::Order213: return {b, a, c};
+    case FmaOrder::Order231: return {b, c, a};
+    }
+    return {a, c, b};
+}
+
+void FmaCombine(StubBodyBuilder& body, const FmaOperands& f, const bool scalar, const std::uint8_t product, const std::uint8_t addend, const bool addendWritable) {
+    const std::uint8_t prefix = scalar ? 0xF2 : 0x66;
+    if (f.Operation == FmaOperation::NegatedAdd || f.Operation == FmaOperation::NegatedSub) body.RipOperand({0x0F, 0x57}, product, kDoubleSigns);
+    switch (f.Operation) {
+    case FmaOperation::Add:
+    case FmaOperation::NegatedAdd:
+        body.Raw(RegisterOp(prefix, {0x0F, 0x58}, product, addend));
+        return;
+    case FmaOperation::Sub:
+    case FmaOperation::NegatedSub:
+        body.Raw(RegisterOp(prefix, {0x0F, 0x5C}, product, addend));
+        return;
+    case FmaOperation::AddSub:
+        body.Raw(RegisterOp(0x66, {0x0F, 0xD0}, product, addend));
+        return;
+    case FmaOperation::SubAdd:
+        if (!addendWritable) throw CodegenException(std::string(f.Name) + " needs a writable addend");
+        body.RipOperand({0x0F, 0x57}, addend, kDoubleSigns);
+        body.Raw(RegisterOp(0x66, {0x0F, 0xD0}, product, addend));
+        return;
+    }
+}
+
+void FmaHalf(StubBodyBuilder& body, const FmaOperands& f, const std::uint8_t a, const std::uint8_t b, const std::uint8_t c, const std::uint8_t out, const std::uint8_t t1, const std::uint8_t t2, const std::uint8_t t3) {
+    const auto [first, second, addend] = FmaOrderOf(f, a, b, c);
+    if (f.Scalar && !f.Double) {
+        body.Raw(RegisterOp(0xF3, {0x0F, 0x5A}, t1, first));
+        body.Raw(RegisterOp(0xF3, {0x0F, 0x5A}, t2, second));
+        body.Raw(RegisterOp(0xF2, {0x0F, 0x59}, t1, t2));
+        body.Raw(RegisterOp(0xF3, {0x0F, 0x5A}, t2, addend));
+        FmaCombine(body, f, true, t1, t2, true);
+        body.Raw(RegisterOp(0xF2, {0x0F, 0x5A}, t1, t1));
+        body.Raw(RegisterOp(0xF3, {0x0F, 0x10}, out, t1));
+        return;
+    }
+    if (f.Scalar) {
+        body.Raw(Movaps(t1, first));
+        body.Raw(RegisterOp(0xF2, {0x0F, 0x59}, t1, second));
+        FmaCombine(body, f, true, t1, addend, false);
+        body.Raw(RegisterOp(0xF2, {0x0F, 0x10}, out, t1));
+        return;
+    }
+    if (f.Double) {
+        body.Raw(Movaps(t1, first));
+        body.Raw(RegisterOp(0x66, {0x0F, 0x59}, t1, second));
+        if (f.Operation == FmaOperation::SubAdd) {
+            body.Raw(Movaps(t2, addend));
+            FmaCombine(body, f, false, t1, t2, true);
+        } else {
+            FmaCombine(body, f, false, t1, addend, false);
+        }
+        body.Raw(Movaps(out, t1));
+        return;
+    }
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t1, first));
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t2, second));
+    body.Raw(RegisterOp(0x66, {0x0F, 0x59}, t1, t2));
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t2, addend));
+    FmaCombine(body, f, false, t1, t2, true);
+    body.Raw(RegisterOp(0x66, {0x0F, 0x5A}, t1, t1));
+    body.Raw(RegisterOp(0x66, {0x0F, 0x70}, t2, first, std::uint8_t{0xEE}));
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t2, t2));
+    body.Raw(RegisterOp(0x66, {0x0F, 0x70}, t3, second, std::uint8_t{0xEE}));
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t3, t3));
+    body.Raw(RegisterOp(0x66, {0x0F, 0x59}, t2, t3));
+    body.Raw(RegisterOp(0x66, {0x0F, 0x70}, t3, addend, std::uint8_t{0xEE}));
+    body.Raw(RegisterOp(0, {0x0F, 0x5A}, t3, t3));
+    FmaCombine(body, f, false, t2, t3, true);
+    body.Raw(RegisterOp(0x66, {0x0F, 0x5A}, t2, t2));
+    body.Raw(RegisterOp(0, {0x0F, 0x16}, t1, t2));
+    body.Raw(Movaps(out, t1));
+}
+
+std::uint8_t ScratchAvoiding(std::initializer_list<std::uint8_t> used, std::initializer_list<std::uint8_t> more = {}) {
+    for (std::uint8_t candidate = 15;; --candidate) {
+        bool taken = false;
+        for (const auto value : used) taken = taken || value == candidate;
+        for (const auto value : more) taken = taken || value == candidate;
+        if (!taken) return candidate;
+        if (candidate == 0) break;
+    }
+    throw CodegenException("No scratch XMM register for an FMA stub");
+}
+
+}
+
+std::optional<FmaOperands> DecodeFmaSse(const std::uint8_t* data, const std::size_t length, const bool shadow) {
+    auto f = DecodeFma(data, length);
+    if (!f || (f->Vector256 && !shadow)) return std::nullopt;
+    return f;
+}
+
+void EmitFmaSse(StubBodyBuilder& body, const FmaOperands& f, const std::optional<std::int32_t> shadow) {
+    const auto a = f.Destination;
+    const auto b = f.Second;
+    const auto memory = f.Memory;
+    const std::uint8_t c = memory ? std::uint8_t{16} : f.Third;
+    if (f.Vector256) {
+        const auto h1 = ScratchAvoiding({a, b, c});
+        const auto h2 = ScratchAvoiding({a, b, c, h1});
+        const auto h3 = ScratchAvoiding({a, b, c, h1, h2});
+        const auto t1 = ScratchAvoiding({a, b, c, h1, h2, h3});
+        const auto t2 = ScratchAvoiding({a, b, c, h1, h2, h3}, {t1});
+        const auto t3 = ScratchAvoiding({a, b, c, h1, h2, h3}, {t1, t2});
+        for (const auto reg : {h1, h2, h3, t1, t2, t3}) body.Spill(reg);
+        LoadUpper(body, h1, *shadow, a);
+        LoadUpper(body, h2, *shadow, b);
+        if (memory) body.Load(h3, OffsetMemoryOperand(*memory, 16));
+        else LoadUpper(body, h3, *shadow, c);
+        FmaHalf(body, f, h1, h2, h3, h1, t1, t2, t3);
+        StoreUpper(body, h1, *shadow, a);
+        for (const auto reg : {t3, t2, t1, h3, h2, h1}) body.Restore(reg);
+    }
+    const auto loaded = memory ? std::optional<std::uint8_t>(ScratchAvoiding({a, b})) : std::nullopt;
+    const auto third = loaded ? *loaded : c;
+    const auto t1 = ScratchAvoiding({a, b, third});
+    const auto t2 = ScratchAvoiding({a, b, third, t1});
+    const auto t3 = ScratchAvoiding({a, b, third, t1, t2});
+    if (loaded) {
+        body.Spill(*loaded);
+        if (!f.Scalar) body.Load(*loaded, *memory);
+        else body.MemoryOp(f.Double ? 0xF2 : 0xF3, {0x0F, 0x10}, *loaded, *memory);
+    }
+    for (const auto reg : {t1, t2, t3}) body.Spill(reg);
+    FmaHalf(body, f, a, b, third, a, t1, t2, t3);
+    for (const auto reg : {t3, t2, t1}) body.Restore(reg);
+    if (loaded) body.Restore(*loaded);
+    if (shadow && !f.Vector256) ClearUpper(body, *shadow, a);
 }
 
 }

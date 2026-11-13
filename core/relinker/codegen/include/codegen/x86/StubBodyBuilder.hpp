@@ -51,6 +51,7 @@ public:
     void RipOperand(std::initializer_list<std::uint8_t> opcode, std::uint8_t reg, const StubConstant& constant);
     void Load(std::uint8_t reg, const MemoryOperand& operand);
     void Store(std::uint8_t reg, const MemoryOperand& operand);
+    void MemoryOp(std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, std::uint8_t reg, const MemoryOperand& operand);
     void Spill(std::uint8_t reg);
     void Restore(std::uint8_t reg);
     void Raw(std::span<const std::uint8_t> bytes);
@@ -70,7 +71,6 @@ private:
     };
 
     void _rel32(std::initializer_list<std::uint8_t> opcode, std::int64_t siteTarget);
-    void _vectorMemory(std::uint8_t opcode, std::uint8_t reg, const MemoryOperand& operand);
     void _pushReturnAddress(std::int64_t siteTarget);
 
     std::vector<std::uint8_t> _bytes;
