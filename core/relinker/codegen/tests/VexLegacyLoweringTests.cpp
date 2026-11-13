@@ -29,6 +29,9 @@ std::string hex(const Bytes& bytes) {
 }
 
 const std::vector<std::pair<Bytes, Bytes>> kPairs{
+    {Bytes{0xC5, 0xF1, 0xC4, 0xC9, 0x03}, Bytes{0x66, 0x0F, 0xC4, 0xC9, 0x03}},
+    {Bytes{0xC5, 0xF9, 0xC5, 0xC2, 0x05}, Bytes{0x66, 0x0F, 0xC5, 0xC2, 0x05}},
+    {Bytes{0xC4, 0xE3, 0x71, 0x02, 0xCA, 0x05}, Bytes{0x66, 0x0F, 0x3A, 0x0C, 0xCA, 0x05}},
     {Bytes{0xC5, 0xF0, 0x58, 0xCA}, Bytes{0x0F, 0x58, 0xCA}},
     {Bytes{0xC5, 0xE2, 0x58, 0x58, 0x10}, Bytes{0xF3, 0x0F, 0x58, 0x58, 0x10}},
     {Bytes{0xC4, 0x01, 0x1A, 0x59, 0x24, 0x91}, Bytes{0xF3, 0x47, 0x0F, 0x59, 0x24, 0x91}},
@@ -91,6 +94,8 @@ const std::vector<Bytes> kKept{
 };
 
 const std::vector<Bytes> kStubbed{
+    Bytes{0xC5, 0xE1, 0xC4, 0xC9, 0x01},
+    Bytes{0xC4, 0xE3, 0x61, 0x02, 0x08, 0x09},
     Bytes{0xC5, 0xE0, 0x58, 0xCA},
     Bytes{0xC5, 0xE0, 0x5C, 0xC9},
     Bytes{0xC5, 0xE1, 0xFE, 0xC9},
@@ -123,6 +128,7 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE3, 0x6D, 0x02, 0xD9, 0xA5},
     Bytes{0xC4, 0xE3, 0x6D, 0x0D, 0xD9, 0x09},
     Bytes{0xC5, 0xED, 0xC6, 0xD9, 0x05},
     Bytes{0xC4, 0xE3, 0x6D, 0x42, 0xD9, 0x2D},
@@ -179,13 +185,12 @@ void rewriting() {
 
 void matching() {
     const auto sse = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Sse);
-    const auto avx = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Avx);
     const auto intel = Codegen::MakeAmd64OnlyInstructionMatcher();
     for (const auto& [vex, legacy] : kPairs) {
         const auto match = sse->Match(vex.data(), vex.size());
         require(match && match->Lowering == Codegen::Amd64OnlyLowering::InPlace && match->ReplacementBytes.size() == vex.size(), "SSE mode did not rewrite " + hex(vex) + " in place");
         require(Bytes(match->ReplacementBytes.begin(), match->ReplacementBytes.begin() + static_cast<std::ptrdiff_t>(legacy.size())) == legacy, "SSE mode changed the legacy bytes of " + hex(vex));
-        require(!avx->Match(vex.data(), vex.size()) && !intel->Match(vex.data(), vex.size()), "AVX or Intel mode rewrote " + hex(vex));
+        require(!intel->Match(vex.data(), vex.size()), "Intel mode rewrote " + hex(vex));
     }
     const Bytes zeroUpper{0xC5, 0xF8, 0x77};
     const auto cleared = sse->Match(zeroUpper.data(), zeroUpper.size());

@@ -57,6 +57,8 @@ Form Map0F(const std::uint8_t pp, const std::uint8_t op) {
         if (CommutativeInteger(op)) return Integer();
         if (In(op, 0x60, 0x6D) || op == 0x7C || op == 0x7D || op == 0xD0 || In(op, 0xD1, 0xD3) || In(op, 0xD8, 0xD9) || op == 0xDF || op == 0xE1 || op == 0xE2 || In(op, 0xE8, 0xE9) || op == 0xF1 || op == 0xF2 || op == 0xF3 || op == 0xF6 || In(op, 0xF8, 0xFB)) return Nds(true);
         if (op == 0x6E || op == 0x7E) return {Shape::Unary, false, true};
+        if (op == 0xC4) return {Shape::Nds, false, false, false, true};
+        if (op == 0xC5) return Unary(false);
         if (op == 0x6F || op == 0x7F || op == 0xD6 || op == 0xD7 || op == 0xE7) return Unary(false);
         if (op == 0x70 || op == 0xE6) return Unary(true);
         if (In(op, 0x71, 0x73)) return {Shape::ShiftImm};
@@ -110,7 +112,7 @@ Form Lookup(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t op
 }
 
 bool HasImmediate(const std::uint8_t map, const std::uint8_t op) {
-    return map == 3 || (map == 1 && (op == 0x70 || In(op, 0x71, 0x73) || op == 0xC2 || op == 0xC6));
+    return map == 3 || (map == 1 && (op == 0x70 || In(op, 0x71, 0x73) || op == 0xC2 || op == 0xC4 || op == 0xC5 || op == 0xC6));
 }
 
 bool Lane256(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t op, const Form& form) {
@@ -119,7 +121,7 @@ bool Lane256(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t o
         if (pp >= 2 && (op == 0x51 || op == 0x58 || op == 0x59 || op == 0x5A || (op >= 0x5C && op <= 0x5F) || op == 0xC2)) return false;
         if (op == 0x5A || op == 0xE6 || op == 0x50 || op == 0xD7 || op == 0x2E || op == 0x2F || op == 0xD6) return false;
         if ((op == 0x12 || op == 0x13 || op == 0x16 || op == 0x17) && pp < 2) return false;
-        if (op == 0xF0) return false;
+        if (op == 0xF0 || op == 0xC5) return false;
         return true;
     }
     if (map == 2) return !(op == 0x17 || (op >= 0x20 && op <= 0x25) || (op >= 0x30 && op <= 0x35) || op == 0x41 || op >= 0xDB);
@@ -170,6 +172,7 @@ std::optional<Parsed> Parse(const std::uint8_t* data, const std::size_t length, 
     p.Reg = static_cast<std::uint8_t>(p.R << 3 | (p.Modrm >> 3 & 7));
     p.Rm = static_cast<std::uint8_t>(p.B << 3 | (p.Modrm & 7));
     if (!table) return p;
+    if (p.Map == 3 && p.Pp == 1 && p.Op == 0x02 && !p.W) p.Op = 0x0C;
     p.Kind = Lookup(p.Map, p.Pp, p.Op);
     if (p.Kind.Kind == Shape::None) return std::nullopt;
     if (p.L && !Lane256(p.Map, p.Pp, p.Op, p.Kind)) return std::nullopt;
@@ -211,6 +214,7 @@ std::vector<std::uint8_t> LegacyBytes(const std::uint8_t* data, const std::size_
     shrink = static_cast<std::int32_t>(p.OpIndex) - static_cast<std::int32_t>(legacy.size());
     const auto body = legacy.size();
     legacy.insert(legacy.end(), data + p.OpIndex, data + length);
+    legacy[body] = p.Op;
     if ((p.Modrm & 0xC7) == 0x05) {
         const auto at = body + 2;
         if (at + 4 > legacy.size()) throw CodegenException("VEX.128 RIP-relative operand is truncated");
@@ -340,7 +344,7 @@ std::optional<std::uint8_t> XmmDestination(const Parsed& p) {
     if (p.Map == 1) {
         if ((p.Op == 0x11 && p.Pp < 2) || p.Op == 0x29 || p.Op == 0x7F || p.Op == 0xD6 || p.Op == 0x13 || p.Op == 0x17 || p.Op == 0x2B || p.Op == 0xE7)
             return p.Memory ? std::nullopt : std::optional<std::uint8_t>(p.Rm);
-        if (p.Op == 0x2C || p.Op == 0x2D || p.Op == 0x2E || p.Op == 0x2F || p.Op == 0x50 || p.Op == 0xD7 || (p.Op == 0x7E && p.Pp == 1)) return std::nullopt;
+        if (p.Op == 0x2C || p.Op == 0x2D || p.Op == 0x2E || p.Op == 0x2F || p.Op == 0x50 || p.Op == 0xD7 || p.Op == 0xC5 || (p.Op == 0x7E && p.Pp == 1)) return std::nullopt;
     }
     if (p.Map == 2 && p.Op == 0x17) return std::nullopt;
     if (p.Map == 3) {
