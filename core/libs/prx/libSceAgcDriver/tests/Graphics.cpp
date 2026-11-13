@@ -3,6 +3,7 @@
 #include "BdaTests.hpp"
 #include "GraphicsTests.hpp"
 #include "prx/libSceAgcDriver/Execution/include/GuestMemory.hpp"
+#include "prx/libSceAgcDriver/Execution/include/Driver/Dispatch/DispatchAhead.hpp"
 #include "prx/libSceAgcDriver/Execution/include/Driver/Memory/DrawWriteRanges.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/Recorder.hpp"
 #include "prx/libSceAgcDriver/Graphics/include/Resources.hpp"
@@ -2964,6 +2965,13 @@ void htileDepthClearTests() {
     words = {0xffffffffu, 0x0000000fu, 0x12345678u, 0x00000ff5u};
     AgcDriver::Graphics::ApplyHtileMask(words, 0x00000ff0u, 0u);
     Require(words == std::array<std::uint32_t, 4>{0x00000ff0u, 0u, 0x00000670u, 0x00000ff0u}, "the depth HTILE clear did not keep only the masked bits");
+}
+
+void groupAheadTests() {
+    using AgcDriver::DriverDetail::GroupAheadRuns;
+    Require(!GroupAheadRuns(0, false), "the graphics queue resolved dispatch groups ahead without all-queues capture, so its packet drain would wait for nothing");
+    Require(GroupAheadRuns(0, true), "all-queues capture did not resolve the graphics queue's dispatch groups ahead");
+    Require(GroupAheadRuns(1, false) && GroupAheadRuns(7, false), "a compute queue did not resolve its dispatch groups ahead");
 }
 
 void memoryValueFillTests() {
@@ -13805,6 +13813,7 @@ int main(int argc, char** argv) {
         multisampledSingleClearTests();
         htileBufferMaskClearTests();
         memoryValueFillTests();
+        groupAheadTests();
         ZExportTests();
         unorm10_11_11TargetTests();
         float11_11_10TargetTests();
