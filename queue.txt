@@ -2,3 +2,4 @@
 5e916725f2b6e262f0b4e7ac0692f3183946a8f7 refs/heads/quest/terrifier-celeste-fixes terrifier-celeste-fixes-5e916725f2
 e9eeae8a20db873a5443425bbc93d6b1bd117b1d refs/heads/quest/celeste-htile-diag celeste-htile-diag-e9eeae8a20
 b86942a7fa8916a26629e458ed6925176ff003f9 refs/heads/quest/celeste-queue0 celeste-queue0-b86942a7fa
+bcf6bbe9aea9e0c6b1ebedda1097a4ba2e64ea3a refs/heads/quest/terrifier-crash-history-diag terrifier-stopb-diag-bcf6bbe9ae
