@@ -1,5 +1,6 @@
 #include "prx/libkernel/include/Api.hpp"
 #include "prx/libkernel/Pthread/include/Pthread.hpp"
+#include "prx/libc/include/Api.hpp"
 #include "SceTypes.hpp"
 #include <atomic>
 #include <cstdint>
@@ -55,6 +56,26 @@ static void* APS5_VABI Worker(void* arg) {
     return nullptr;
 }
 
+struct Walk {
+    int frames = 0;
+    std::uintptr_t last = 0;
+};
+
+static _Unwind_Reason_Code APS5_VABI CountFrame(_Unwind_Context* context, void* argument) {
+    auto& walk = *static_cast<Walk*>(argument);
+    walk.last = static_cast<std::uintptr_t>(_Unwind_GetIP_nid_postfix(context));
+    return ++walk.frames < 256 ? 0 : _URC_END_OF_STACK + 1;
+}
+
+// A backtrace from the guest main stack must end at the stack switch: before it had CFI of its own, the walk used
+// EnterGuestMainStack's frame rules at the entry's return address and read saved registers above the stack top.
+[[gnu::noinline]] static void BacktraceEndsAtTheStackTop() {
+    Walk walk;
+    Require(_Unwind_Backtrace_nid_postfix(CountFrame, &walk) == _URC_END_OF_STACK);
+    Require(walk.frames >= 2 && walk.frames < 256);
+    Require(walk.last != 0);
+}
+
 static void APS5_VABI Entry(void* arguments) {
     Require(!expectRefusal);
     Require(arguments == &marker);
@@ -70,6 +91,7 @@ static void APS5_VABI Entry(void* arguments) {
     Require(high - low >= SmallestStack);
     Require(Permissions(low) == 'w' && Permissions(high - 1) == 'w');
     Require(Permissions(low - 1) == '-');
+    BacktraceEndsAtTheStackTop();
 
     const auto self = scePthreadSelf();
     Require(!initialThread || self == initialThread);
