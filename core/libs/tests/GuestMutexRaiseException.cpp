@@ -5,7 +5,12 @@
 #include <chrono>
 #include <cstdlib>
 #include <mutex>
+#include <string_view>
 #include <thread>
+#ifndef _WIN32
+#include <csignal>
+#include <unistd.h>
+#endif
 
 static constexpr int SigUsr1 = 30;
 static void Require(bool value) { if (!value) std::abort(); }
@@ -22,7 +27,21 @@ static void* APS5_VABI Worker(void* opaque) {
     return nullptr;
 }
 
-int main() {
+int main(int argc, char** argv) {
+#ifndef _WIN32
+    // "block-and-exec": start the test again with the host SIGUSR1 blocked across exec, as an Android/Termux launcher
+    // hands it to every child. libkernel must unblock the signal it raises with, or the deliveries below never come.
+    if (argc == 2 && std::string_view(argv[1]) == "block-and-exec") {
+        sigset_t blocked;
+        sigemptyset(&blocked);
+        sigaddset(&blocked, SIGUSR1);
+        Require(pthread_sigmask(SIG_BLOCK, &blocked, nullptr) == 0);
+        char* const arguments[] = {argv[0], nullptr};
+        execv(argv[0], arguments);
+        std::abort();
+    }
+#endif
+    Require(argc == 1);
     Require(sceKernelInstallExceptionHandler(SigUsr1, reinterpret_cast<void*>(&Handler)) == 0);
     Context context;
     Require(scePthreadMutexInit(&context.mutex, nullptr, nullptr) == 0);

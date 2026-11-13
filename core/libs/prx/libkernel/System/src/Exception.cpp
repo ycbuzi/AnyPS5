@@ -1282,6 +1282,18 @@ void InstallFaultDelivery() {
 }
 #endif
 
+// sceKernelRaiseException reaches its target with pthread_kill(HostSignal), so the signal must not be blocked in guest
+// threads. A launcher can hand the process a mask that blocks it: Android/Termux starts every child with SIGQUIT,
+// SIGUSR1 and SIGPIPE blocked, and there IL2CPP's garbage collector waited forever for a suspended thread whose
+// SIGUSR1 stayed pending (TERRIFIER on a Quest 2). Unblock it on the thread that loads libkernel, before any guest
+// thread exists; scePthreadCreate copies the creator's host mask into every thread made after that.
+[[maybe_unused]] const bool hostSignalUnblocked = [] {
+    sigset_t unblocked;
+    sigemptyset(&unblocked);
+    sigaddset(&unblocked, HostSignal);
+    return pthread_sigmask(SIG_UNBLOCK, &unblocked, nullptr) == 0;
+}();
+
 void InstallDelivery() {
     static const bool installed = [] {
         struct sigaction action{};
