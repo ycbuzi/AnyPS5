@@ -170,6 +170,11 @@ void Driver::dispatch(QueueState& queue, std::span<const std::uint32_t> packet, 
             const auto bytes = static_cast<std::size_t>(threads * 16u);
             if (Graphics::NoteHtileDepthClear(htile, bytes, nativeBytes)) htileClearCompletion = std::pair{htile, bytes};
             if (nativeBytes != 0u) htileMask = {htile, nativeBytes, userData[5], userData[4]};
+            if (!htileClearCompletion.has_value() && !partialLastGroup && indirectArguments == 0 && nativeBytes != 0u && nativeBytes == bytes && storeHtileMask(submission.queue, htileMask, localDevice)) {
+                pendingDispatchPhases().outcome = DispatchOutcome::FillHle;
+                if (resolvedAhead().empty()) gateOpened() = true;
+                return;
+            }
         } else if (const auto buffered = Graphics::MatchHtileBufferMaskClear(std::span(snapshot.code).subspan(codeOffset), userData, compute, packet, indirectArguments)) {
             if (Graphics::NoteHtileDepthClear(buffered->address, buffered->bytes, buffered->bytes)) htileClearCompletion = std::pair{buffered->address, buffered->bytes};
             htileMask = *buffered;
