@@ -64,6 +64,7 @@ add_library(relinker_core STATIC
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/Avx2TwinLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/VexLegacyLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/LaneSplitLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/FmaLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/PermuteLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WidenBroadcastLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/relinker/src/parsing/ElfReader.cpp
@@ -177,6 +178,11 @@ if(BUILD_TESTING)
     target_link_libraries(permute_lowering_tests PRIVATE relinker_core)
     add_test(NAME permute_lowering COMMAND permute_lowering_tests)
     set_tests_properties(permute_lowering PROPERTIES TIMEOUT 120)
+
+    add_test_executable(fma_lowering_tests ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/FmaLoweringTests.cpp)
+    target_link_libraries(fma_lowering_tests PRIVATE relinker_core)
+    add_test(NAME fma_lowering COMMAND fma_lowering_tests)
+    set_tests_properties(fma_lowering PROPERTIES TIMEOUT 120)
 
     add_test_executable(widen_broadcast_lowering_tests ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/WidenBroadcastLoweringTests.cpp)
     target_link_libraries(widen_broadcast_lowering_tests PRIVATE relinker_core)
@@ -350,6 +356,7 @@ if(WIN32)
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/Avx2TwinLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/VexLegacyLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/LaneSplitLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/FmaLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/PermuteLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WidenBroadcastLowering.cpp
     )
@@ -676,6 +683,7 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/Avx2TwinLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/VexLegacyLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/LaneSplitLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/FmaLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/PermuteLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/codegen/src/x86/WidenBroadcastLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/linux/LinuxElfPatcher.cpp

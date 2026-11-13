@@ -27,6 +27,7 @@
 #include <codegen/x86/MovbeLowering.hpp>
 #include <codegen/x86/Avx2TwinLowering.hpp>
 #include <codegen/x86/VexLegacyLowering.hpp>
+#include <codegen/x86/FmaLowering.hpp>
 #include <codegen/x86/LaneSplitLowering.hpp>
 #include <codegen/x86/PermuteLowering.hpp>
 #include <codegen/x86/WidenBroadcastLowering.hpp>
@@ -317,6 +318,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitAvx2Twin(body, *twin);
         return twin->Name;
     }
+    if (const auto fma = _target == Amd64OnlyTarget::Avx ? DecodeFma(instr.Data, instr.Length) : std::nullopt) {
+        EmitFma(body, *fma);
+        return fma->Name;
+    }
     if (const auto site = _target == Amd64OnlyTarget::Sse ? DecodeVexShadow(instr.Data, instr.Length, _shadow.has_value()) : std::nullopt) {
         EmitVexShadow(body, *site, _shadow);
         return site->Name;
@@ -538,6 +543,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
 
     if (auto twin = _target == Amd64OnlyTarget::Avx ? DecodeAvx2Twin(data, length) : std::nullopt)
         return Amd64OnlyMatch{twin->Name, length, Amd64OnlyLowering::InPlace, std::move(twin->Replacement), {}, 0};
+
+    if (const auto fma = _target == Amd64OnlyTarget::Avx ? DecodeFma(data, length) : std::nullopt)
+        return _trampoline(fma->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitFma(body, *fma); }), false, true);
 
     if (const auto split = _target == Amd64OnlyTarget::Avx ? DecodeLaneSplit(data, length) : std::nullopt)
         return _trampoline("256-bit integer", length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitLaneSplit(body, *split); }), false, true);
