@@ -35,9 +35,10 @@ jobs:
               if not parts or parts[0].startswith("#") or len(parts) < 3:
                   continue
               sha, ref, folder = parts[0], parts[1], parts[2]
+              repo = parts[3] if len(parts) > 3 else "ycbuzi/AnyPS5"
               if "quest-" + folder in have:
                   continue
-              jobs.append({"sha": sha, "ref": ref, "folder": folder})
+              jobs.append({"sha": sha, "ref": ref, "folder": folder, "repo": repo})
           print("matrix=" + json.dumps({"include": jobs}))
           print("any=" + ("1" if jobs else "0"))
           PY
@@ -56,11 +57,12 @@ jobs:
       SHA: ${{ matrix.sha }}
       REF: ${{ matrix.ref }}
       FOLDER: ${{ matrix.folder }}
+      SRC_REPO: ${{ matrix.repo }}
     steps:
       - name: Check out the requested commit
         run: |
           git init -q src && cd src
-          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          git remote add origin "https://github.com/$SRC_REPO"
           git fetch -q --no-tags origin "+$REF:refs/remotes/req" || git fetch -q --no-tags origin "$SHA"
           git checkout -q --detach "$SHA"
           git submodule update --init --recursive --depth 1 --jobs 8
