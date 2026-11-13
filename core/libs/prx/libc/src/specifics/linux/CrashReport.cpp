@@ -2,6 +2,8 @@
 #include "prx/libc/include/CallTrace.hpp"
 #include "prx/libc/include/LogFile.hpp"
 
+#include <cstdlib>
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <csignal>
@@ -238,7 +240,12 @@ void Report(int signal, const siginfo_t* info, const ucontext_t* context) {
 
 void ReportCallTrace() {
     static CallTraceEntry entries[64];
-    static CallTraceEntry own[32];
+    static CallTraceEntry own[4096];
+    static const std::size_t ownCapacity = [] {
+        const char* value = std::getenv("APS5_CRASH_CALL_HISTORY");
+        const long requested = value != nullptr ? std::strtol(value, nullptr, 10) : 32;
+        return static_cast<std::size_t>(std::clamp<long>(requested, 1, 4096));
+    }();
     static CallTraceCount counts[32];
     ReportLine line;
     const std::size_t count = CopyCallTrace_nid_no_patch(entries, std::size(entries));
@@ -251,7 +258,7 @@ void ReportCallTrace() {
         line.Write();
     }
     const auto thread = static_cast<std::uint64_t>(syscall(SYS_gettid));
-    const std::size_t owned = CopyThreadCallTrace_nid_no_patch(thread, own, std::size(own));
+    const std::size_t owned = CopyThreadCallTrace_nid_no_patch(thread, own, ownCapacity);
     if (owned != 0) {
         line.Text("  last traced calls of thread ").Decimal(thread).Text(":").Write();
         for (std::size_t index = 0; index < owned; ++index) {

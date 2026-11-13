@@ -354,9 +354,14 @@ void ReportCallTrace() {
         DescribeAddress(line, entries[index].returnAddress);
         line.Write();
     }
-    static CallTraceEntry own[32];
+    static CallTraceEntry own[4096];
+    static const std::size_t ownCapacity = [] {
+        const char* value = std::getenv("APS5_CRASH_CALL_HISTORY");
+        const long requested = value != nullptr ? std::strtol(value, nullptr, 10) : 32;
+        return static_cast<std::size_t>(std::clamp<long>(requested, 1, 4096));
+    }();
     const std::uint64_t thread = CurrentThread();
-    const std::size_t owned = CopyThreadCallTrace_nid_no_patch(thread, own, std::size(own));
+    const std::size_t owned = CopyThreadCallTrace_nid_no_patch(thread, own, ownCapacity);
     if (owned != 0) {
         line.Text("  last traced calls of thread ").Decimal(thread).Text(":").Write();
         for (std::size_t index = 0; index < owned; ++index) {
