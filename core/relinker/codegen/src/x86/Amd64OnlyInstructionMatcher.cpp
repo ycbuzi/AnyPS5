@@ -26,6 +26,7 @@
 #include <codegen/x86/CountLowering.hpp>
 #include <codegen/x86/MovbeLowering.hpp>
 #include <codegen/x86/Avx2TwinLowering.hpp>
+#include <codegen/x86/VexLegacyLowering.hpp>
 #include <codegen/x86/LaneSplitLowering.hpp>
 #include <codegen/x86/PermuteLowering.hpp>
 #include <codegen/x86/WidenBroadcastLowering.hpp>
@@ -315,6 +316,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitAvx2Twin(body, *twin);
         return twin->Name;
     }
+    if (const auto legacy = _target == Amd64OnlyTarget::Sse ? DecodeVexLegacy(instr.Data, instr.Length) : std::nullopt) {
+        EmitVexLegacy(body, *legacy);
+        return legacy->Name;
+    }
     if (const auto split = _target == Amd64OnlyTarget::Avx ? DecodeLaneSplit(instr.Data, instr.Length) : std::nullopt) {
         EmitLaneSplit(body, *split);
         return "256-bit integer";
@@ -533,6 +538,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
 
     if (const auto widen = _target == Amd64OnlyTarget::Avx ? DecodeWidenBroadcast(data, length) : std::nullopt)
         return _trampoline(widen->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitWidenBroadcast(body, *widen); }), false, true);
+
+    if (auto legacy = _target == Amd64OnlyTarget::Sse ? DecodeVexLegacy(data, length) : std::nullopt)
+        return _inPlace({legacy->Name, nullptr, 0}, length, std::move(legacy->Replacement));
 
     return _matchRosetta(instr, trailing);
 }
