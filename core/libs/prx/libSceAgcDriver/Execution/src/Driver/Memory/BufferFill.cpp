@@ -293,7 +293,7 @@ bool Driver::updateHtileMask(std::uint32_t queueId, std::span<const std::uint32_
     };
     static const bool orderedFills = std::getenv("APS5_PIPELINE_DRAIN_FILLS") == nullptr;
     if (orderedFills && queueId == 0 && DrawPipeline::Active()) {
-        DrawPipeline::Queue0().Enqueue(DrawPipeline::CommitKind::BufferFill, [store, queueId] {
+        DrawPipeline::Queue0().Enqueue([store, queueId] {
             GuestMemory::SetCurrentPacket(0x15, queueId);
             store();
         }, {{update.address, update.address + update.bytes}});
