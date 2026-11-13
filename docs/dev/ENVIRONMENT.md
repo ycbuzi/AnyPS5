@@ -255,6 +255,7 @@ The code reads environment names through `getenv`, `IsEnvironmentSet`, `kibSetti
 | `APS5_NO_BDA_TABLE_CACHE` | presence | `core/libs/prx/libSceAgcDriver/Graphics/src/BdaResources.cpp` |  | builds every BDA descriptor table instead of reusing the recent-table cache |
 | `APS5_NO_BLOCK_TRACKING` | presence | `core/libs/prx/libSceAgcDriver/Graphics/src/Texture.cpp` |  | tracks array layers, or the whole surface, instead of 64 KiB blocks |
 | `APS5_NO_BUFFER_CLASSES` | presence | `core/libs/prx/libSceAgcDriver/Graphics/src/BufferPool.cpp` |  | matches exact sizes in the buffer pool instead of rounding up to size classes |
+| `APS5_NO_HTILE_MASK_HLE` | presence | `core/libs/prx/libSceAgcDriver/Execution/src/Driver/Memory/BufferFill.cpp` |  | dispatches RADV's HTILE mask kernel instead of applying it to its exact range of guest memory; depth fast clears always dispatch |
 | `APS5_NO_IMAGE_SLABS` | presence | `core/libs/prx/libSceAgcDriver/Graphics/src/BufferPool.cpp` |  | gives each sampled or storage image its own allocation instead of suballocating small optimal-tiled images; keeps released whole-allocation reuse |
 | `APS5_NO_CACHED_PRECOLLECT` | presence | `core/libs/prx/libSceAgcDriver/Execution/src/VulkanDevice.cpp` |  | leaves the write-watch walks of a cached object's Revalidate under the GPU mutex |
 | `APS5_NO_CHANGED_COPY_BACK` | presence | `core/libs/prx/libSceAgcDriver/Graphics/src/GuestBufferMemory.cpp` |  | copies a GPU-copied buffer's whole range back into its import instead of only the bytes the shader changed |

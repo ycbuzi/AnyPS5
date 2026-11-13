@@ -75,6 +75,8 @@ struct HtileMaskClear {
     std::uint32_t mask = 0;
     std::uint32_t value = 0;
 };
+std::optional<HtileMaskClear> MatchHtileMaskUpdate(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, std::span<const std::uint32_t> packet, std::uint64_t indirectArguments);
+void ApplyHtileMask(std::span<std::uint32_t> words, std::uint32_t mask, std::uint32_t value);
 std::optional<HtileMaskClear> MatchHtileBufferMaskClear(std::span<const std::uint32_t> code, std::span<const std::uint32_t> userData, const ShaderRecompiler::ShaderComputeStageInfo& compute, std::span<const std::uint32_t> packet, std::uint64_t indirectArguments);
 void NoteHtileMaskOnGpu(const Context& context, const HtileMaskClear& clear);
 void ForgetHtileMasks_nid_no_patch(std::uint64_t recorderId);
