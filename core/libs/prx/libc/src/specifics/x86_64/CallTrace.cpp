@@ -53,6 +53,7 @@ struct ImportRecord {
     std::string name;
     std::string library;
     mutable std::atomic<std::uint64_t> calls{0};
+    int strings = 0;
 };
 
 struct RingSlot {
@@ -60,6 +61,8 @@ struct RingSlot {
     std::atomic<std::uint64_t> thread{0};
     std::atomic<std::uint64_t> returnAddress{0};
     std::atomic<const ImportRecord*> record{nullptr};
+    char text0[48]{};
+    char text1[48]{};
 };
 
 constexpr std::size_t RingCapacity = 65536;
@@ -441,7 +444,16 @@ static_assert(offsetof(ImportRecord, target) == 0);
 
 extern "C" {
 
-void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t returnAddress) {
+static void CopyGuestText(char* out, std::uint64_t address) {
+    out[0] = '\0';
+    if (address < 0x10000) return;
+    const auto* text = reinterpret_cast<const char*>(address);
+    std::size_t index = 0;
+    for (; index + 1 < 48 && text[index] != '\0'; ++index) out[index] = (text[index] >= 0x20 && text[index] < 0x7f) ? text[index] : '?';
+    out[index] = '\0';
+}
+
+void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t returnAddress, std::uint64_t arg0, std::uint64_t arg1, std::uint64_t arg2) {
     static_cast<const ImportRecord*>(record)->calls.fetch_add(1, std::memory_order_relaxed);
     const std::uint64_t sequence = g_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
     RingSlot& slot = g_ring.load(std::memory_order_relaxed)[sequence % RingCapacity];
@@ -449,6 +461,11 @@ void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t re
     slot.thread.store(CurrentThread(), std::memory_order_relaxed);
     slot.returnAddress.store(returnAddress, std::memory_order_relaxed);
     slot.record.store(static_cast<const ImportRecord*>(record), std::memory_order_relaxed);
+    const int strings = static_cast<const ImportRecord*>(record)->strings;
+    slot.text0[0] = slot.text1[0] = '\0';
+    if (strings & 1) CopyGuestText(slot.text0, arg0);
+    if (strings & 2) CopyGuestText(slot.text1, arg1);
+    if (strings & 4) CopyGuestText(slot.text0, arg2);
     slot.sequence.store(sequence, std::memory_order_release);
 }
 
@@ -482,6 +499,12 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
     record.target = target;
     record.name = name;
     record.library = library;
+    if (std::getenv("APS5_TRACE_STRINGS") != nullptr) {
+        const std::string_view nid(name);
+        if (nid.starts_with("Ovb2dSJOAuE")) record.strings = 3;
+        else if (nid.starts_with("j4ViWNHEgww") || nid.starts_with("ob5xAW4ln-0")) record.strings = 1;
+        else if (nid.starts_with("Q2V+iqvjgC0")) record.strings = 4;
+    }
     void* thunk = WriteThunk(record, index);
     g_thunkByTarget.emplace(target, thunk);
     g_recordCount.store(index + 1, std::memory_order_release);
@@ -498,7 +521,7 @@ std::size_t CopyCallTrace_nid_no_patch(CallTraceEntry* entries, std::size_t capa
         const RingSlot& slot = ring[sequence % RingCapacity];
         if (slot.sequence.load(std::memory_order_acquire) != sequence) continue;
         const auto* record = slot.record.load(std::memory_order_relaxed);
-        const CallTraceEntry entry{sequence, slot.thread.load(std::memory_order_relaxed), slot.returnAddress.load(std::memory_order_relaxed), record->name.c_str(), record->library.c_str()};
+        const CallTraceEntry entry{sequence, slot.thread.load(std::memory_order_relaxed), slot.returnAddress.load(std::memory_order_relaxed), record->name.c_str(), record->library.c_str(), slot.text0, slot.text1};
         if (slot.sequence.load(std::memory_order_acquire) != sequence) continue;
         entries[count++] = entry;
     }
@@ -515,7 +538,7 @@ std::size_t CopyThreadCallTrace_nid_no_patch(std::uint64_t thread, CallTraceEntr
         const RingSlot& slot = ring[sequence % RingCapacity];
         if (slot.sequence.load(std::memory_order_acquire) != sequence || slot.thread.load(std::memory_order_relaxed) != thread) continue;
         const auto* record = slot.record.load(std::memory_order_relaxed);
-        const CallTraceEntry entry{sequence, thread, slot.returnAddress.load(std::memory_order_relaxed), record->name.c_str(), record->library.c_str()};
+        const CallTraceEntry entry{sequence, thread, slot.returnAddress.load(std::memory_order_relaxed), record->name.c_str(), record->library.c_str(), slot.text0, slot.text1};
         if (slot.sequence.load(std::memory_order_acquire) != sequence) continue;
         entries[count++] = entry;
     }
@@ -572,6 +595,9 @@ asm(".text\n"
     "    movdqu %xmm7, 112(%rsp)\n"
     "    mov %r11, %rdi\n"
     "    mov 200(%rsp), %rsi\n"
+    "    mov 192(%rsp), %rdx\n"
+    "    mov 184(%rsp), %rcx\n"
+    "    mov 176(%rsp), %r8\n"
     "    call " APS5_ASM_SYMBOL("CallTraceRecord_nid_no_patch") "\n"
     "    movdqu 0(%rsp), %xmm0\n"
     "    movdqu 16(%rsp), %xmm1\n"
