@@ -19,6 +19,8 @@ jobs:
     outputs:
       matrix: ${{ steps.q.outputs.matrix }}
       any: ${{ steps.q.outputs.any }}
+      tests: ${{ steps.q.outputs.tests }}
+      anytests: ${{ steps.q.outputs.anytests }}
     steps:
       - uses: actions/checkout@v4
       - id: q
@@ -30,17 +32,24 @@ jobs:
           import json
           have = set(open("have.txt").read().split())
           jobs = []
+          tests = []
           for line in open("queue.txt"):
               parts = line.split()
               if not parts or parts[0].startswith("#") or len(parts) < 3:
                   continue
               sha, ref, folder = parts[0], parts[1], parts[2]
-              repo = parts[3] if len(parts) > 3 else "ycbuzi/AnyPS5"
-              if "quest-" + folder in have:
+              extra = parts[3:]
+              repo = next((p for p in extra if "/" in p and not p.startswith("tests=")), "ycbuzi/AnyPS5")
+              pattern = next((p[len("tests="):] for p in extra if p.startswith("tests=")), "")
+              if pattern and "qtest-" + folder not in have:
+                  tests.append({"sha": sha, "ref": ref, "folder": folder, "repo": repo, "pattern": pattern})
+              if pattern or "quest-" + folder in have:
                   continue
               jobs.append({"sha": sha, "ref": ref, "folder": folder, "repo": repo})
           print("matrix=" + json.dumps({"include": jobs}))
           print("any=" + ("1" if jobs else "0"))
+          print("tests=" + json.dumps({"include": tests}))
+          print("anytests=" + ("1" if tests else "0"))
           PY
 
   build:
@@ -95,3 +104,57 @@ jobs:
         run: |
           gh release create "quest-$FOLDER" "$RUNNER_TEMP"/out/* -R "$GITHUB_REPOSITORY" --target questbuild-runner --prerelease \
             --title "Quest build $FOLDER" --notes "Linux x86-64 libraries and relinker for the Quest test lane, built from $SHA ($REF)."
+
+  test:
+    needs: plan
+    if: needs.plan.outputs.anytests == '1'
+    name: tests ${{ matrix.folder }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.tests) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      SHA: ${{ matrix.sha }}
+      REF: ${{ matrix.ref }}
+      FOLDER: ${{ matrix.folder }}
+      SRC_REPO: ${{ matrix.repo }}
+      PATTERN: ${{ matrix.pattern }}
+    steps:
+      - name: Check out the requested commit
+        run: |
+          git init -q src && cd src
+          git remote add origin "https://github.com/$SRC_REPO"
+          git fetch -q --no-tags origin "+$REF:refs/remotes/req" || git fetch -q --no-tags origin "$SHA"
+          git checkout -q --detach "$SHA"
+          git submodule update --init --recursive --depth 1 --jobs 8
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ccache libvulkan1 mesa-vulkan-drivers libpipewire-0.3-dev libpulse-dev libasound2-dev libxrandr-dev libwayland-dev libxkbcommon-dev libegl-dev libdecor-0-dev
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: quest-test-ccache-${{ matrix.sha }}
+          restore-keys: |
+            quest-test-ccache-
+            quest-ccache-
+      - name: Build and run the selected tests
+        working-directory: src
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          TARGETS=$(echo "$PATTERN" | tr "," " "); ninja -C build -k 0 $TARGETS > "$RUNNER_TEMP/out/build.log" 2>&1 || echo "build had failures (see build-tail.log)" >> "$RUNNER_TEMP/out/summary.txt"
+          set +e
+          ctest --test-dir build -R "^($(echo "$PATTERN" | tr "," "|"))$" --output-on-failure --timeout 300 > "$RUNNER_TEMP/out/ctest.log" 2>&1
+          echo "ctest rc=$? pattern=$PATTERN sha=$SHA" >> "$RUNNER_TEMP/out/summary.txt"
+          tail -n 25 "$RUNNER_TEMP/out/ctest.log" >> "$RUNNER_TEMP/out/summary.txt"
+          tail -c 200000 "$RUNNER_TEMP/out/build.log" > "$RUNNER_TEMP/out/build-tail.log"; rm "$RUNNER_TEMP/out/build.log"
+      - name: Publish the results
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "qtest-$FOLDER" "$RUNNER_TEMP"/out/* -R "$GITHUB_REPOSITORY" --target questbuild-runner --prerelease \
+            --title "Quest tests $FOLDER" --notes-file "$RUNNER_TEMP/out/summary.txt"
