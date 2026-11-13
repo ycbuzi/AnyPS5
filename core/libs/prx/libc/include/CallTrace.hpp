@@ -10,6 +10,8 @@ struct CallTraceEntry {
     std::uint64_t returnAddress;
     const char* name;
     const char* library;
+    const char* text0;
+    const char* text1;
 };
 
 struct CallTraceCount {

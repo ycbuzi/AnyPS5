@@ -277,6 +277,8 @@ void ReportCallTrace() {
         for (std::size_t index = 0; index < owned; ++index) {
             line.Text("    #").Decimal(own[index].sequence).Text(" ").Text(own[index].library).Text(" ").Text(own[index].name).Text(" from ");
             DescribeAddress(line, own[index].returnAddress);
+            if (own[index].text0 != nullptr && own[index].text0[0] != '\0') line.Text(" [").Text(own[index].text0).Text("]");
+            if (own[index].text1 != nullptr && own[index].text1[0] != '\0') line.Text(" [").Text(own[index].text1).Text("]");
             line.Write();
         }
     }
