@@ -343,6 +343,12 @@ void targetSelection() {
     require(avx.toMacos && avx.toAvx && avx.toIntel && !avx.toRosetta, "--to-avx did not imply --to-intel on macOS");
     expectThrows({"--to-avx", "input.elf", "output.elf"}, "--to-avx requires --macos");
     expectThrows({"--windows", "--to-avx", "input.elf", "output.elf"}, "--to-avx requires --macos");
+    const auto sse = parse({"--to-sse", "input.elf", "output.elf"});
+    require(sse.toSse && sse.toIntel && !sse.toAvx && !sse.toRosetta && !sse.toMacos && !sse.toWindows, "--to-sse did not imply --to-intel on Linux");
+    const auto sseOnMacos = parse({"--macos", "--to-sse", "input.elf", "output.elf"});
+    require(sseOnMacos.toSse && sseOnMacos.toMacos, "--to-sse was rejected with --macos");
+    expectThrows({"--macos", "--to-avx", "--to-sse", "input.elf", "output.elf"}, "--to-sse conflicts with --to-avx");
+    expectThrows({"--windows", "--to-sse", "input.elf", "output.elf"}, "--to-sse conflicts with --windows");
 }
 
 void patchOptions() {

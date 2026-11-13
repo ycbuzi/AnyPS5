@@ -11,11 +11,12 @@ namespace Codegen {
 enum class Amd64OnlyTarget : std::uint8_t {
     Intel,
     Rosetta,
-    Avx
+    Avx,
+    Sse
 };
 
-[[nodiscard]] constexpr Amd64OnlyTarget Amd64OnlyTargetFor(const bool rosetta, const bool avx) {
-    return avx ? Amd64OnlyTarget::Avx : rosetta ? Amd64OnlyTarget::Rosetta : Amd64OnlyTarget::Intel;
+[[nodiscard]] constexpr Amd64OnlyTarget Amd64OnlyTargetFor(const bool rosetta, const bool avx, const bool sse = false) {
+    return sse ? Amd64OnlyTarget::Sse : avx ? Amd64OnlyTarget::Avx : rosetta ? Amd64OnlyTarget::Rosetta : Amd64OnlyTarget::Intel;
 }
 
 enum class Amd64OnlyLowering : std::uint8_t {

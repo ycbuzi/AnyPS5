@@ -16,6 +16,7 @@ struct ConversionOptions {
     bool ToIntel = false;
     bool ToRosetta = false;
     bool ToAvx = false;
+    bool ToSse = false;
     bool FrameRedZone = false;
     bool SkipSyscallCheck = false;
     bool TrapSdkSyscallStubs = false;

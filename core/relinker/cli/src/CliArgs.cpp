@@ -25,6 +25,8 @@ const char* Usage() {
            "  --to-rosetta                   Convert as --to-intel and lower what Rosetta lacks too. Implies --to-intel.\n"
            "  --to-avx                       Convert as --to-intel and lower BMI1, BMI2, LZCNT, MOVBE, CLWB and RDPID for\n"
            "                                 CPUs with AVX but without AVX2. Implies --to-intel. Requires --macos.\n"
+           "  --to-sse                       Convert as --to-intel and lower BMI1, BMI2, LZCNT, TZCNT and MOVBE for CPUs\n"
+           "                                 with SSE4.2 but without AVX. Implies --to-intel. Conflicts with --windows.\n"
            "  --frame-red-zone               Windows: give leaf functions a frame so an exception on a guest thread can unwind.\n"
            "  --rpath <path>                 System library search path. Default: $ORIGIN/libs.\n"
            "  --omit-unavailable-dependencies Linux: leave out a module dependency that no module provides, no import uses\n"
@@ -74,7 +76,7 @@ namespace {
 constexpr std::string_view kVerifyRejectedOptions[] = {
     "--dry-run",
     "--windows", "--macos", "--windows-gui", "--windows-diagnostics", "--windows-fixed-base", "--trace-imports", "--linux-fixed-base", "--macos-fixed-base",
-    "--to-intel", "--to-rosetta", "--to-avx", "--frame-red-zone", "--skip-syscall-check", "--trap-sdk-syscall-stubs", "--function-symbol-roots", "unused-filter=",
+    "--to-intel", "--to-rosetta", "--to-avx", "--to-sse", "--frame-red-zone", "--skip-syscall-check", "--trap-sdk-syscall-stubs", "--function-symbol-roots", "unused-filter=",
     "--rpath", "--registry", "--omit-unavailable-dependencies", "--lazy-binding", "--autorun", "--patches", "--no-patches",
 };
 
@@ -178,6 +180,9 @@ Args ParseArgs(int argc, char* argv[]) {
         } else if (arg == "--to-avx") {
             args.toAvx = true;
             args.toIntel = true;
+        } else if (arg == "--to-sse") {
+            args.toSse = true;
+            args.toIntel = true;
         } else if (arg.rfind("unused-filter=", 0) == 0) {
             const std::string value = arg.substr(14);
             if (unusedFilterSpecified || value.size() != 1 || value[0] < '0' || value[0] > '2')
@@ -262,6 +267,10 @@ Args ParseArgs(int argc, char* argv[]) {
         throw std::runtime_error("--to-rosetta conflicts with --windows");
     if (args.toAvx && !args.toMacos)
         throw std::runtime_error("--to-avx requires --macos");
+    if (args.toSse && args.toAvx)
+        throw std::runtime_error("--to-sse conflicts with --to-avx");
+    if (args.toSse && args.toWindows)
+        throw std::runtime_error("--to-sse conflicts with --windows");
     if (args.windowsDiagnostics && !args.toWindows)
         throw std::runtime_error("--windows-diagnostics requires --windows");
     if (args.frameRedZone && !args.toWindows)

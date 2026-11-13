@@ -57,6 +57,7 @@ void matching() {
     const auto intel = Codegen::MakeAmd64OnlyInstructionMatcher();
     const auto rosetta = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Rosetta);
     const auto avx = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Avx);
+    const auto sse = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Sse);
     for (const bool store : {false, true}) {
         const auto bytes = site(store, 64, 0, {0x06});
         require(!intel->Match(bytes.data(), bytes.size()) && !rosetta->Match(bytes.data(), bytes.size()), "Intel or Rosetta mode rewrote MOVBE");
@@ -64,6 +65,8 @@ void matching() {
         require(match && match->InstructionName == "MOVBE" && match->Lowering == Codegen::Amd64OnlyLowering::Trampoline && !match->Optional, "AVX mode did not require a trampoline for MOVBE");
         const std::array<std::span<const std::uint8_t>, 2> sequence{bytes, bytes};
         require(avx->MatchSequence(sequence, {}).has_value(), "A MOVBE sequence could not move out of line");
+        const auto lowered = sse->Match(bytes.data(), bytes.size());
+        require(lowered && lowered->InstructionName == "MOVBE" && lowered->Lowering == Codegen::Amd64OnlyLowering::Trampoline && !lowered->Optional, "SSE mode did not require a trampoline for MOVBE");
     }
 }
 

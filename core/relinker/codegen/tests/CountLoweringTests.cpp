@@ -85,6 +85,7 @@ void matching() {
     const auto intel = Codegen::MakeAmd64OnlyInstructionMatcher();
     const auto rosetta = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Rosetta);
     const auto avx = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Avx);
+    const auto sse = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Sse);
     for (const auto operation : kOperations) {
         const auto bytes = instruction(operation, 64, 0, 6);
         const auto name = Codegen::CountName(operation);
@@ -94,12 +95,18 @@ void matching() {
         require(match && match->InstructionName == name && match->Lowering == Codegen::Amd64OnlyLowering::Trampoline && !match->Optional, std::string("AVX mode did not require a trampoline for ") + name);
         const std::array<std::span<const std::uint8_t>, 2> sequence{bytes, bytes};
         require(avx->MatchSequence(sequence, {}).has_value(), std::string("A sequence could not move out of line for ") + name);
+        const auto lowered = sse->Match(bytes.data(), bytes.size());
+        require(lowered && lowered->InstructionName == name && lowered->Lowering == Codegen::Amd64OnlyLowering::Trampoline && !lowered->Optional, std::string("SSE mode did not require a trampoline for ") + name);
+        require(sse->MatchSequence(sequence, {}).has_value(), std::string("An SSE sequence could not move out of line for ") + name);
     }
     const Bytes bsf{0x48, 0x0F, 0xBC, 0xC6};
     require(!avx->Match(bsf.data(), bsf.size()), "AVX mode rewrote BSF");
     const Bytes andn{0xC4, 0xE2, 0xF8, 0xF2, 0xC6};
     const auto inherited = avx->Match(andn.data(), andn.size());
     require(inherited && inherited->InstructionName == "ANDN", "AVX mode dropped the Rosetta lowerings");
+    require(!sse->Match(bsf.data(), bsf.size()), "SSE mode rewrote BSF");
+    const auto bmi = sse->Match(andn.data(), andn.size());
+    require(bmi && bmi->InstructionName == "ANDN", "SSE mode dropped the Rosetta lowerings");
 }
 
 #if LOWERING_EXECUTION_AVAILABLE

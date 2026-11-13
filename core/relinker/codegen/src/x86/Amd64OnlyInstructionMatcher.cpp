@@ -195,7 +195,8 @@ public:
 private:
     Amd64OnlyTarget _target;
 
-    [[nodiscard]] bool _lowersBmi() const { return _target == Amd64OnlyTarget::Rosetta || _target == Amd64OnlyTarget::Avx; }
+    [[nodiscard]] bool _lowersBmi() const { return _target == Amd64OnlyTarget::Rosetta || _lowersCount(); }
+    [[nodiscard]] bool _lowersCount() const { return _target == Amd64OnlyTarget::Avx || _target == Amd64OnlyTarget::Sse; }
     Sse4aLowering _lowering;
     Sha256Lowering _sha256Lowering;
     Sha1Lowering _sha1Lowering;
@@ -278,9 +279,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::_matchRosetta(const D
         return _trampoline(ShiftName(shift->Operation), instr.Length, _outOfLine(instr.Length, trailing, [&](StubBodyBuilder& body) { EmitShift(body, *shift); }));
     if (const auto bitfield = DecodeBitfield(instr.Data, instr.Length))
         return _trampoline(BitfieldName(bitfield->Operation), instr.Length, _outOfLine(instr.Length, trailing, [&](StubBodyBuilder& body) { EmitBitfield(body, *bitfield); }));
-    if (const auto count = _target == Amd64OnlyTarget::Avx ? DecodeCount(instr.Data, instr.Length) : std::nullopt)
+    if (const auto count = _lowersCount() ? DecodeCount(instr.Data, instr.Length) : std::nullopt)
         return _trampoline(CountName(count->Operation), instr.Length, _outOfLine(instr.Length, trailing, [&](StubBodyBuilder& body) { EmitCount(body, *count); }), false, true);
-    if (const auto movbe = _target == Amd64OnlyTarget::Avx ? DecodeMovbe(instr.Data, instr.Length) : std::nullopt)
+    if (const auto movbe = _lowersCount() ? DecodeMovbe(instr.Data, instr.Length) : std::nullopt)
         return _trampoline("MOVBE", instr.Length, _outOfLine(instr.Length, trailing, [&](StubBodyBuilder& body) { EmitMovbe(body, *movbe); }), false, true);
     if (_target == Amd64OnlyTarget::Rosetta && instr.IsRdseed()) {
         std::vector<std::uint8_t> replacement(instr.Data, instr.Data + instr.Length);
@@ -381,11 +382,11 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitBitfield(body, *bitfield);
         return BitfieldName(bitfield->Operation);
     }
-    if (const auto count = _target == Amd64OnlyTarget::Avx ? DecodeCount(instr.Data, instr.Length) : std::nullopt) {
+    if (const auto count = _lowersCount() ? DecodeCount(instr.Data, instr.Length) : std::nullopt) {
         EmitCount(body, *count);
         return CountName(count->Operation);
     }
-    if (const auto movbe = _target == Amd64OnlyTarget::Avx ? DecodeMovbe(instr.Data, instr.Length) : std::nullopt) {
+    if (const auto movbe = _lowersCount() ? DecodeMovbe(instr.Data, instr.Length) : std::nullopt) {
         EmitMovbe(body, *movbe);
         return "MOVBE";
     }
