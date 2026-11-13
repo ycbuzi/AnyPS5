@@ -210,14 +210,24 @@ char* APS5_VABI dlerror_nid_postfix() {
 #ifdef __linux__
 static void InitializeLinuxGuestModule(void* native) {
     auto* table = static_cast<std::uint64_t*>(::dlsym(native, "__aps5_guest_lifecycle_nid_no_patch"));
-    if (!table) return;
+    const auto moduleName = [&] {
+        link_map* map = nullptr;
+        return ::dlinfo(native, RTLD_DI_LINKMAP, &map) == 0 && map != nullptr && map->l_name != nullptr ? std::string(map->l_name) : std::string("?");
+    };
+    if (!table) {
+        std::fprintf(stderr, "[module] linux start %s: no lifecycle table\n", moduleName().c_str());
+        return;
+    }
     link_map* requested = nullptr;
     link_map* owner = nullptr;
     Dl_info info{};
     if (::dlinfo(native, RTLD_DI_LINKMAP, &requested) != 0 || requested == nullptr ||
         !::dladdr1(table, &info, reinterpret_cast<void**>(&owner), RTLD_DL_LINKMAP) || owner == nullptr)
         throw std::runtime_error("dlopen: cannot identify guest lifecycle metadata owner");
-    if (owner != requested) return;
+    if (owner != requested) {
+        std::fprintf(stderr, "[module] linux start %s: lifecycle table owned by another module, skipped\n", moduleName().c_str());
+        return;
+    }
     if (table[0] != 0x415053354c494658ull) throw std::runtime_error("dlopen: unsupported guest lifecycle metadata");
     using Entry = int (APS5_VABI *)(std::size_t, const void*, void*);
     using Initializer = void (APS5_VABI *)(int, char**, char**);
@@ -229,14 +239,19 @@ static void InitializeLinuxGuestModule(void* native) {
         if (table[7] == thread) return;
         initializedChanged.wait(lock);
     }
-    if (table[6] == 2) return;
+    if (table[6] == 2) {
+        std::fprintf(stderr, "[module] linux start %s: already started\n", moduleName().c_str());
+        return;
+    }
     if (table[6] != 0) throw std::runtime_error("dlopen: deferred guest initialization failed or finalized");
     table[6] = 1;
     table[7] = thread;
     lock.unlock();
     try {
         const auto pending = *static_cast<const PendingModuleArgs*>(__aps5_get_pending_module_args_nid_no_patch());
+        std::fprintf(stderr, "[module] linux start %s: entry %s, %llu initializers, thread %llu\n", moduleName().c_str(), table[2] == 0 ? "none" : "yes", static_cast<unsigned long long>(table[4]), static_cast<unsigned long long>(thread));
         const int result = table[2] == 0 ? 0 : reinterpret_cast<Entry>(table[2])(pending.args, pending.argp, nullptr);
+        std::fprintf(stderr, "[module] linux start %s: entry returned %d\n", moduleName().c_str(), result);
         for (std::uint64_t index = 0; index < table[4]; ++index) {
             const auto initializer = *reinterpret_cast<Initializer*>(table[8 + index]);
             if (initializer) initializer(0, nullptr, nullptr);

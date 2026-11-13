@@ -882,7 +882,16 @@ bool TraceFormats_nid_no_patch() {
     return enabled;
 }
 
+static thread_local RecentFormat t_recentFormats[128];
+static thread_local std::uint64_t t_recentFormatCount = 0;
+
 void NoteFormat_nid_no_patch(const char* format, const char* output, std::size_t size, int result) {
+    {
+        auto& own = t_recentFormats[t_recentFormatCount++ % std::size(t_recentFormats)];
+        std::snprintf(own.format, sizeof(own.format), "%s", format != nullptr ? format : "(null)");
+        if (output != nullptr && size != 0 && result >= 0) std::snprintf(own.output, sizeof(own.output), "%s", output);
+        else std::snprintf(own.output, sizeof(own.output), "(result %d, size %zu)", result, size);
+    }
     const auto sequence = g_recentFormatSequence.fetch_add(1, std::memory_order_relaxed) + 1;
     auto& slot = g_recentFormats[sequence % std::size(g_recentFormats)];
     slot.sequence.store(0, std::memory_order_release);
@@ -894,6 +903,17 @@ void NoteFormat_nid_no_patch(const char* format, const char* output, std::size_t
 }
 
 std::size_t CopyRecentFormats_nid_no_patch(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity) {
+    if (t_recentFormatCount != 0) {
+        const auto available = std::min<std::uint64_t>(t_recentFormatCount, std::size(t_recentFormats));
+        std::size_t count = 0;
+        for (std::uint64_t index = t_recentFormatCount - available; index < t_recentFormatCount && count < capacity; ++index) {
+            const auto& own = t_recentFormats[index % std::size(t_recentFormats)];
+            formats[count] = own.format;
+            outputs[count] = own.output;
+            ++count;
+        }
+        return count;
+    }
     const auto last = g_recentFormatSequence.load(std::memory_order_acquire);
     const auto span = std::min<std::uint64_t>(last, std::size(g_recentFormats));
     std::size_t count = 0;
