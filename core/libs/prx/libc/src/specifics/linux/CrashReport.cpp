@@ -295,6 +295,7 @@ void OnFatalSignal(int signal, siginfo_t* info, void* context) {
         Report(signal, info, static_cast<const ucontext_t*>(context));
         ReportCallTrace();
         ReportRecentFormats();
+        CallTracePrintOpenCapture_nid_no_patch();
         g_reporting.store(false, std::memory_order_release);
     } else {
         const timespec pause{0, 1000000};

@@ -23,6 +23,7 @@
 #include <unistd.h>
 #endif
 #include "prx/libc/include/CallTrace.hpp"
+#include <cstdio>
 #include "prx/libc/include/LogFile.hpp"
 #include "prx/libc/include/general/AsmMacros.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
@@ -444,6 +445,35 @@ static_assert(offsetof(ImportRecord, target) == 0);
 
 extern "C" {
 
+struct CapturedCall {
+    std::uint64_t sequence;
+    std::uint64_t returnAddress;
+    const ImportRecord* record;
+    char text0[48];
+    char text1[48];
+};
+
+struct OpenCapture {
+    std::string pattern;
+    std::size_t length = 0;
+    std::vector<CapturedCall> calls;
+    std::atomic<std::uint64_t> thread{0};
+    std::atomic<bool> printed{false};
+};
+
+static OpenCapture* g_openCapture = nullptr;
+
+static void PrintOpenCapture(OpenCapture& capture) {
+    if (capture.printed.exchange(true)) return;
+    std::fprintf(stderr, "[calltrace] %zu calls of thread %llu after the open of \"%s\":\n", capture.calls.size(), static_cast<unsigned long long>(capture.thread.load()), capture.pattern.c_str());
+    for (const auto& call : capture.calls) {
+        std::fprintf(stderr, "[calltrace]   #%llu %s %s from 0x%llx", static_cast<unsigned long long>(call.sequence), call.record->library.c_str(), call.record->name.c_str(), static_cast<unsigned long long>(call.returnAddress));
+        if (call.text0[0] != '\0') std::fprintf(stderr, " [%s]", call.text0);
+        if (call.text1[0] != '\0') std::fprintf(stderr, " [%s]", call.text1);
+        std::fprintf(stderr, "\n");
+    }
+}
+
 static void CopyGuestText(char* out, std::uint64_t address) {
     out[0] = '\0';
     if (address < 0x10000) return;
@@ -466,7 +496,26 @@ void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t re
     if (strings & 1) CopyGuestText(slot.text0, arg0);
     if (strings & 2) CopyGuestText(slot.text1, arg1);
     if (strings & 4) CopyGuestText(slot.text0, arg2);
+    if (strings & 8) CopyGuestText(slot.text0, arg0);
     slot.sequence.store(sequence, std::memory_order_release);
+    if (auto* capture = g_openCapture) {
+        const auto thread = CurrentThread();
+        if ((strings & 8) && capture->thread.load(std::memory_order_acquire) == 0 && std::strstr(slot.text0, capture->pattern.c_str()) != nullptr) {
+            std::uint64_t expected = 0;
+            capture->thread.compare_exchange_strong(expected, thread);
+        }
+        if (capture->thread.load(std::memory_order_acquire) == thread && capture->calls.size() < capture->length) {
+            CapturedCall call{sequence, returnAddress, static_cast<const ImportRecord*>(record), {}, {}};
+            std::memcpy(call.text0, slot.text0, sizeof(call.text0));
+            std::memcpy(call.text1, slot.text1, sizeof(call.text1));
+            capture->calls.push_back(call);
+            if (capture->calls.size() == capture->length) PrintOpenCapture(*capture);
+        }
+    }
+}
+
+void CallTracePrintOpenCapture_nid_no_patch() {
+    if (auto* capture = g_openCapture; capture != nullptr && capture->thread.load(std::memory_order_acquire) != 0) PrintOpenCapture(*capture);
 }
 
 void* TraceImport_nid_no_patch(void* target, const char* name, const char* library) {
@@ -499,7 +548,21 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
     record.target = target;
     record.name = name;
     record.library = library;
-    if (std::getenv("APS5_TRACE_STRINGS") != nullptr) {
+    const char* dumpAfterOpen = std::getenv("APS5_TRACE_DUMP_AFTER_OPEN");
+    if (dumpAfterOpen != nullptr && g_openCapture == nullptr) {
+        const std::string_view spec(dumpAfterOpen);
+        const auto colon = spec.rfind(':');
+        auto* capture = new OpenCapture;
+        capture->pattern = std::string(spec.substr(0, colon));
+        capture->length = colon == std::string_view::npos ? 2000 : std::min<std::size_t>(std::strtoul(std::string(spec.substr(colon + 1)).c_str(), nullptr, 10), 20000);
+        capture->calls.reserve(capture->length);
+        g_openCapture = capture;
+    }
+    if (dumpAfterOpen != nullptr) {
+        const std::string_view nid(name);
+        if (nid.starts_with("xeYO4u7uyJ0") || nid.starts_with("wuCroIGjt2g") || nid.starts_with("6c3rCVE-fTU") || nid.starts_with("1G3lF1Gg1k8")) record.strings = 8;
+    }
+    if (std::getenv("APS5_TRACE_STRINGS") != nullptr || dumpAfterOpen != nullptr) {
         const std::string_view nid(name);
         if (nid.starts_with("Ovb2dSJOAuE")) record.strings = 3;
         else if (nid.starts_with("j4ViWNHEgww") || nid.starts_with("ob5xAW4ln-0")) record.strings = 1;
