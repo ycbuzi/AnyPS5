@@ -32,7 +32,7 @@ public:
     ) const = 0;
 };
 
-std::unique_ptr<IAmd64OnlyInstructionMatcher> MakeAmd64OnlyInstructionMatcher(Amd64OnlyTarget target = Amd64OnlyTarget::Intel);
+std::unique_ptr<IAmd64OnlyInstructionMatcher> MakeAmd64OnlyInstructionMatcher(Amd64OnlyTarget target = Amd64OnlyTarget::Intel, std::optional<std::int32_t> shadow = std::nullopt);
 
 }
 

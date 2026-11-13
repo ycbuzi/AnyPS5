@@ -114,6 +114,55 @@ const std::vector<Bytes> kStubbed{
     Bytes{0xC5, 0xE2, 0x11, 0xCA},
 };
 
+void shadowLayout() {
+    require(Codegen::UpperShadowReservation(1) == 256 && Codegen::UpperShadowReservation(0) == 256 && Codegen::UpperShadowReservation(512) == 512, "the upper shadow reservation must be 256 bytes rounded to the TLS alignment");
+    require(Codegen::UpperShadowOffset(0, 1) == -256, "an empty TLS block puts the shadow at fs:-256");
+    require(Codegen::UpperShadowOffset(0xF0, 8) == -0x1F0, "the shadow must sit before the guest's 0xF0-byte TLS block");
+    require(Codegen::UpperShadowOffset(0x150, 16) == -0x250, "the shadow must sit before the guest's 0x150-byte TLS block");
+    require(Codegen::UpperShadowOffset(0x151, 16) == -0x260, "the guest block rounds up to its alignment before the shadow");
+}
+
+const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE3, 0x6D, 0x0D, 0xD9, 0x09},
+    Bytes{0xC5, 0xED, 0xC6, 0xD9, 0x05},
+    Bytes{0xC4, 0xE3, 0x6D, 0x42, 0xD9, 0x2D},
+    Bytes{0xC4, 0xE3, 0x6D, 0x0E, 0xD9, 0x96},
+    Bytes{0xC5, 0xE4, 0x58, 0xCA},
+    Bytes{0xC5, 0xE4, 0x5C, 0xC9},
+    Bytes{0xC5, 0xDC, 0x57, 0xE4},
+    Bytes{0xC5, 0xFC, 0x10, 0x28},
+    Bytes{0xC5, 0xFC, 0x11, 0x30},
+    Bytes{0xC5, 0x7C, 0x28, 0xCA},
+    Bytes{0xC4, 0xE3, 0x65, 0x18, 0xCA, 0x01},
+    Bytes{0xC4, 0xE3, 0x65, 0x18, 0xCA, 0x00},
+    Bytes{0xC4, 0xE3, 0x65, 0x18, 0x18, 0x01},
+    Bytes{0xC4, 0xE3, 0x7D, 0x19, 0xD9, 0x01},
+    Bytes{0xC4, 0xE3, 0x7D, 0x19, 0x18, 0x01},
+    Bytes{0xC4, 0xE3, 0x7D, 0x19, 0xDF, 0x00},
+    Bytes{0xC4, 0xE3, 0x65, 0x06, 0xCA, 0x21},
+    Bytes{0xC4, 0xE3, 0x65, 0x06, 0x08, 0x83},
+    Bytes{0xC4, 0xE2, 0x7D, 0x18, 0x08},
+    Bytes{0xC4, 0xE2, 0x7D, 0x18, 0xCA},
+    Bytes{0xC4, 0xE2, 0x7D, 0x19, 0x60, 0x08},
+    Bytes{0xC4, 0x62, 0x7D, 0x59, 0xE3},
+    Bytes{0xC4, 0xE2, 0x79, 0x58, 0x08},
+    Bytes{0xC4, 0xE2, 0x7D, 0x1A, 0x10},
+    Bytes{0xC5, 0xD5, 0x72, 0xD2, 0x03},
+    Bytes{0xC5, 0xED, 0xF3, 0xD9},
+    Bytes{0xC4, 0xE2, 0x6D, 0x00, 0xD9},
+    Bytes{0xC4, 0xE3, 0x6D, 0x0C, 0xD9, 0x5A},
+    Bytes{0xC5, 0xED, 0xFE, 0x10},
+    Bytes{0xC5, 0xF8, 0x77},
+    Bytes{0xC5, 0xFC, 0x77},
+    Bytes{0xC5, 0xE0, 0x58, 0xCA},
+    Bytes{0xC5, 0xD8, 0x57, 0xE4},
+    Bytes{0xC5, 0x7A, 0x10, 0x08},
+    Bytes{0xC5, 0xED, 0x74, 0xD9},
+    Bytes{0xC5, 0xEC, 0x55, 0xC9},
+    Bytes{0xC5, 0xE4, 0xC6, 0xCA, 0x1B},
+    Bytes{0xC5, 0xFE, 0x7F, 0x18},
+};
+
 void rewriting() {
     for (const auto& [vex, legacy] : kPairs) {
         const auto decoded = Codegen::DecodeVexLegacy(vex.data(), vex.size());
@@ -198,9 +247,52 @@ void execution() {
     }
 }
 
+alignas(16) thread_local std::uint64_t shadowArea[32];
+
+std::int32_t shadowOffset() {
+    std::uint64_t threadPointer = 0;
+    __asm__ volatile("mov %%fs:0, %0" : "=r"(threadPointer));
+    return static_cast<std::int32_t>(reinterpret_cast<std::uint64_t>(&shadowArea[0]) - threadPointer);
+}
+
+void shadowExecution() {
+    const auto offset = shadowOffset();
+    for (const auto& vex : kShadowed) {
+        const auto site = Codegen::DecodeVexShadow(vex.data(), vex.size(), true);
+        require(site.has_value(), "VEX " + hex(vex) + " has no shadow lowering");
+        Codegen::StubBodyBuilder body;
+        Codegen::EmitVexShadow(body, *site, offset);
+        const auto finished = body.Finish();
+        require(finished.Relocations.empty(), "test stubs must not relocate");
+        const VectorExecution::Runner reference(vex);
+        const VectorExecution::Runner stub(Bytes(finished.Bytes.begin(), finished.Bytes.begin() + static_cast<std::ptrdiff_t>(finished.ReturnBranchOffset)));
+        for (int seed = 0; seed < 4; ++seed) {
+            auto start = VectorExecution::Initial();
+            for (auto& reg : start.Ymm)
+                for (auto& q : reg) q = q * 0x9E3779B97F4A7C15ull + static_cast<std::uint64_t>(seed) * 0x3F8000003F800000ull;
+            for (auto& q : start.Memory) q ^= static_cast<std::uint64_t>(seed) * 0x4049000040490000ull;
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                shadowArea[reg * 2] = start.Ymm[reg][2];
+                shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+            }
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                require(got.Ymm[reg][0] == wanted.Ymm[reg][0] && got.Ymm[reg][1] == wanted.Ymm[reg][1], "shadow stub of " + hex(vex) + " differs in the low half of register " + std::to_string(reg));
+                require(shadowArea[reg * 2] == wanted.Ymm[reg][2] && shadowArea[reg * 2 + 1] == wanted.Ymm[reg][3], "shadow stub of " + hex(vex) + " differs in the upper half of register " + std::to_string(reg));
+            }
+            require(got.Memory == wanted.Memory, "shadow stub of " + hex(vex) + " changed memory");
+            for (const auto red : got.RedZone) require(red == LoweringExecution::kSentinel, "shadow stub of " + hex(vex) + " overwrote the red zone");
+        }
+    }
+}
+
 #else
 
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
+void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
 
 #endif
 
@@ -220,11 +312,13 @@ void outOfLine() {
 
 int main() {
     try {
+        shadowLayout();
         rewriting();
         matching();
         outOfLine();
         stubbing();
         execution();
+        shadowExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

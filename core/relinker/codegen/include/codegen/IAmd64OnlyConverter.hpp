@@ -5,9 +5,16 @@
 #include <domain/Types.hpp>
 #include <memory>
 #include <functional>
+#include <optional>
+#include <utility>
 #include <vector>
 
 namespace Codegen {
+
+struct UpperShadowContext {
+    std::int32_t Offset;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> Functions;
+};
 
 class IAmd64OnlyConverter {
 public:
@@ -16,7 +23,7 @@ public:
     [[nodiscard]] virtual ConvertResult Convert(std::vector<std::uint8_t> fileBytes, const std::vector<Domain::ProgramHeader>& segments) const = 0;
 };
 
-std::unique_ptr<IAmd64OnlyConverter> MakeAmd64OnlyConverter(Amd64OnlyTarget target = Amd64OnlyTarget::Intel, std::function<void(std::uint64_t, std::uint64_t)> progress = {});
+std::unique_ptr<IAmd64OnlyConverter> MakeAmd64OnlyConverter(Amd64OnlyTarget target = Amd64OnlyTarget::Intel, std::function<void(std::uint64_t, std::uint64_t)> progress = {}, std::optional<UpperShadowContext> shadow = std::nullopt);
 
 }
 

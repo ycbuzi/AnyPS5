@@ -174,7 +174,7 @@ bool _validWait(const DecodedInstruction& instr) {
 
 class Amd64OnlyInstructionMatcher : public IAmd64OnlyInstructionMatcher {
 public:
-    explicit Amd64OnlyInstructionMatcher(const Amd64OnlyTarget target) : _target(target) {}
+    explicit Amd64OnlyInstructionMatcher(const Amd64OnlyTarget target, const std::optional<std::int32_t> shadow = std::nullopt) : _target(target), _shadow(target == Amd64OnlyTarget::Sse ? shadow : std::nullopt) {}
 
     [[nodiscard]] std::optional<Amd64OnlyMatch> Match(
         const std::uint8_t* data,
@@ -195,6 +195,7 @@ public:
 
 private:
     Amd64OnlyTarget _target;
+    std::optional<std::int32_t> _shadow;
 
     [[nodiscard]] bool _lowersBmi() const { return _target == Amd64OnlyTarget::Rosetta || _lowersCount(); }
     [[nodiscard]] bool _lowersCount() const { return _target == Amd64OnlyTarget::Avx || _target == Amd64OnlyTarget::Sse; }
@@ -315,6 +316,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
     if (const auto twin = _target == Amd64OnlyTarget::Avx ? DecodeAvx2Twin(instr.Data, instr.Length) : std::nullopt) {
         EmitAvx2Twin(body, *twin);
         return twin->Name;
+    }
+    if (const auto site = _target == Amd64OnlyTarget::Sse ? DecodeVexShadow(instr.Data, instr.Length, _shadow.has_value()) : std::nullopt) {
+        EmitVexShadow(body, *site, _shadow);
+        return site->Name;
     }
     if (const auto legacy = _target == Amd64OnlyTarget::Sse ? DecodeVexLegacy(instr.Data, instr.Length) : std::nullopt) {
         EmitVexLegacy(body, *legacy);
@@ -543,6 +548,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
     if (const auto widen = _target == Amd64OnlyTarget::Avx ? DecodeWidenBroadcast(data, length) : std::nullopt)
         return _trampoline(widen->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitWidenBroadcast(body, *widen); }), false, true);
 
+    if (const auto site = _target == Amd64OnlyTarget::Sse ? DecodeVexShadow(data, length, _shadow.has_value()) : std::nullopt)
+        return _trampoline(site->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitVexShadow(body, *site, _shadow); }), true, true);
+
     if (auto legacy = _target == Amd64OnlyTarget::Sse ? DecodeVexLegacy(data, length) : std::nullopt)
         return _inPlace({legacy->Name, nullptr, 0}, length, std::move(legacy->Replacement));
 
@@ -554,8 +562,8 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
 
 }
 
-std::unique_ptr<IAmd64OnlyInstructionMatcher> MakeAmd64OnlyInstructionMatcher(const Amd64OnlyTarget target) {
-    return std::make_unique<Amd64OnlyInstructionMatcher>(target);
+std::unique_ptr<IAmd64OnlyInstructionMatcher> MakeAmd64OnlyInstructionMatcher(const Amd64OnlyTarget target, const std::optional<std::int32_t> shadow) {
+    return std::make_unique<Amd64OnlyInstructionMatcher>(target, shadow);
 }
 
 }

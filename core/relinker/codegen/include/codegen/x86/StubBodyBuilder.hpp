@@ -35,6 +35,7 @@ struct MemoryOperand {
     std::size_t InstructionLength;
 };
 
+[[nodiscard]] MemoryOperand OffsetMemoryOperand(MemoryOperand operand, std::int32_t delta);
 [[nodiscard]] MemoryOperand DecodeMemoryOperand(const std::uint8_t* data, std::size_t length, std::size_t modRmOffset, std::uint8_t rex, std::vector<std::uint8_t> prefixes);
 
 void EmitSse(std::vector<std::uint8_t>& out, std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, std::uint8_t dst, std::uint8_t src);
@@ -49,6 +50,7 @@ public:
     void ShiftDwordImm(std::uint8_t extension, std::uint8_t reg, std::uint8_t imm);
     void RipOperand(std::initializer_list<std::uint8_t> opcode, std::uint8_t reg, const StubConstant& constant);
     void Load(std::uint8_t reg, const MemoryOperand& operand);
+    void Store(std::uint8_t reg, const MemoryOperand& operand);
     void Spill(std::uint8_t reg);
     void Restore(std::uint8_t reg);
     void Raw(std::span<const std::uint8_t> bytes);
@@ -68,6 +70,7 @@ private:
     };
 
     void _rel32(std::initializer_list<std::uint8_t> opcode, std::int64_t siteTarget);
+    void _vectorMemory(std::uint8_t opcode, std::uint8_t reg, const MemoryOperand& operand);
     void _pushReturnAddress(std::int64_t siteTarget);
 
     std::vector<std::uint8_t> _bytes;

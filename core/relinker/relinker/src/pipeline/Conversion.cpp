@@ -75,22 +75,31 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
     std::vector<Codegen::TrampolineSite> trampolines;
     if (options.ToIntel) {
         const auto segments = Relinker::ElfReader(sourceBytes).ReadProgramHeaders();
-        auto converted = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse), [&](auto completed, auto total) { inputProgress.Report({Domain::ProgressStage::Lowering, {}, completed, total}); })->Convert(std::move(sourceBytes), segments);
+        std::optional<Codegen::UpperShadowContext> shadow;
+        if (options.ToSse && !windows && !macos) {
+            const auto tls = std::find_if(segments.begin(), segments.end(), [](const Domain::ProgramHeader& header) { return header.Type == Elfpatcher::PT_TLS; });
+            if (tls != segments.end() && tls->FileSize == 0) {
+                Codegen::UpperShadowContext context{static_cast<std::int32_t>(Codegen::UpperShadowOffset(tls->MemorySize, tls->Alignment)), {}};
+                for (const auto& region : Relinker::UnusedNidFilter::ReadExceptionFunctions(sourceBytes, segments, {}, {})) context.Functions.emplace_back(region.Begin, region.End);
+                shadow = std::move(context);
+            }
+        }
+        auto converted = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse), [&](auto completed, auto total) { inputProgress.Report({Domain::ProgressStage::Lowering, {}, completed, total}); }, std::move(shadow))->Convert(std::move(sourceBytes), segments);
         sourceBytes = std::move(converted.Bytes);
         trampolines = std::move(converted.Trampolines);
         GamePatch::CheckOverlaps(options.TargetName, patchedRanges, {.Reports = converted.Reports, .Trampolines = trampolines});
         std::map<std::string, std::size_t> stubsByName;
-        const auto counted = [](const std::string& name) { return name == "VRSQRTPS" || name == "VRCPPS" || name == "VRSQRTSS" || name == "VRCPSS" || name == "256-bit store" || name == "scalar compare"; };
+        const auto counted = [](const std::string& name) { return name == "VRSQRTPS" || name == "VRCPPS" || name == "VRSQRTSS" || name == "VRCPSS" || name == "256-bit store" || name == "scalar compare" || name == "VEX.128" || name == "VEX.256" || name == "VZEROUPPER" || name == "VZEROALL"; };
         for (const auto& report : converted.Reports) {
             if (report.Lowering == Codegen::Amd64OnlyLowering::Kept)
                 { std::ostringstream message; message << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) kept: no room for a jump\n"; inputProgress.Message(message.str()); }
             else if (counted(report.InstructionName))
-                ++stubsByName[report.InstructionName];
+                ++stubsByName[report.InstructionName + (report.Lowering == Codegen::Amd64OnlyLowering::InPlace ? " -> in place" : " -> stub")];
             else
                 { std::ostringstream message; message << "Intel substitution: " << report.InstructionName << " at 0x" << std::hex << report.Offset << std::dec << " (" << report.OriginalLength << " bytes) -> " << (report.Lowering == Codegen::Amd64OnlyLowering::InPlace ? "in place " : "stub ") << report.ReplacementLength << " bytes\n"; inputProgress.Message(message.str()); }
         }
         for (const auto& [name, count] : stubsByName)
-            { std::ostringstream message; message << "Intel substitution: " << name << " -> stub at " << count << " sites\n"; inputProgress.Message(message.str()); }
+            { std::ostringstream message; message << "Intel substitution: " << name << " at " << count << " sites\n"; inputProgress.Message(message.str()); }
         { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept\n"; inputProgress.Message(message.str()); }
     }
 
@@ -190,6 +199,14 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
                 if (patch.Target == options.TargetName) patch.OutputRva = image.GetRva(patch.VirtualAddress);
         }
         auto headers = result.OriginalHeaders;
+        if (options.ToSse && !windows && !macos) {
+            const auto tls = std::find_if(headers.begin(), headers.end(), [](const Domain::ProgramHeader& header) { return header.Type == Elfpatcher::PT_TLS; });
+            if (tls == headers.end())
+                throw Domain::RelinkerException("SSE conversion needs a PT_TLS segment in the executable to hold the YMM upper shadow");
+            if (tls->FileSize != 0)
+                throw Domain::RelinkerException("SSE conversion does not yet support an executable whose PT_TLS has initialised data");
+            tls->MemorySize += Codegen::UpperShadowReservation(tls->Alignment);
+        }
         if (const auto lowered = Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse)); lowered != 0 && !windows && !macos)
             headers.push_back(Domain::ProgramHeader{Elfpatcher::PT_ANYPS5_LOWERED_CPU, lowered, 0, 0, 0, 0, 0, 1});
         executableBytes = patcher->Patch(std::move(sourceBytes), headers, result.DynamicSection, result.OriginalPltGotVaddr, options.RunPath, options.LazyBinding, options.WindowsDiagnostics, trampolines);

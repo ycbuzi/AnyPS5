@@ -8,6 +8,7 @@
 #include <codegen/x86/IAmd64OnlyInstructionMatcher.hpp>
 #include <codegen/x86/StubBodyBuilder.hpp>
 #include <algorithm>
+#include <codegen/x86/VexLegacyLowering.hpp>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -170,7 +171,7 @@ private:
     }
 
     [[nodiscard]] std::optional<Placement> _relocate(const std::size_t index, const std::size_t first, const std::size_t last, const bool allowInPlace = false) const {
-        if (_enteredWithin(first, last))
+        if (_enteredWithin(first, last) || _end(last) - _address(first) < Amd64OnlySubstitutionTable::kJmpRel32.Size)
             return std::nullopt;
         StubBodyBuilder body;
         Placement placement;
@@ -253,7 +254,13 @@ private:
 
 class Amd64OnlyConverter : public IAmd64OnlyConverter {
 public:
-    Amd64OnlyConverter(const Amd64OnlyTarget target, std::function<void(std::uint64_t, std::uint64_t)> progress) : _matcher(MakeAmd64OnlyInstructionMatcher(target)), progress(std::move(progress)) {}
+    Amd64OnlyConverter(const Amd64OnlyTarget target, std::function<void(std::uint64_t, std::uint64_t)> progress, std::optional<UpperShadowContext> shadow)
+        : _matcher(MakeAmd64OnlyInstructionMatcher(target)),
+          _shadowMatcher(shadow && target == Amd64OnlyTarget::Sse ? MakeAmd64OnlyInstructionMatcher(target, shadow->Offset) : nullptr),
+          _functions(shadow ? shadow->Functions : std::vector<std::pair<std::uint64_t, std::uint64_t>>{}),
+          progress(std::move(progress)) {
+        std::sort(_functions.begin(), _functions.end());
+    }
 
     [[nodiscard]] ConvertResult Convert(
         std::vector<std::uint8_t> fileBytes,
@@ -268,7 +275,17 @@ private:
     };
 
     std::unique_ptr<IAmd64OnlyInstructionMatcher> _matcher;
+    std::unique_ptr<IAmd64OnlyInstructionMatcher> _shadowMatcher;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> _functions;
     std::function<void(std::uint64_t, std::uint64_t)> progress;
+
+    [[nodiscard]] std::optional<std::size_t> _functionAt(const std::uint64_t address) const {
+        auto it = std::upper_bound(_functions.begin(), _functions.end(), std::pair{address, std::numeric_limits<std::uint64_t>::max()});
+        if (it == _functions.begin()) return std::nullopt;
+        --it;
+        if (address >= it->second) return std::nullopt;
+        return static_cast<std::size_t>(it - _functions.begin());
+    }
 
     void _convertSegment(
         std::vector<std::uint8_t>& fileBytes,
@@ -364,13 +381,27 @@ void Amd64OnlyConverter::_convertSegment(
 
     const auto scanner = MakeInstructionScanner([&](auto offset, auto) { if (progress) progress(completed + offset, total); });
     const auto matches = _atFileOffset(ph.Offset, [&] { return scanner->ScanCodeSection(seg, 0, seg.size()); });
+    std::set<std::size_t> wideFunctions;
+    if (_shadowMatcher) {
+        for (const auto& match : matches) {
+            if (!VexWide(seg.data() + match.Offset, match.Length)) continue;
+            if (const auto function = _functionAt(ph.MappedAddress + match.Offset)) wideFunctions.insert(*function);
+        }
+    }
+    const auto matcherAt = [&](const std::uint64_t offset) -> const IAmd64OnlyInstructionMatcher& {
+        if (_shadowMatcher) {
+            const auto function = _functionAt(ph.MappedAddress + offset);
+            if (!function || wideFunctions.contains(*function)) return *_shadowMatcher;
+        }
+        return *_matcher;
+    };
 
     if (progress) progress(completed + segSize, total);
     std::vector<Pending> pending;
     for (std::size_t index = 0; index < matches.size(); ++index) {
         if (progress && index != 0 && index % 4096 == 0) progress(completed + segSize + matches[index].Offset, total);
         const auto& match = matches[index];
-        auto substitution = _atFileOffset(ph.Offset + match.Offset, [&] { return _matcher->Match(seg.data() + match.Offset, match.Length); });
+        auto substitution = _atFileOffset(ph.Offset + match.Offset, [&] { return matcherAt(match.Offset).Match(seg.data() + match.Offset, match.Length); });
         if (substitution.has_value())
             pending.push_back({index, match, std::move(*substitution)});
     }
@@ -414,7 +445,7 @@ void Amd64OnlyConverter::_convertSegment(
         }
         case Amd64OnlyLowering::Trampoline: {
             if (substitution.RelocatableWindow && match.Length < Amd64OnlySubstitutionTable::kJmpRel32.Size) {
-                WindowPlacer placer(seg, matches, ph, branchTargets, pendingIndices, claimed, *_matcher);
+                WindowPlacer placer(seg, matches, ph, branchTargets, pendingIndices, claimed, matcherAt(match.Offset));
                 auto placement = placer.Window(item.Index);
                 if (!placement)
                     placement = placer.Island(item.Index);
@@ -448,7 +479,7 @@ void Amd64OnlyConverter::_convertSegment(
                         const auto& following = matches[next];
                         const std::span<const std::uint8_t> bytes(seg.data() + following.Offset, following.Length);
                         const auto info = decoder.DecodeInstruction(bytes.data(), bytes.size());
-                        const bool amdOnly = _matcher->Match(bytes.data(), bytes.size()).has_value();
+                        const bool amdOnly = matcherAt(following.Offset).Match(bytes.data(), bytes.size()).has_value();
                         if (amdOnly && trailingBytes == 0) {
                             sequence.push_back(bytes);
                             taken.push_back(next);
@@ -460,7 +491,7 @@ void Amd64OnlyConverter::_convertSegment(
                         siteLength += following.Length;
                     }
                     const std::span<const std::uint8_t> trailing(seg.data() + match.Offset + siteLength - trailingBytes, trailingBytes);
-                    auto relocated = _atFileOffset(fileOffset, [&] { return _matcher->MatchSequence(sequence, trailing); });
+                    auto relocated = _atFileOffset(fileOffset, [&] { return matcherAt(match.Offset).MatchSequence(sequence, trailing); });
                     if (!relocated.has_value() || relocated->Lowering != Amd64OnlyLowering::Trampoline)
                         throw CodegenException("AMD-only instruction sequence has no out-of-line lowering", fileOffset);
                     stub = std::move(*relocated);
@@ -530,8 +561,8 @@ ConvertResult Amd64OnlyConverter::Convert(
 
 }
 
-std::unique_ptr<IAmd64OnlyConverter> MakeAmd64OnlyConverter(const Amd64OnlyTarget target, std::function<void(std::uint64_t, std::uint64_t)> progress) {
-    return std::make_unique<Amd64OnlyConverter>(target, std::move(progress));
+std::unique_ptr<IAmd64OnlyConverter> MakeAmd64OnlyConverter(const Amd64OnlyTarget target, std::function<void(std::uint64_t, std::uint64_t)> progress, std::optional<UpperShadowContext> shadow) {
+    return std::make_unique<Amd64OnlyConverter>(target, std::move(progress), std::move(shadow));
 }
 
 }

@@ -153,6 +153,11 @@ if(BUILD_TESTING)
     add_test(NAME movbe_lowering COMMAND movbe_lowering_tests)
     set_tests_properties(movbe_lowering PROPERTIES TIMEOUT 60)
 
+    add_test_executable(upper_shadow_boundary_tests ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/UpperShadowBoundaryTests.cpp)
+    target_link_libraries(upper_shadow_boundary_tests PRIVATE relinker_core)
+    add_test(NAME upper_shadow_boundary COMMAND upper_shadow_boundary_tests)
+    set_tests_properties(upper_shadow_boundary PROPERTIES TIMEOUT 60)
+
     add_test_executable(vex_legacy_lowering_tests ${CMAKE_CURRENT_SOURCE_DIR}/codegen/tests/VexLegacyLoweringTests.cpp)
     target_link_libraries(vex_legacy_lowering_tests PRIVATE relinker_core)
     add_test(NAME vex_legacy_lowering COMMAND vex_legacy_lowering_tests)

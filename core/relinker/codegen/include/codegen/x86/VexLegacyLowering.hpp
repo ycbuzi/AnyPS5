@@ -18,6 +18,14 @@ struct VexStub {
     std::vector<std::uint8_t> Original;
 };
 
+struct VexShadow {
+    const char* Name;
+    std::vector<std::uint8_t> Original;
+};
+
+[[nodiscard]] bool VexWide(const std::uint8_t* data, std::size_t length);
+[[nodiscard]] std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, std::size_t length, bool shadow);
+void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, std::optional<std::int32_t> shadow);
 [[nodiscard]] std::optional<VexStub> DecodeVexStub(const std::uint8_t* data, std::size_t length);
 void EmitVexStub(StubBodyBuilder& body, const VexStub& stub);
 [[nodiscard]] std::optional<VexLegacy> DecodeVexLegacy(const std::uint8_t* data, std::size_t length);

@@ -113,17 +113,36 @@ bool HasImmediate(const std::uint8_t map, const std::uint8_t op) {
     return map == 3 || (map == 1 && (op == 0x70 || In(op, 0x71, 0x73) || op == 0xC2 || op == 0xC6));
 }
 
+bool Lane256(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t op, const Form& form) {
+    if (form.Kind == Shape::ScalarMove || form.Kind == Shape::ScalarStore || form.GprSource || form.Wide) return false;
+    if (map == 1) {
+        if (pp >= 2 && (op == 0x51 || op == 0x58 || op == 0x59 || op == 0x5A || (op >= 0x5C && op <= 0x5F) || op == 0xC2)) return false;
+        if (op == 0x5A || op == 0xE6 || op == 0x50 || op == 0xD7 || op == 0x2E || op == 0x2F || op == 0xD6) return false;
+        if ((op == 0x12 || op == 0x13 || op == 0x16 || op == 0x17) && pp < 2) return false;
+        if (op == 0xF0) return false;
+        return true;
+    }
+    if (map == 2) return !(op == 0x17 || (op >= 0x20 && op <= 0x25) || (op >= 0x30 && op <= 0x35) || op == 0x41 || op >= 0xDB);
+    if (map == 3) return op == 0x08 || op == 0x09 || (op >= 0x0C && op <= 0x0F) || op == 0x40 || op == 0x42;
+    return false;
+}
+
+bool ShiftCount(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t op) {
+    return map == 1 && pp == 1 && (op == 0xD1 || op == 0xD2 || op == 0xD3 || op == 0xE1 || op == 0xE2 || op == 0xF1 || op == 0xF2 || op == 0xF3);
+}
+
 struct Parsed {
     std::size_t Vex;
     std::size_t OpIndex;
     std::uint8_t R, X, B, Map, Pp, Op, Modrm, Vvvv;
     bool W;
+    bool L;
     bool Memory;
     std::uint8_t Reg, Rm;
     Form Kind;
 };
 
-std::optional<Parsed> Parse(const std::uint8_t* data, const std::size_t length) {
+std::optional<Parsed> Parse(const std::uint8_t* data, const std::size_t length, const bool table = true) {
     Parsed p{};
     while (p.Vex < length && ScalarLowering::LegacyPrefix(data[p.Vex])) ++p.Vex;
     if (p.Vex + 3 > length || (data[p.Vex] != 0xC4 && data[p.Vex] != 0xC5)) return std::nullopt;
@@ -140,18 +159,20 @@ std::optional<Parsed> Parse(const std::uint8_t* data, const std::size_t length) 
     p.Pp = static_cast<std::uint8_t>(last & 3);
     p.OpIndex = p.Vex + (threeByte ? 3 : 2);
     p.Op = data[p.OpIndex];
-    if ((last & 4) != 0) return std::nullopt;
+    p.L = (last & 4) != 0;
     if (p.Map == 1 && p.Op == 0x77) {
         if (p.Pp != 0 || p.Vvvv != 0 || p.OpIndex + 1 != length) return std::nullopt;
         return p;
     }
     if (p.OpIndex + 2 > length) return std::nullopt;
-    p.Kind = Lookup(p.Map, p.Pp, p.Op);
-    if (p.Kind.Kind == Shape::None) return std::nullopt;
     p.Modrm = data[p.OpIndex + 1];
     p.Memory = (p.Modrm >> 6) != 3;
     p.Reg = static_cast<std::uint8_t>(p.R << 3 | (p.Modrm >> 3 & 7));
     p.Rm = static_cast<std::uint8_t>(p.B << 3 | (p.Modrm & 7));
+    if (!table) return p;
+    p.Kind = Lookup(p.Map, p.Pp, p.Op);
+    if (p.Kind.Kind == Shape::None) return std::nullopt;
+    if (p.L && !Lane256(p.Map, p.Pp, p.Op, p.Kind)) return std::nullopt;
     if (p.Kind.Predicate && data[length - 1] >= 8) return std::nullopt;
     if (p.Kind.Kind == Shape::Unary && p.Vvvv != 0) return std::nullopt;
     if (p.Kind.Kind == Shape::ShiftImm && p.Memory) return std::nullopt;
@@ -159,7 +180,7 @@ std::optional<Parsed> Parse(const std::uint8_t* data, const std::size_t length) 
     return p;
 }
 
-bool ZeroUpper(const Parsed& p) { return p.Map == 1 && p.Op == 0x77; }
+bool ZeroUpper(const Parsed& p) { return p.Map == 1 && p.Op == 0x77 && !p.L; }
 
 bool InPlaceShape(const Parsed& p) {
     if (p.Memory && p.Kind.Aligned) return false;
@@ -239,11 +260,286 @@ void EmitLegacy(StubBodyBuilder& body, std::span<const std::uint8_t> bytes, cons
     body.RipRelative(bytes, info.RipRelativeDispOffset, static_cast<std::int64_t>(bytes.size()) + displacement);
 }
 
+
+constexpr const char* kName256 = "VEX.256";
+constexpr const char* kZeroAll = "VZEROALL";
+
+std::vector<std::uint8_t> FsVector(const std::uint8_t opcode, const std::uint8_t reg, const std::int32_t displacement) {
+    std::vector<std::uint8_t> bytes{0x64, 0xF3};
+    if (reg & 8) bytes.push_back(0x44);
+    bytes.insert(bytes.end(), {0x0F, opcode, static_cast<std::uint8_t>((reg & 7) << 3 | 4), 0x25});
+    for (unsigned shift = 0; shift < 32; shift += 8) bytes.push_back(static_cast<std::uint8_t>(static_cast<std::uint32_t>(displacement) >> shift));
+    return bytes;
+}
+
+std::int32_t UpperSlot(const std::int32_t shadow, const std::uint8_t reg) { return shadow + 16 * reg; }
+
+void LoadUpper(StubBodyBuilder& body, const std::uint8_t into, const std::int32_t shadow, const std::uint8_t reg) { body.Raw(FsVector(0x6F, into, UpperSlot(shadow, reg))); }
+void StoreUpper(StubBodyBuilder& body, const std::uint8_t from, const std::int32_t shadow, const std::uint8_t reg) { body.Raw(FsVector(0x7F, from, UpperSlot(shadow, reg))); }
+
+void ClearUpper(StubBodyBuilder& body, const std::int32_t shadow, const std::uint8_t reg) {
+    for (const std::int32_t half : {0, 8}) {
+        std::vector<std::uint8_t> bytes{0x64, 0x48, 0xC7, 0x04, 0x25};
+        const auto displacement = static_cast<std::uint32_t>(UpperSlot(shadow, reg) + half);
+        for (unsigned shift = 0; shift < 32; shift += 8) bytes.push_back(static_cast<std::uint8_t>(displacement >> shift));
+        bytes.insert(bytes.end(), {0, 0, 0, 0});
+        body.Raw(bytes);
+    }
+}
+
+std::vector<std::uint8_t> Xorps(const std::uint8_t reg) {
+    std::vector<std::uint8_t> bytes;
+    if (reg & 8) bytes.push_back(0x45);
+    bytes.insert(bytes.end(), {0x0F, 0x57, static_cast<std::uint8_t>(0xC0 | (reg & 7) << 3 | (reg & 7))});
+    return bytes;
+}
+
+std::vector<std::uint8_t> RegisterOp(const std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, const std::uint8_t reg, const std::uint8_t rm, const std::optional<std::uint8_t> imm = std::nullopt) {
+    std::vector<std::uint8_t> bytes;
+    if (prefix) bytes.push_back(prefix);
+    if ((reg | rm) & 8) bytes.push_back(static_cast<std::uint8_t>(0x40 | (reg >> 3) << 2 | rm >> 3));
+    bytes.insert(bytes.end(), opcode);
+    bytes.push_back(static_cast<std::uint8_t>(0xC0 | (reg & 7) << 3 | (rm & 7)));
+    if (imm) bytes.push_back(*imm);
+    return bytes;
+}
+
+std::vector<std::uint8_t> MemoryOp(const std::uint8_t* data, const std::size_t length, const Parsed& p, const std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, const std::uint8_t reg) {
+    std::vector<std::uint8_t> prefixes(data, data + p.Vex);
+    const auto memory = DecodeMemoryOperand(data, length, p.OpIndex + 1, static_cast<std::uint8_t>(p.X << 1 | p.B), prefixes);
+    std::vector<std::uint8_t> bytes(prefixes);
+    if (prefix) bytes.push_back(prefix);
+    const auto rex = static_cast<std::uint8_t>((reg >> 3) << 2 | p.X << 1 | p.B);
+    if (rex) bytes.push_back(static_cast<std::uint8_t>(0x40 | rex));
+    bytes.insert(bytes.end(), opcode);
+    const auto modrmAt = bytes.size();
+    bytes.insert(bytes.end(), data + p.OpIndex + 1, data + p.OpIndex + 1 + memory.EncodedSize);
+    bytes[modrmAt] = static_cast<std::uint8_t>((bytes[modrmAt] & 0xC7) | (reg & 7) << 3);
+    if (memory.RipRelative) {
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, bytes.data() + modrmAt + 1, sizeof(displacement));
+        displacement += static_cast<std::int32_t>(length) - static_cast<std::int32_t>(bytes.size());
+        std::memcpy(bytes.data() + modrmAt + 1, &displacement, sizeof(displacement));
+    }
+    return bytes;
+}
+
+MemoryOperand Operand(const std::uint8_t* data, const std::size_t length, const Parsed& p) {
+    return DecodeMemoryOperand(data, length, p.OpIndex + 1, static_cast<std::uint8_t>(p.X << 1 | p.B), std::vector<std::uint8_t>(data, data + p.Vex));
+}
+
+std::optional<std::uint8_t> XmmDestination(const Parsed& p) {
+    switch (p.Kind.Kind) {
+    case Shape::ShiftImm: return p.Vvvv;
+    case Shape::ScalarStore: return p.Memory ? std::nullopt : std::optional<std::uint8_t>(p.Rm);
+    case Shape::ScalarMove:
+    case Shape::Nds: return p.Reg;
+    case Shape::None: return std::nullopt;
+    case Shape::Unary: break;
+    }
+    if (p.Map == 1) {
+        if ((p.Op == 0x11 && p.Pp < 2) || p.Op == 0x29 || p.Op == 0x7F || p.Op == 0xD6 || p.Op == 0x13 || p.Op == 0x17 || p.Op == 0x2B || p.Op == 0xE7)
+            return p.Memory ? std::nullopt : std::optional<std::uint8_t>(p.Rm);
+        if (p.Op == 0x2C || p.Op == 0x2D || p.Op == 0x2E || p.Op == 0x2F || p.Op == 0x50 || p.Op == 0xD7 || (p.Op == 0x7E && p.Pp == 1)) return std::nullopt;
+    }
+    if (p.Map == 2 && p.Op == 0x17) return std::nullopt;
+    if (p.Map == 3) {
+        if (p.Op >= 0x14 && p.Op <= 0x17) return std::nullopt;
+        if (p.Op == 0x60 || p.Op == 0x62) return std::uint8_t{0};
+        if (p.Op == 0x61 || p.Op == 0x63) return std::nullopt;
+    }
+    return p.Reg;
+}
+
+bool StoreDirection(const Parsed& p) {
+    return p.Map == 1 && ((p.Op == 0x11 && p.Pp < 2) || p.Op == 0x29 || (p.Op == 0x7F && p.Pp != 0) || p.Op == 0x2B || p.Op == 0xE7);
+}
+
+bool PlainMove(const Parsed& p) {
+    return (p.Map == 1 && (((p.Op == 0x10 || p.Op == 0x28) && p.Pp < 2) || (p.Op == 0x6F && p.Pp != 0))) || (p.Map == 2 && p.Op == 0x2A);
+}
+
+std::vector<std::uint8_t> LowHalf(const std::uint8_t* data, const std::size_t length, const Parsed& p) {
+    std::vector<std::uint8_t> bytes(data, data + length);
+    bytes[p.Vex + (data[p.Vex] == 0xC4 ? 2 : 1)] &= static_cast<std::uint8_t>(~4);
+    return bytes;
+}
+
+std::uint8_t HighImmediate(const Parsed& p, const std::uint8_t imm) {
+    if (p.Map == 3 && p.Op == 0x0C) return static_cast<std::uint8_t>(imm >> 4);
+    if (p.Map == 3 && p.Op == 0x0D) return static_cast<std::uint8_t>(imm >> 2);
+    if (p.Map == 3 && p.Op == 0x42) return static_cast<std::uint8_t>(imm >> 3);
+    if (p.Map == 1 && p.Pp == 1 && p.Op == 0xC6) return static_cast<std::uint8_t>(imm >> 2);
+    return imm;
+}
+
+void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& p, const std::int32_t shadow) {
+    const std::optional<std::uint8_t> imm = HasImmediate(p.Map, p.Op) ? std::optional<std::uint8_t>(HighImmediate(p, data[length - 1])) : std::nullopt;
+    if (StoreDirection(p)) {
+        const auto scratch = Scratch({});
+        body.Spill(scratch);
+        LoadUpper(body, scratch, shadow, p.Reg);
+        if (p.Memory) body.Store(scratch, OffsetMemoryOperand(Operand(data, length, p), 16));
+        else StoreUpper(body, scratch, shadow, p.Rm);
+        body.Restore(scratch);
+        return;
+    }
+    const auto first = Scratch({p.Memory ? std::uint8_t{16} : p.Rm});
+    const auto second = Scratch({first, p.Memory ? std::uint8_t{16} : p.Rm});
+    body.Spill(first);
+    body.Spill(second);
+    const auto memory = p.Memory ? std::optional<MemoryOperand>(Operand(data, length, p)) : std::nullopt;
+    const auto sourceUpper = [&](const std::uint8_t into) {
+        if (memory) body.Load(into, OffsetMemoryOperand(*memory, 16));
+        else LoadUpper(body, into, shadow, p.Rm);
+    };
+    if (PlainMove(p)) {
+        sourceUpper(first);
+        StoreUpper(body, first, shadow, p.Reg);
+    } else if (p.Kind.Kind == Shape::ShiftImm) {
+        LoadUpper(body, first, shadow, p.Rm);
+        body.Raw(RegisterForm(p, p.Op, static_cast<std::uint8_t>(p.Modrm >> 3 & 7), first, imm));
+        StoreUpper(body, first, shadow, p.Vvvv);
+    } else if (p.Kind.Kind == Shape::Unary) {
+        sourceUpper(second);
+        body.Raw(RegisterForm(p, p.Op, first, second, imm));
+        StoreUpper(body, first, shadow, p.Reg);
+    } else {
+        LoadUpper(body, first, shadow, p.Vvvv);
+        if (ShiftCount(p.Map, p.Pp, p.Op)) {
+            if (memory) body.Load(second, *memory);
+            else body.Raw(Movaps(second, p.Rm));
+        } else {
+            sourceUpper(second);
+        }
+        body.Raw(RegisterForm(p, p.Op, first, second, imm));
+        StoreUpper(body, first, shadow, p.Reg);
+    }
+    body.Restore(second);
+    body.Restore(first);
+}
+
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+
+Special SpecialOf(const Parsed& h) {
+    if (h.Pp != 1 || h.W) return Special::None;
+    if (h.Map == 3 && h.L && (h.Op == 0x18 || h.Op == 0x38)) return Special::Insert;
+    if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
+    if (h.Map == 3 && h.L && (h.Op == 0x06 || h.Op == 0x46)) return Special::Permute2;
+    if (h.Map != 2 || h.Vvvv != 0) return Special::None;
+    if (h.Op == 0x18) return Special::BroadcastSs;
+    if (h.Op == 0x19 && h.L) return Special::BroadcastSd;
+    if ((h.Op == 0x1A || h.Op == 0x5A) && h.L && h.Memory) return Special::Broadcast128;
+    if (h.Op == 0x58) return Special::BroadcastD;
+    if (h.Op == 0x59) return Special::BroadcastQ;
+    return Special::None;
+}
+
+void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const Special kind, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto settle = [&](const std::uint8_t reg) {
+        if (!shadow) return;
+        if (h.L) StoreUpper(body, reg, *shadow, reg);
+        else ClearUpper(body, *shadow, reg);
+    };
+    switch (kind) {
+    case Special::BroadcastSs:
+    case Special::BroadcastD:
+        if (h.Memory) EmitLegacy(body, MemoryOp(data, length, h, 0x66, {0x0F, 0x6E}, dst), kName);
+        else if (dst != h.Rm) body.Raw(Movaps(dst, h.Rm));
+        body.Raw(RegisterOp(0x66, {0x0F, 0x70}, dst, dst, std::uint8_t{0}));
+        settle(dst);
+        return;
+    case Special::BroadcastSd:
+    case Special::BroadcastQ:
+        if (h.Memory) EmitLegacy(body, MemoryOp(data, length, h, 0xF3, {0x0F, 0x7E}, dst), kName);
+        else body.Raw(RegisterOp(0xF3, {0x0F, 0x7E}, dst, h.Rm));
+        body.Raw(RegisterOp(0x66, {0x0F, 0x6C}, dst, dst));
+        settle(dst);
+        return;
+    case Special::Broadcast128:
+        EmitLegacy(body, MemoryOp(data, length, h, 0, {0x0F, 0x10}, dst), kName);
+        settle(dst);
+        return;
+    case Special::Insert: {
+        const auto imm = data[length - 1];
+        const auto src1 = h.Vvvv;
+        if (imm & 1) {
+            if (h.Memory) {
+                const auto scratch = Scratch({});
+                body.Spill(scratch);
+                body.Load(scratch, Operand(data, length, h));
+                StoreUpper(body, scratch, *shadow, dst);
+                body.Restore(scratch);
+            } else {
+                StoreUpper(body, h.Rm, *shadow, dst);
+            }
+            if (dst != src1) body.Raw(Movaps(dst, src1));
+        } else {
+            if (dst != src1) {
+                const auto scratch = Scratch({});
+                body.Spill(scratch);
+                LoadUpper(body, scratch, *shadow, src1);
+                StoreUpper(body, scratch, *shadow, dst);
+                body.Restore(scratch);
+            }
+            if (h.Memory) EmitLegacy(body, MemoryOp(data, length, h, 0, {0x0F, 0x10}, dst), kName);
+            else if (dst != h.Rm) body.Raw(Movaps(dst, h.Rm));
+        }
+        return;
+    }
+    case Special::Extract: {
+        const auto imm = data[length - 1];
+        const auto source = h.Reg;
+        if (h.Memory) {
+            if (imm & 1) {
+                const auto scratch = Scratch({});
+                body.Spill(scratch);
+                LoadUpper(body, scratch, *shadow, source);
+                body.Store(scratch, Operand(data, length, h));
+                body.Restore(scratch);
+            } else {
+                EmitLegacy(body, MemoryOp(data, length, h, 0, {0x0F, 0x11}, source), kName);
+            }
+            return;
+        }
+        if (imm & 1) LoadUpper(body, h.Rm, *shadow, source);
+        else if (h.Rm != source) body.Raw(Movaps(h.Rm, source));
+        ClearUpper(body, *shadow, h.Rm);
+        return;
+    }
+    case Special::Permute2: {
+        const auto imm = data[length - 1];
+        const auto first = Scratch({dst});
+        const auto second = Scratch({dst, first});
+        const auto memory = h.Memory ? std::optional<MemoryOperand>(Operand(data, length, h)) : std::nullopt;
+        body.Spill(first);
+        body.Spill(second);
+        for (const auto [into, selector] : {std::pair{first, static_cast<std::uint8_t>(imm & 0xF)}, std::pair{second, static_cast<std::uint8_t>(imm >> 4)}}) {
+            if (selector & 8) { body.Raw(Xorps(into)); continue; }
+            switch (selector & 3) {
+            case 0: body.Raw(Movaps(into, h.Vvvv)); break;
+            case 1: LoadUpper(body, into, *shadow, h.Vvvv); break;
+            case 2: if (memory) body.Load(into, *memory); else body.Raw(Movaps(into, h.Rm)); break;
+            default: if (memory) body.Load(into, OffsetMemoryOperand(*memory, 16)); else LoadUpper(body, into, *shadow, h.Rm); break;
+            }
+        }
+        StoreUpper(body, second, *shadow, dst);
+        body.Raw(Movaps(dst, first));
+        body.Restore(second);
+        body.Restore(first);
+        return;
+    }
+    case Special::None:
+        return;
+    }
+}
+
 }
 
 std::optional<VexLegacy> DecodeVexLegacy(const std::uint8_t* data, const std::size_t length) {
     const auto p = Parse(data, length);
-    if (!p) return std::nullopt;
+    if (!p || p->L) return std::nullopt;
     if (ZeroUpper(*p)) return VexLegacy{kZeroUpper, {}};
     if (!InPlaceShape(*p)) return std::nullopt;
     std::int32_t shrink = 0;
@@ -259,7 +555,7 @@ void EmitVexLegacy(StubBodyBuilder& body, const VexLegacy& legacy) {
 
 std::optional<VexStub> DecodeVexStub(const std::uint8_t* data, const std::size_t length) {
     const auto p = Parse(data, length);
-    if (!p || ZeroUpper(*p)) return std::nullopt;
+    if (!p || p->L || ZeroUpper(*p)) return std::nullopt;
     if (DecodeVexLegacy(data, length)) return std::nullopt;
     return VexStub{kName, std::vector<std::uint8_t>(data, data + length)};
 }
@@ -322,6 +618,57 @@ void EmitVexStub(StubBodyBuilder& body, const VexStub& stub) {
         body.Restore(scratch);
     }
     if (loaded) body.Restore(*loaded);
+}
+
+void EmitLow128(StubBodyBuilder& body, const std::vector<std::uint8_t>& bytes) {
+    if (const auto legacy = DecodeVexLegacy(bytes.data(), bytes.size())) EmitVexLegacy(body, *legacy);
+    else EmitVexStub(body, VexStub{kName, bytes});
+}
+
+std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, const std::size_t length, const bool shadow) {
+    const auto header = Parse(data, length, false);
+    if (!header) return std::nullopt;
+    if (header->Map == 1 && header->Op == 0x77 && header->Pp == 0 && header->Vvvv == 0 && header->OpIndex + 1 == length)
+        return shadow ? std::optional<VexShadow>(VexShadow{header->L ? kZeroAll : kZeroUpper, std::vector<std::uint8_t>(data, data + length)}) : std::nullopt;
+    if (header->OpIndex + 2 > length) return std::nullopt;
+    const auto special = SpecialOf(*header);
+    if (special != Special::None && (shadow || !header->L)) return VexShadow{header->L ? kName256 : kName, std::vector<std::uint8_t>(data, data + length)};
+    const auto p = Parse(data, length);
+    if (!p || (p->L && !shadow)) return std::nullopt;
+    if (!shadow) return std::nullopt;
+    return VexShadow{p->L ? kName256 : kName, std::vector<std::uint8_t>(data, data + length)};
+}
+
+void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, const std::optional<std::int32_t> shadow) {
+    const auto* data = site.Original.data();
+    const auto length = site.Original.size();
+    const auto header = *Parse(data, length, false);
+    if (header.Map == 1 && header.Op == 0x77) {
+        for (std::uint8_t reg = 0; reg < 16; ++reg) {
+            if (header.L) body.Raw(Xorps(reg));
+            ClearUpper(body, *shadow, reg);
+        }
+        return;
+    }
+    if (const auto special = SpecialOf(header); special != Special::None) {
+        EmitSpecial(body, data, length, header, special, shadow);
+        return;
+    }
+    const auto p = *Parse(data, length);
+    if (p.L) {
+        EmitHigh(body, data, length, p, *shadow);
+        EmitLow128(body, LowHalf(data, length, p));
+        return;
+    }
+    EmitLow128(body, site.Original);
+    if (const auto written = XmmDestination(p); written && shadow) ClearUpper(body, *shadow, *written);
+}
+
+bool VexWide(const std::uint8_t* data, const std::size_t length) {
+    std::size_t vex = 0;
+    while (vex < length && ScalarLowering::LegacyPrefix(data[vex])) ++vex;
+    if (vex + 3 > length || (data[vex] != 0xC4 && data[vex] != 0xC5)) return false;
+    return (data[vex + (data[vex] == 0xC4 ? 2 : 1)] & 4) != 0;
 }
 
 }

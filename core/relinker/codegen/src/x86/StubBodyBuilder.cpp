@@ -61,6 +61,15 @@ void _shiftImm(std::vector<std::uint8_t>& out, const std::uint8_t opcode, const 
 
 }
 
+MemoryOperand OffsetMemoryOperand(MemoryOperand operand, const std::int32_t delta) {
+    using namespace X64OpcodeConstants;
+    operand.Displacement += delta;
+    const bool absolute = operand.Mod == ModRmModIndirect && operand.Rm == ModRmRmSibPresent && (operand.Sib & SibBaseMask) == ModRmRmSibPresent;
+    if (!operand.RipRelative && !absolute && operand.Mod != ModRmModDisp32)
+        operand.Mod = ModRmModDisp32;
+    return operand;
+}
+
 MemoryOperand DecodeMemoryOperand(const std::uint8_t* data, const std::size_t length, const std::size_t modRmOffset, const std::uint8_t rex, std::vector<std::uint8_t> prefixes) {
     using namespace X64OpcodeConstants;
     if (modRmOffset >= length)
@@ -140,6 +149,14 @@ void StubBodyBuilder::RipOperand(const std::initializer_list<std::uint8_t> opcod
 }
 
 void StubBodyBuilder::Load(const std::uint8_t reg, const MemoryOperand& operand) {
+    _vectorMemory(kMovdqu, reg, operand);
+}
+
+void StubBodyBuilder::Store(const std::uint8_t reg, const MemoryOperand& operand) {
+    _vectorMemory(0x7F, reg, operand);
+}
+
+void StubBodyBuilder::_vectorMemory(const std::uint8_t opcode, const std::uint8_t reg, const MemoryOperand& operand) {
     using namespace X64OpcodeConstants;
     const auto displacement = static_cast<std::int64_t>(operand.Displacement) + static_cast<std::int64_t>(operand.StackBase ? _stackDepth : 0);
     if (displacement > std::numeric_limits<std::int32_t>::max())
@@ -150,7 +167,7 @@ void StubBodyBuilder::Load(const std::uint8_t reg, const MemoryOperand& operand)
     const auto rex = static_cast<std::uint8_t>(kRexBase | ((reg & 8) != 0 ? kRexR : 0) | operand.RexIndexBase);
     if (rex != kRexBase)
         _bytes.push_back(rex);
-    _bytes.insert(_bytes.end(), {TwoByteOpcodeEscape, kMovdqu, static_cast<std::uint8_t>((mod << ModRmModShift) | ((reg & 7) << ModRmRegShift) | operand.Rm)});
+    _bytes.insert(_bytes.end(), {TwoByteOpcodeEscape, opcode, static_cast<std::uint8_t>((mod << ModRmModShift) | ((reg & 7) << ModRmRegShift) | operand.Rm)});
     if (operand.Rm == ModRmRmSibPresent)
         _bytes.push_back(operand.Sib);
     if (operand.RipRelative) {

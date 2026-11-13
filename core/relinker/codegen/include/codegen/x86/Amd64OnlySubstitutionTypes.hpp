@@ -30,6 +30,18 @@ enum LoweredHostCpuFeature : std::uint32_t {
     return target == Amd64OnlyTarget::Sse ? LoweredLzcnt | LoweredBmi1 | LoweredBmi2 | LoweredMovbe : 0u;
 }
 
+inline constexpr std::uint64_t kUpperShadowBytes = 256;
+
+[[nodiscard]] constexpr std::uint64_t UpperShadowReservation(const std::uint64_t alignment) {
+    const auto unit = alignment == 0 ? std::uint64_t{1} : alignment;
+    return (kUpperShadowBytes + unit - 1) / unit * unit;
+}
+
+[[nodiscard]] constexpr std::int64_t UpperShadowOffset(const std::uint64_t memorySize, const std::uint64_t alignment) {
+    const auto unit = alignment == 0 ? std::uint64_t{1} : alignment;
+    return -static_cast<std::int64_t>((memorySize + unit - 1) / unit * unit + UpperShadowReservation(unit));
+}
+
 enum class Amd64OnlyLowering : std::uint8_t {
     InPlace,
     Trampoline,
