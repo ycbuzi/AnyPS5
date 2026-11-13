@@ -2,6 +2,7 @@
 #include "prx/libc/include/GuestWriteWatch.hpp"
 #include "prx/libc/include/WindowsMappings.hpp"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <exception>
@@ -285,6 +286,9 @@ private:
         _used.emplace(SystemReservedStart, SystemReservedEnd);
         _hostRegions.emplace_back(SystemReservedStart, SystemReservedEnd);
         ReserveFreeRanges();
+#if defined(__linux__)
+        ReserveFixedWindows();
+#endif
         _base = ArenaStart;
         _end = ApplicationAreaEnd;
     }
@@ -308,6 +312,22 @@ private:
             occupied.emplace_back(cursor, end);
         }
     }
+
+#if defined(__linux__)
+    // Console addresses inside the system reserved range that AnyPS5 maps at those exact addresses later: the AGC
+    // driver memory, whose FS table titles' shaders address as a constant (0xfe0040000). The arena leaves the system
+    // reserved range to the host, so where the host's mmap area reaches it something else can take it first: box64 on
+    // a 39-bit Android kernel (Quest 2) places glibc's per-thread malloc heaps at 0xfc0000000 and up, and TERRIFIER then
+    // aborted with "map the AGC driver memory: File exists". Hold these from the first guest library load, before any
+    // host worker thread exists; the owner takes the reservation over with GuestArenaTakeFixedWindow_nid_no_patch.
+    static constexpr std::array<std::pair<std::uintptr_t, std::size_t>, 1> FixedWindows{{{0x0000000FE0000000ull + GuestArenaOffset, std::size_t{2} << 20}}};
+
+    void ReserveFixedWindows() {
+        for (const auto& window : FixedWindows) {
+            if (ReserveNoReplace(window.first, window.second) == 0) _fixedWindows.push_back(window);
+        }
+    }
+#endif
 
     void ReserveFreeRanges() {
         std::vector<std::pair<std::uintptr_t, std::uintptr_t>> occupied;
@@ -402,8 +422,18 @@ private:
     std::uintptr_t _occupiedPrefixEnd = ArenaStart;
     std::uintptr_t _occupiedDefaultPrefixEnd = DefaultAllocationStart;
     bool _writeWatched = false;
+    std::vector<std::pair<std::uintptr_t, std::size_t>> _fixedWindows;
 
 public:
+    // True once for a window the arena reserved at startup: the caller then maps over it with MAP_FIXED.
+    bool TakeFixedWindow(std::uintptr_t address, std::size_t bytes) {
+        std::lock_guard lock(_lock);
+        const auto found = std::find(_fixedWindows.begin(), _fixedWindows.end(), std::pair<std::uintptr_t, std::size_t>{address, bytes});
+        if (found == _fixedWindows.end()) return false;
+        _fixedWindows.erase(found);
+        return true;
+    }
+
     std::uintptr_t Base() const { return _base; }
     std::size_t Size() const { return _end - _base; }
     bool WriteWatched() const { return _writeWatched; }
@@ -473,6 +503,10 @@ bool GuestArenaNextUsed_nid_no_patch(std::uintptr_t address, std::uintptr_t* sta
 
 void GuestArenaMarkUsed_nid_postfix(const void* pointer, std::size_t bytes) {
     Arena::Get().MarkUsed(pointer, bytes);
+}
+
+bool GuestArenaTakeFixedWindow_nid_no_patch(std::uintptr_t address, std::size_t bytes) {
+    return Arena::Get().TakeFixedWindow(address, bytes);
 }
 
 void GuestArenaRelease_nid_postfix(const void* pointer, std::size_t bytes) {
