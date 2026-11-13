@@ -1,0 +1,95 @@
+name: Quest builds
+
+on:
+  push:
+    branches: [questbuild-runner]
+    paths: [queue.txt]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: quest-build
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.q.outputs.matrix }}
+      any: ${{ steps.q.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: q
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list -R "$GITHUB_REPOSITORY" -L 200 --json tagName --jq '.[].tagName' > have.txt || true
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          have = set(open("have.txt").read().split())
+          jobs = []
+          for line in open("queue.txt"):
+              parts = line.split()
+              if not parts or parts[0].startswith("#") or len(parts) < 3:
+                  continue
+              sha, ref, folder = parts[0], parts[1], parts[2]
+              if "quest-" + folder in have:
+                  continue
+              jobs.append({"sha": sha, "ref": ref, "folder": folder})
+          print("matrix=" + json.dumps({"include": jobs}))
+          print("any=" + ("1" if jobs else "0"))
+          PY
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == '1'
+    name: ${{ matrix.folder }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      SHA: ${{ matrix.sha }}
+      REF: ${{ matrix.ref }}
+      FOLDER: ${{ matrix.folder }}
+    steps:
+      - name: Check out the requested commit
+        run: |
+          git init -q src && cd src
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          git fetch -q --no-tags origin "+$REF:refs/remotes/req" || git fetch -q --no-tags origin "$SHA"
+          git checkout -q --detach "$SHA"
+          git submodule update --init --recursive --depth 1 --jobs 8
+      - name: Install the build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build ccache libvulkan1 mesa-vulkan-drivers libpipewire-0.3-dev libpulse-dev libasound2-dev libxrandr-dev libwayland-dev libxkbcommon-dev libegl-dev libdecor-0-dev
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: quest-ccache-${{ matrix.sha }}
+          restore-keys: quest-ccache-
+      - name: Build the relinker and the libraries
+        working-directory: src
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ninja -C build relinker
+          ninja -C build libs
+      - name: Package
+        working-directory: src
+        run: |
+          v="v${SHA:0:11}"
+          python3 tools/package_release.py --platform linux --build build --output "$RUNNER_TEMP/dist" --version "$v"
+          mkdir -p "$RUNNER_TEMP/out"
+          mv "$RUNNER_TEMP/dist/prx-linux-$v.tar.gz" "$RUNNER_TEMP/out/"
+          cp build/core/relinker/relinker "$RUNNER_TEMP/out/relinker-$v"
+      - name: Publish as a release the Quest downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "quest-$FOLDER" "$RUNNER_TEMP"/out/* -R "$GITHUB_REPOSITORY" --target questbuild-runner --prerelease \
+            --title "Quest build $FOLDER" --notes "Linux x86-64 libraries and relinker for the Quest test lane, built from $SHA ($REF)."
