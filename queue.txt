@@ -6,3 +6,4 @@ bcf6bbe9aea9e0c6b1ebedda1097a4ba2e64ea3a refs/heads/quest/terrifier-crash-histor
 95bdb57409d675daf26b9bd273ad9aea13c555c0 refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt-95bdb57409
 b86942a7fa8916a26629e458ed6925176ff003f9 refs/heads/quest/celeste-queue0 test-queue0-b86942a7fa tests=agc_driver_graphics_tests
 5e916725f2b6e262f0b4e7ac0692f3183946a8f7 refs/heads/quest/terrifier-celeste-fixes test-tcf-5e916725f2 tests=agc_driver_graphics_tests
+cc8a63302684179f31816f63a5487effc09092db refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt2-cc8a633026
