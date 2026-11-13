@@ -1,5 +1,8 @@
 #include "prx/libc/include/Api.hpp"
 #include <cstdint>
+#include <sys/syscall.h>
+#include <unistd.h>
+#include <atomic>
 #include <cstddef>
 #include <cstdio>
 #include <algorithm>
@@ -864,15 +867,66 @@ int APS5_VABI vsprintf_nid_postfix(char* str, const char* format, VaList* args) 
 #endif
 }
 
+#ifndef _WIN32
+namespace LibcDetail {
+struct RecentFormat {
+    std::atomic<std::uint64_t> sequence{0};
+    std::uint64_t thread = 0;
+    char format[96]{};
+    char output[160]{};
+};
+RecentFormat g_recentFormats[256];
+std::atomic<std::uint64_t> g_recentFormatSequence{0};
+
+bool TraceFormats() {
+    static const bool enabled = std::getenv("APS5_TRACE_FORMAT") != nullptr;
+    return enabled;
+}
+
+void NoteFormat(const char* format, const char* output, std::size_t size, int result) {
+    const auto sequence = g_recentFormatSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+    auto& slot = g_recentFormats[sequence % std::size(g_recentFormats)];
+    slot.sequence.store(0, std::memory_order_release);
+    slot.thread = static_cast<std::uint64_t>(syscall(SYS_gettid));
+    std::snprintf(slot.format, sizeof(slot.format), "%s", format != nullptr ? format : "(null)");
+    if (output != nullptr && size != 0 && result >= 0) std::snprintf(slot.output, sizeof(slot.output), "%s", output);
+    else std::snprintf(slot.output, sizeof(slot.output), "(result %d, size %zu)", result, size);
+    slot.sequence.store(sequence, std::memory_order_release);
+}
+
+std::size_t CopyRecentFormats(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity) {
+    const auto last = g_recentFormatSequence.load(std::memory_order_acquire);
+    const auto span = std::min<std::uint64_t>(last, std::size(g_recentFormats));
+    std::size_t count = 0;
+    for (std::uint64_t sequence = last; sequence > last - span && count < capacity; --sequence) {
+        auto& slot = g_recentFormats[sequence % std::size(g_recentFormats)];
+        if (slot.sequence.load(std::memory_order_acquire) != sequence || slot.thread != thread) continue;
+        formats[count] = slot.format;
+        outputs[count] = slot.output;
+        ++count;
+    }
+    std::reverse(formats, formats + count);
+    std::reverse(outputs, outputs + count);
+    return count;
+}
+}
+#endif
+
 int APS5_VABI vsnprintf_nid_postfix(char* str, size_t size, const char* format, VaList* c) {
 #ifdef _WIN32
     return LibcDetail::FormatWindows(str, size, format, c);
 #else
-    if (RequiresGuestFormatting(format)) return LibcDetail::FormatWindows(str, size, format, c);
-    std::va_list copy;
-    va_copy(copy, *reinterpret_cast<std::va_list*>(c));
-    const int result = std::vsnprintf(str, HostFormatSize(size), format, copy);
-    va_end(copy);
+    static const bool guestFormatting = std::getenv("APS5_GUEST_FORMATTING") != nullptr;
+    int result;
+    if (guestFormatting || RequiresGuestFormatting(format)) {
+        result = LibcDetail::FormatWindows(str, size, format, c);
+    } else {
+        std::va_list copy;
+        va_copy(copy, *reinterpret_cast<std::va_list*>(c));
+        result = std::vsnprintf(str, HostFormatSize(size), format, copy);
+        va_end(copy);
+    }
+    if (LibcDetail::TraceFormats()) LibcDetail::NoteFormat(format, str, size, result);
     return result;
 #endif
 }

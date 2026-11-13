@@ -16,6 +16,10 @@
 #include <ucontext.h>
 #include <unistd.h>
 
+namespace LibcDetail {
+std::size_t CopyRecentFormats(std::uint64_t thread, const char** formats, const char** outputs, std::size_t capacity);
+}
+
 namespace {
 
 constexpr int FatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE};
@@ -238,6 +242,17 @@ void Report(int signal, const siginfo_t* info, const ucontext_t* context) {
     }
 }
 
+void ReportRecentFormats() {
+    static const char* formats[256];
+    static const char* outputs[256];
+    ReportLine line;
+    const auto thread = static_cast<std::uint64_t>(syscall(SYS_gettid));
+    const std::size_t count = LibcDetail::CopyRecentFormats(thread, formats, outputs, std::size(formats));
+    if (count == 0) return;
+    line.Text("  last vsnprintf results of thread ").Decimal(thread).Text(" (APS5_TRACE_FORMAT):").Write();
+    for (std::size_t index = 0; index < count; ++index) line.Text("    [").Text(formats[index]).Text("] -> [").Text(outputs[index]).Text("]").Write();
+}
+
 void ReportCallTrace() {
     static CallTraceEntry entries[64];
     static CallTraceEntry own[4096];
@@ -279,6 +294,7 @@ void OnFatalSignal(int signal, siginfo_t* info, void* context) {
     if (!g_reporting.exchange(true, std::memory_order_acq_rel)) {
         Report(signal, info, static_cast<const ucontext_t*>(context));
         ReportCallTrace();
+        ReportRecentFormats();
         g_reporting.store(false, std::memory_order_release);
     } else {
         const timespec pause{0, 1000000};
