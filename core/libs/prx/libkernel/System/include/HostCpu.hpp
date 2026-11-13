@@ -37,7 +37,8 @@ HostCpuText MissingHostCpuFeatures_nid_no_patch(const HostCpuRegisters* register
 HostCpuRegisters ReadHostCpuRegisters();
 std::string HostCpuModel();
 std::vector<HostCpuFeature> HostCpuFeatures(const HostCpuRegisters& registers);
-std::vector<std::string> MissingHostCpuFeatures(const HostCpuRegisters& registers);
-void CheckHostCpu(const HostCpuRegisters& registers, const std::string& model);
+std::vector<std::string> MissingHostCpuFeatures(const HostCpuRegisters& registers, std::uint32_t lowered = 0);
+std::uint32_t LoweredHostCpuFeatures();
+void CheckHostCpu(const HostCpuRegisters& registers, const std::string& model, std::uint32_t lowered = 0);
 
 #endif

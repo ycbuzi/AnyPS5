@@ -19,6 +19,17 @@ enum class Amd64OnlyTarget : std::uint8_t {
     return sse ? Amd64OnlyTarget::Sse : avx ? Amd64OnlyTarget::Avx : rosetta ? Amd64OnlyTarget::Rosetta : Amd64OnlyTarget::Intel;
 }
 
+enum LoweredHostCpuFeature : std::uint32_t {
+    LoweredLzcnt = 1u << 0,
+    LoweredBmi1 = 1u << 1,
+    LoweredBmi2 = 1u << 2,
+    LoweredMovbe = 1u << 3
+};
+
+[[nodiscard]] constexpr std::uint32_t LoweredHostCpuFeatures(const Amd64OnlyTarget target) {
+    return target == Amd64OnlyTarget::Sse ? LoweredLzcnt | LoweredBmi1 | LoweredBmi2 | LoweredMovbe : 0u;
+}
+
 enum class Amd64OnlyLowering : std::uint8_t {
     InPlace,
     Trampoline,

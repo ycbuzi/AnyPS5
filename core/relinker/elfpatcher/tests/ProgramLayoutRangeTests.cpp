@@ -1,3 +1,4 @@
+#include <elfpatcher/general/SegmentFilter.hpp>
 #include <elfpatcher/general/ElfConstants.hpp>
 #include <elfpatcher/general/ProgramHeaderLayoutBuilder.hpp>
 #include <io/ByteWriter.hpp>
@@ -173,6 +174,9 @@ int main() {
                 "synthetic stack must be RW with alignment 16 and no mapping");
         }
         Require(stacks == 1, "layout must synthesize exactly one PT_GNU_STACK when the input has none");
+        const Elfpatcher::SegmentFilter filter(false);
+        Require(!filter.ShouldSkip({Elfpatcher::PT_ANYPS5_LOWERED_CPU, 0xF, 0, 0, 0, 0, 0, 1}), "the lowered-feature header must reach the Linux output");
+        Require(filter.ShouldSkip({Elfpatcher::PT_ANYPS5_LOWERED_CPU + 1, 0, 0, 0, 0, 0, 0, 1}), "other OS-specific headers must still be dropped");
         bool stackSlotRejected = false;
         try { (void)writeSingle(6); } catch (const std::exception&) { stackSlotRejected = true; }
         Require(stackSlotRejected, "layout must refuse to drop the synthetic stack when its slot is missing");

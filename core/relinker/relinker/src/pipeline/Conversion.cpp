@@ -20,6 +20,8 @@
 #include <relinker/guest/GuestImage.hpp>
 #include <codegen/IAmd64OnlyConverter.hpp>
 #include <codegen/x86/RedZoneFramer.hpp>
+#include <codegen/x86/Amd64OnlySubstitutionTypes.hpp>
+#include <elfpatcher/general/ElfConstants.hpp>
 #include <relinker/analysis/UnusedNidFilter/EhFrameReader.hpp>
 #include <map>
 #include <codegen/CodegenException.hpp>
@@ -187,7 +189,10 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             for (auto& patch : appliedPatches)
                 if (patch.Target == options.TargetName) patch.OutputRva = image.GetRva(patch.VirtualAddress);
         }
-        executableBytes = patcher->Patch(std::move(sourceBytes), result.OriginalHeaders, result.DynamicSection, result.OriginalPltGotVaddr, options.RunPath, options.LazyBinding, options.WindowsDiagnostics, trampolines);
+        auto headers = result.OriginalHeaders;
+        if (const auto lowered = Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse)); lowered != 0 && !windows && !macos)
+            headers.push_back(Domain::ProgramHeader{Elfpatcher::PT_ANYPS5_LOWERED_CPU, lowered, 0, 0, 0, 0, 0, 1});
+        executableBytes = patcher->Patch(std::move(sourceBytes), headers, result.DynamicSection, result.OriginalPltGotVaddr, options.RunPath, options.LazyBinding, options.WindowsDiagnostics, trampolines);
     } catch (Domain::RelinkerException& error) {
         if (error.InputPath.empty()) error.InputPath = Io::Utf8Path(input.InputPath);
         throw;

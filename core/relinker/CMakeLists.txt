@@ -470,6 +470,7 @@ if(BUILD_TESTING)
     add_test_executable(program_layout_ranges_tests
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/tests/ProgramLayoutRangeTests.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/general/ProgramHeaderLayoutBuilder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/elfpatcher/src/general/SegmentFilter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/io/src/ByteWriter.cpp
     )
     target_include_directories(program_layout_ranges_tests PRIVATE

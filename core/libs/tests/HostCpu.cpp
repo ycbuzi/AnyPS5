@@ -96,6 +96,23 @@ static void CheckPreHaswell() {
     CheckMissing(registers, {"LZCNT", "BMI1", "BMI2", "MOVBE", "AVX2", "FMA"}, "AVX host without AVX2");
 }
 
+static void CheckLowered() {
+    auto registers = Zen2();
+    registers.Leaf1Ecx &= ~(Bit(12) | Bit(22));
+    registers.Leaf7Ebx = 0;
+    registers.Leaf80000001Ecx &= ~Bit(5);
+    Require(MissingHostCpuFeatures(registers, 0xF) == std::vector<std::string>{"AVX2", "FMA"}, "lowered LZCNT, BMI1, BMI2 and MOVBE were still reported missing");
+    Require(MissingHostCpuFeatures(registers, 0x5) == std::vector<std::string>{"BMI1", "MOVBE", "AVX2", "FMA"}, "only the lowered bits must be dropped");
+    Require(MissingHostCpuFeatures(Zen2(), 0xF).empty(), "lowering changed a complete host");
+    registers = Zen2();
+    registers.Leaf7Ebx &= ~Bit(8);
+    CheckHostCpu(registers, "Example CPU", 0x4);
+    bool threw = false;
+    try { CheckHostCpu(registers, "Example CPU", 0x3); } catch (const std::runtime_error&) { threw = true; }
+    Require(threw, "missing BMI2 did not throw when only LZCNT and BMI1 were lowered");
+    Require(LoweredHostCpuFeatures() == 0, "the test executable carries no lowered-feature header");
+}
+
 static void CheckError() {
     auto registers = Zen2();
     registers.Leaf7Ebx &= ~Bit(8);
@@ -145,6 +162,7 @@ int main() {
         CheckSingleMissingExtension();
         CheckAvxWithoutOsState();
         CheckPreHaswell();
+        CheckLowered();
         CheckError();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

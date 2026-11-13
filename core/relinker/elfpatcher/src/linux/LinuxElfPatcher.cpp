@@ -350,7 +350,7 @@ void RebaseProgramHeaders(std::vector<std::uint8_t>& buf, const std::uint64_t ta
     for (std::uint16_t index = 0; index < count; ++index) {
         const auto header = static_cast<std::size_t>(tableOffset + static_cast<std::uint64_t>(index) * entrySize);
         const auto type = Io::ReadU32(buf, header + kPhdrTypeOffset);
-        if (type == PT_NULL || type == PT_GNU_STACK)
+        if (type == PT_NULL || type == PT_GNU_STACK || type == PT_ANYPS5_LOWERED_CPU)
             continue;
         const auto address = Rebased(base, Io::ReadU64(buf, header + kPhdrVaddrOffset), "Program header address");
         if (type == PT_LOAD) {

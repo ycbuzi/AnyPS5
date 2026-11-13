@@ -3,6 +3,9 @@
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
 #endif
+#if defined(__linux__)
+#include <link.h>
+#endif
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -167,11 +170,41 @@ std::vector<HostCpuFeature> HostCpuFeatures(const HostCpuRegisters& registers) {
     return features;
 }
 
-std::vector<std::string> MissingHostCpuFeatures(const HostCpuRegisters& registers) {
+namespace {
+
+constexpr std::uint32_t kLoweredCpuHeader = 0x61a50001;
+constexpr const char* kLoweredFeatureNames[] = {"LZCNT", "BMI1", "BMI2", "MOVBE"};
+
+bool Lowered(const std::string& name, const std::uint32_t lowered) {
+    for (std::size_t bit = 0; bit < std::size(kLoweredFeatureNames); ++bit)
+        if ((lowered >> bit & 1) != 0 && name == kLoweredFeatureNames[bit]) return true;
+    return false;
+}
+
+#if defined(__linux__)
+int FindLoweredCpuHeader(dl_phdr_info* image, std::size_t, void* data) {
+    if (image->dlpi_name != nullptr && image->dlpi_name[0] != '\0') return 0;
+    for (std::uint16_t i = 0; i < image->dlpi_phnum; ++i)
+        if (image->dlpi_phdr[i].p_type == kLoweredCpuHeader) *static_cast<std::uint32_t*>(data) = image->dlpi_phdr[i].p_flags;
+    return 1;
+}
+#endif
+
+}
+
+std::vector<std::string> MissingHostCpuFeatures(const HostCpuRegisters& registers, const std::uint32_t lowered) {
     std::vector<std::string> missing;
     for (const auto& feature : HostCpuFeatures(registers))
-        if (feature.Required && !feature.Present) missing.emplace_back(feature.Name);
+        if (feature.Required && !feature.Present && !Lowered(feature.Name, lowered)) missing.emplace_back(feature.Name);
     return missing;
+}
+
+std::uint32_t LoweredHostCpuFeatures() {
+    std::uint32_t lowered = 0;
+#if defined(__linux__)
+    dl_iterate_phdr(FindLoweredCpuHeader, &lowered);
+#endif
+    return lowered;
 }
 
 namespace {
@@ -200,8 +233,8 @@ HostCpuText MissingHostCpuFeatures_nid_no_patch(const HostCpuRegisters* register
 
 }
 
-void CheckHostCpu(const HostCpuRegisters& registers, const std::string& model) {
-    const auto missing = MissingHostCpuFeatures(registers);
+void CheckHostCpu(const HostCpuRegisters& registers, const std::string& model, const std::uint32_t lowered) {
+    const auto missing = MissingHostCpuFeatures(registers, lowered);
     if (missing.empty()) return;
     throw std::runtime_error("The host CPU (" + DisplayModel(model) + ") lacks " + Join(missing) +
         ". The PS5's Zen 2 CPU has these extensions and titles run their instructions natively, so this CPU cannot run them.");
@@ -217,8 +250,9 @@ const bool HostCpuChecked = [] {
     std::vector<std::string> absent;
     for (const auto& feature : HostCpuFeatures(registers))
         (feature.Present ? present : absent).emplace_back(feature.Name);
-    APS5_LOG_OUT("host CPU %s: has %s; lacks %s", DisplayModel(model).c_str(), Join(present).c_str(), absent.empty() ? "none" : Join(absent).c_str());
-    CheckHostCpu(registers, model);
+    const auto lowered = LoweredHostCpuFeatures();
+    APS5_LOG_OUT("host CPU %s: has %s; lacks %s; lowered by the relinker 0x%x", DisplayModel(model).c_str(), Join(present).c_str(), absent.empty() ? "none" : Join(absent).c_str(), lowered);
+    CheckHostCpu(registers, model, lowered);
     return true;
 }();
 

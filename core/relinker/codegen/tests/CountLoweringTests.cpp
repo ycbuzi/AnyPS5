@@ -82,6 +82,7 @@ void decoding() {
 }
 
 void matching() {
+    require(Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTarget::Sse) == 0xFu && Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTarget::Avx) == 0 && Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTarget::Rosetta) == 0 && Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTarget::Intel) == 0, "Only SSE mode must declare LZCNT, BMI1, BMI2 and MOVBE as lowered");
     const auto intel = Codegen::MakeAmd64OnlyInstructionMatcher();
     const auto rosetta = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Rosetta);
     const auto avx = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Avx);
