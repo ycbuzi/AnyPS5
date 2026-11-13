@@ -8,3 +8,4 @@ b86942a7fa8916a26629e458ed6925176ff003f9 refs/heads/quest/celeste-queue0 test-qu
 5e916725f2b6e262f0b4e7ac0692f3183946a8f7 refs/heads/quest/terrifier-celeste-fixes test-tcf-5e916725f2 tests=agc_driver_graphics_tests
 cc8a63302684179f31816f63a5487effc09092db refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt2-cc8a633026
 9da6675cab894f972e4049a1487c4686b216e24f refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt3-9da6675cab
+b074bca3ddecb52b283f6e870ff843f3e15ed5ea refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt4-b074bca3dd
