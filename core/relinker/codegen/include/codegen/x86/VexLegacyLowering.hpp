@@ -13,6 +13,13 @@ struct VexLegacy {
     std::vector<std::uint8_t> Replacement;
 };
 
+struct VexStub {
+    const char* Name;
+    std::vector<std::uint8_t> Original;
+};
+
+[[nodiscard]] std::optional<VexStub> DecodeVexStub(const std::uint8_t* data, std::size_t length);
+void EmitVexStub(StubBodyBuilder& body, const VexStub& stub);
 [[nodiscard]] std::optional<VexLegacy> DecodeVexLegacy(const std::uint8_t* data, std::size_t length);
 void EmitVexLegacy(StubBodyBuilder& body, const VexLegacy& legacy);
 

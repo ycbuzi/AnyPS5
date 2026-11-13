@@ -1,11 +1,13 @@
 #include <codegen/x86/VexLegacyLowering.hpp>
 #include <codegen/x86/IAmd64OnlyInstructionMatcher.hpp>
 #include <codegen/x86/StubBodyBuilder.hpp>
+#include "VectorExecution.hpp"
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <array>
 #include <vector>
 
 namespace {
@@ -88,6 +90,30 @@ const std::vector<Bytes> kKept{
     Bytes{0xC5, 0x7A, 0x10, 0x0D, 0x40, 0x00, 0x00, 0x00},
 };
 
+const std::vector<Bytes> kStubbed{
+    Bytes{0xC5, 0xE0, 0x58, 0xCA},
+    Bytes{0xC5, 0xE0, 0x5C, 0xC9},
+    Bytes{0xC5, 0xE1, 0xFE, 0xC9},
+    Bytes{0xC5, 0xF0, 0x58, 0x08},
+    Bytes{0xC5, 0x60, 0x59, 0x08},
+    Bytes{0xC5, 0xE2, 0x5C, 0xCA},
+    Bytes{0xC5, 0xE2, 0x5C, 0xC9},
+    Bytes{0xC5, 0xE2, 0x58, 0x08},
+    Bytes{0xC5, 0xD1, 0x72, 0xD2, 0x03},
+    Bytes{0xC5, 0xE2, 0x10, 0xCA},
+    Bytes{0xC5, 0xE2, 0x2A, 0xC9},
+    Bytes{0xC5, 0x7A, 0x10, 0x48, 0x10},
+    Bytes{0xC5, 0xE0, 0xC6, 0xCA, 0x1B},
+    Bytes{0xC5, 0xF9, 0x70, 0x20, 0x1B},
+    Bytes{0xC5, 0x99, 0x60, 0xE4},
+    Bytes{0xC4, 0x41, 0x23, 0x5E, 0xC0},
+    Bytes{0xC4, 0xE2, 0x41, 0x39, 0xF6},
+    Bytes{0xC5, 0xE0, 0x16, 0x48, 0x08},
+    Bytes{0xC5, 0xE8, 0x55, 0xC9},
+    Bytes{0xC4, 0xC1, 0x69, 0x73, 0xF6, 0x07},
+    Bytes{0xC5, 0xE2, 0x11, 0xCA},
+};
+
 void rewriting() {
     for (const auto& [vex, legacy] : kPairs) {
         const auto decoded = Codegen::DecodeVexLegacy(vex.data(), vex.size());
@@ -117,6 +143,67 @@ void matching() {
     require(cleared && cleared->InstructionName == "VZEROUPPER" && cleared->ReplacementBytes == Bytes{0x0F, 0x1F, 0x00}, "VZEROUPPER did not become a three-byte NOP");
 }
 
+void stubbing() {
+    const auto sse = Codegen::MakeAmd64OnlyInstructionMatcher(Codegen::Amd64OnlyTarget::Sse);
+    for (const auto& vex : kStubbed) {
+        require(!Codegen::DecodeVexLegacy(vex.data(), vex.size()), "VEX " + hex(vex) + " was rewritten in place");
+        require(Codegen::DecodeVexStub(vex.data(), vex.size()).has_value(), "VEX " + hex(vex) + " has no stub");
+        const auto match = sse->Match(vex.data(), vex.size());
+        require(match && match->Lowering == Codegen::Amd64OnlyLowering::Trampoline, "SSE mode did not move " + hex(vex) + " to a stub");
+    }
+}
+
+#if LOWERING_EXECUTION_AVAILABLE
+
+Bytes lowered(const Bytes& vex) {
+    Codegen::StubBodyBuilder body;
+    Codegen::EmitVexStub(body, *Codegen::DecodeVexStub(vex.data(), vex.size()));
+    const auto finished = body.Finish();
+    require(finished.Relocations.empty(), "test stubs must not relocate");
+    return Bytes(finished.Bytes.begin(), finished.Bytes.begin() + static_cast<std::ptrdiff_t>(finished.ReturnBranchOffset));
+}
+
+std::uint8_t destination(const Bytes& vex) {
+    const bool threeByte = vex[0] == 0xC4;
+    const auto r = static_cast<std::uint8_t>((vex[1] & 0x80) ? 0 : 8);
+    const auto op = vex[threeByte ? 3 : 2];
+    const auto modrm = vex[threeByte ? 4 : 3];
+    const auto map = threeByte ? (vex[1] & 0x1F) : 1;
+    const auto last = threeByte ? vex[2] : vex[1];
+    if (map == 1 && op == 0x11) return static_cast<std::uint8_t>((threeByte && !(vex[1] & 0x20) ? 8 : 0) | (modrm & 7));
+    if (map == 1 && op >= 0x71 && op <= 0x73) return static_cast<std::uint8_t>(~last >> 3 & 0xF);
+    return static_cast<std::uint8_t>(r | (modrm >> 3 & 7));
+}
+
+void execution() {
+    for (const auto& vex : kStubbed) {
+        const VectorExecution::Runner reference(vex);
+        const VectorExecution::Runner stub(lowered(vex));
+        for (int seed = 0; seed < 4; ++seed) {
+            auto start = VectorExecution::Initial();
+            for (auto& reg : start.Ymm)
+                for (auto& q : reg) q = q * 0x9E3779B97F4A7C15ull + static_cast<std::uint64_t>(seed) * 0x3F8000003F800000ull;
+            for (auto& q : start.Memory) q ^= static_cast<std::uint64_t>(seed) * 0x4049000040490000ull;
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            const auto dst = destination(vex);
+            for (std::uint8_t reg = 0; reg < 16; ++reg)
+                for (std::size_t q = 0; q < (reg == dst ? 2u : 4u); ++q)
+                    require(got.Ymm[reg][q] == wanted.Ymm[reg][q], "stub of " + hex(vex) + " differs in register " + std::to_string(reg) + " quadword " + std::to_string(q));
+            require(got.Memory == wanted.Memory, "stub of " + hex(vex) + " changed memory");
+            for (const auto red : got.RedZone) require(red == LoweringExecution::kSentinel, "stub of " + hex(vex) + " overwrote the red zone");
+        }
+    }
+}
+
+#else
+
+void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
+
+#endif
+
 void outOfLine() {
     for (const auto& [vex, legacy] : kPairs) {
         Codegen::StubBodyBuilder body;
@@ -136,6 +223,8 @@ int main() {
         rewriting();
         matching();
         outOfLine();
+        stubbing();
+        execution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

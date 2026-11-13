@@ -418,6 +418,11 @@ void Amd64OnlyConverter::_convertSegment(
                 auto placement = placer.Window(item.Index);
                 if (!placement)
                     placement = placer.Island(item.Index);
+                if (!placement && substitution.Optional) {
+                    ++result.KeptCount;
+                    result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});
+                    continue;
+                }
                 if (!placement)
                     throw CodegenException("No room for a jump to the stub of " + substitution.InstructionName + " within its neighbours or a nearby island", fileOffset);
                 for (auto& site : placement->Sites)

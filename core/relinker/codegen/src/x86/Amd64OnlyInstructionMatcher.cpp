@@ -320,6 +320,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitVexLegacy(body, *legacy);
         return legacy->Name;
     }
+    if (const auto stub = _target == Amd64OnlyTarget::Sse ? DecodeVexStub(instr.Data, instr.Length) : std::nullopt) {
+        EmitVexStub(body, *stub);
+        return stub->Name;
+    }
     if (const auto split = _target == Amd64OnlyTarget::Avx ? DecodeLaneSplit(instr.Data, instr.Length) : std::nullopt) {
         EmitLaneSplit(body, *split);
         return "256-bit integer";
@@ -541,6 +545,9 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
 
     if (auto legacy = _target == Amd64OnlyTarget::Sse ? DecodeVexLegacy(data, length) : std::nullopt)
         return _inPlace({legacy->Name, nullptr, 0}, length, std::move(legacy->Replacement));
+
+    if (const auto stub = _target == Amd64OnlyTarget::Sse ? DecodeVexStub(data, length) : std::nullopt)
+        return _trampoline(stub->Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { EmitVexStub(body, *stub); }), true, true);
 
     return _matchRosetta(instr, trailing);
 }
