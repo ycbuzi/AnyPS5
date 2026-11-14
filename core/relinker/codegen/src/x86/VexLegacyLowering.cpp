@@ -426,7 +426,7 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, Test, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, Test, MoveMask, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -436,6 +436,7 @@ constexpr StubConstant kQwordBitOne{2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,
 constexpr StubConstant kQwordSigns{0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0x80};
 
 Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
+    if (h.Map == 1 && h.L && h.Vvvv == 0 && !h.Memory && ((h.Pp == 1 && h.Op == 0xD7) || (h.Pp < 2 && h.Op == 0x50))) return Special::MoveMask;
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 1 && (h.Op == 0x5A || h.Op == 0xE6)) || (h.Pp == 3 && h.Op == 0xE6))) return Special::Narrow;
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 0 && h.Op == 0x5A) || (h.Pp == 2 && h.Op == 0xE6))) return Special::Widen;
     if (h.Pp != 1) return Special::None;
@@ -912,6 +913,34 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     case Special::PermuteD:
         EmitPermuteD(body, data, length, h, *shadow);
         return;
+    case Special::MoveMask: {
+        const auto gpr = h.Reg;
+        const auto low = Scratch({h.Rm});
+        const auto high = Scratch({h.Rm, low});
+        body.Spill(low);
+        body.Spill(high);
+        LoadUpper(body, high, *shadow, h.Rm);
+        if (h.Op == 0xD7) {
+            body.Raw(RegisterOp(0x66, {0x0F, 0xD7}, gpr, h.Rm));
+            body.Raw(RegisterOp(0x66, {0x0F, 0xC4}, low, gpr, std::uint8_t{0}));
+            body.Raw(RegisterOp(0x66, {0x0F, 0xD7}, gpr, high));
+            body.Raw(RegisterOp(0x66, {0x0F, 0xC4}, low, gpr, std::uint8_t{1}));
+            body.Raw(RegisterOp(0x66, {0x0F, 0x7E}, low, gpr));
+        } else if (h.Pp == 0) {
+            body.Raw(Movaps(low, h.Rm));
+            body.Sse(0x66, {0x0F, 0x6B}, low, high);
+            body.Raw(Xorps(high));
+            body.Sse(0x66, {0x0F, 0x63}, low, high);
+            body.Raw(RegisterOp(0x66, {0x0F, 0xD7}, gpr, low));
+        } else {
+            body.Raw(Movaps(low, h.Rm));
+            body.Raw(RegisterOp(0, {0x0F, 0xC6}, low, high, std::uint8_t{0xDD}));
+            body.Raw(RegisterOp(0, {0x0F, 0x50}, gpr, low));
+        }
+        body.Restore(high);
+        body.Restore(low);
+        return;
+    }
     case Special::Test:
         EmitTest(body, data, length, h, shadow);
         return;
