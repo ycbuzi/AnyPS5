@@ -3,6 +3,8 @@
 #include <codegen/x86/ScalarLowering.hpp>
 #include <codegen/x86/X64InstructionDecoder.hpp>
 #include <codegen/CodegenException.hpp>
+#include <algorithm>
+#include <array>
 #include <cstring>
 #include <span>
 #include <string>
@@ -424,10 +426,17 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+
+constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
+constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
 
 Special SpecialOf(const Parsed& h) {
-    if (h.Pp != 1 || h.W) return Special::None;
+    if (h.Pp != 1) return Special::None;
+    if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
+    if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
+    if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
+    if (h.W) return Special::None;
     if (h.Map == 3 && h.L && (h.Op == 0x18 || h.Op == 0x38)) return Special::Insert;
     if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
     if (h.Map == 3 && h.L && (h.Op == 0x06 || h.Op == 0x46)) return Special::Permute2;
@@ -438,6 +447,56 @@ Special SpecialOf(const Parsed& h) {
     if (h.Op == 0x58) return Special::BroadcastD;
     if (h.Op == 0x59) return Special::BroadcastQ;
     return Special::None;
+}
+
+void LoadHalves(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::uint8_t low, const std::uint8_t high, const std::int32_t shadow) {
+    if (h.Memory) {
+        const auto memory = Operand(data, length, h);
+        body.Load(low, memory);
+        body.Load(high, OffsetMemoryOperand(memory, 16));
+        return;
+    }
+    body.Raw(Movaps(low, h.Rm));
+    LoadUpper(body, high, shadow, h.Rm);
+}
+
+std::uint8_t QwordShuffle(const unsigned first, const unsigned second) {
+    return static_cast<std::uint8_t>(2 * first | (2 * first + 1) << 2 | (2 * second) << 4 | (2 * second + 1) << 6);
+}
+
+void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
+    const auto dst = h.Reg;
+    const auto index = h.Vvvv;
+    std::array<std::uint8_t, 6> scratch{};
+    for (std::size_t n = 0; n < scratch.size(); ++n) {
+        std::uint8_t candidate = 0;
+        while (candidate == dst || candidate == index || std::find(scratch.begin(), scratch.begin() + static_cast<std::ptrdiff_t>(n), candidate) != scratch.begin() + static_cast<std::ptrdiff_t>(n)) ++candidate;
+        scratch[n] = candidate;
+    }
+    const auto [low, high, out, control, left, right] = scratch;
+    for (const auto reg : scratch) body.Spill(reg);
+    LoadHalves(body, data, length, h, low, high, shadow);
+    for (const bool upper : {true, false}) {
+        if (upper) LoadUpper(body, out, shadow, index);
+        else body.Raw(Movaps(out, index));
+        body.Raw(Movaps(control, out));
+        body.ShiftDwordImm(6, control, 30);
+        body.ShiftDwordImm(2, control, 28);
+        body.RipOperand({0x0F, 0x38, 0x00}, control, kDwordByteRepeat);
+        body.RipOperand({0x0F, 0xEB}, control, kDwordByteOffsets);
+        body.Raw(Movaps(left, low));
+        body.Sse(0x66, {0x0F, 0x38, 0x00}, left, control);
+        body.Raw(Movaps(right, high));
+        body.Sse(0x66, {0x0F, 0x38, 0x00}, right, control);
+        body.ShiftDwordImm(6, out, 29);
+        body.ShiftDwordImm(4, out, 31);
+        body.Sse(0x66, {0x0F, 0xDB}, right, out);
+        body.Sse(0x66, {0x0F, 0xDF}, out, left);
+        body.Sse(0x66, {0x0F, 0xEB}, out, right);
+        if (upper) StoreUpper(body, out, shadow, dst);
+        else body.Raw(Movaps(dst, out));
+    }
+    for (auto reg = scratch.rbegin(); reg != scratch.rend(); ++reg) body.Restore(*reg);
 }
 
 void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const Special kind, const std::optional<std::int32_t> shadow) {
@@ -533,6 +592,55 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
         body.Raw(Movaps(dst, first));
         body.Restore(second);
         body.Restore(first);
+        return;
+    }
+    case Special::PermuteQ: {
+        const auto imm = data[length - 1];
+        const auto low = Scratch({dst});
+        const auto high = Scratch({dst, low});
+        const auto out = Scratch({dst, low, high});
+        body.Spill(low);
+        body.Spill(high);
+        body.Spill(out);
+        LoadHalves(body, data, length, h, low, high, *shadow);
+        const auto half = [&](const std::uint8_t into, const unsigned shift) {
+            const unsigned first = imm >> shift & 3;
+            const unsigned second = imm >> (shift + 2) & 3;
+            body.Raw(Movaps(into, (first & 2) ? high : low));
+            body.Raw(RegisterOp(0x66, {0x0F, 0xC6}, into, (second & 2) ? high : low, static_cast<std::uint8_t>((first & 1) | (second & 1) << 1)));
+        };
+        half(out, 4);
+        StoreUpper(body, out, *shadow, dst);
+        half(dst, 0);
+        body.Restore(out);
+        body.Restore(high);
+        body.Restore(low);
+        return;
+    }
+    case Special::PermuteD:
+        EmitPermuteD(body, data, length, h, *shadow);
+        return;
+    case Special::PermuteImm: {
+        const auto imm = data[length - 1];
+        const bool doubles = h.Op == 0x05;
+        const auto lowImm = doubles ? QwordShuffle(imm & 1, imm >> 1 & 1) : imm;
+        const auto highImm = doubles ? QwordShuffle(imm >> 2 & 1, imm >> 3 & 1) : imm;
+        if (h.L) {
+            const auto scratch = Scratch({dst});
+            body.Spill(scratch);
+            if (h.Memory) body.Load(scratch, OffsetMemoryOperand(Operand(data, length, h), 16));
+            else LoadUpper(body, scratch, *shadow, h.Rm);
+            body.Raw(RegisterOp(0x66, {0x0F, 0x70}, scratch, scratch, highImm));
+            StoreUpper(body, scratch, *shadow, dst);
+            body.Restore(scratch);
+        }
+        if (h.Memory) {
+            body.Load(dst, Operand(data, length, h));
+            body.Raw(RegisterOp(0x66, {0x0F, 0x70}, dst, dst, lowImm));
+        } else {
+            body.Raw(RegisterOp(0x66, {0x0F, 0x70}, dst, h.Rm, lowImm));
+        }
+        if (!h.L && shadow) ClearUpper(body, *shadow, dst);
         return;
     }
     case Special::None:

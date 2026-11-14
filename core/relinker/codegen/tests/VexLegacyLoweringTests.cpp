@@ -130,6 +130,16 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE3, 0xFD, 0x00, 0xCA, 0x4E},
+    Bytes{0xC4, 0xE3, 0xFD, 0x00, 0xD2, 0xD8},
+    Bytes{0xC4, 0xE3, 0xFD, 0x01, 0x18, 0x93},
+    Bytes{0xC4, 0xE2, 0x6D, 0x36, 0xCB},
+    Bytes{0xC4, 0xE2, 0x55, 0x16, 0x20},
+    Bytes{0xC4, 0xE2, 0x6D, 0x36, 0xD2},
+    Bytes{0xC4, 0xE3, 0x7D, 0x04, 0xCA, 0x1B},
+    Bytes{0xC4, 0xE3, 0x7D, 0x05, 0x18, 0x05},
+    Bytes{0xC4, 0xE3, 0x79, 0x04, 0xC9, 0x93},
+    Bytes{0xC4, 0x43, 0x79, 0x05, 0xC1, 0x01},
     Bytes{0xC4, 0xE3, 0x6D, 0x02, 0xD9, 0xA5},
     Bytes{0xC4, 0xE3, 0x6D, 0x0D, 0xD9, 0x09},
     Bytes{0xC5, 0xED, 0xC6, 0xD9, 0x05},
@@ -280,6 +290,17 @@ std::int32_t shadowOffset() {
     return static_cast<std::int32_t>(reinterpret_cast<std::uint64_t>(&shadowArea[0]) - threadPointer);
 }
 
+template <typename Finished>
+Bytes pooled(const Finished& finished) {
+    constexpr std::size_t kRunnerPrologue = 14 + 7 + 16 * 9 + 16 * 15;
+    Bytes code((16 - kRunnerPrologue % 16) % 16, 0x90);
+    const auto start = code.size();
+    code.insert(code.end(), finished.Bytes.begin(), finished.Bytes.end());
+    const auto skip = static_cast<std::int32_t>(finished.Bytes.size() - finished.ReturnBranchOffset - 5);
+    std::memcpy(code.data() + start + finished.ReturnBranchOffset + 1, &skip, sizeof(skip));
+    return code;
+}
+
 void shadowExecution() {
     const auto offset = shadowOffset();
     for (const auto& vex : kShadowed) {
@@ -290,7 +311,7 @@ void shadowExecution() {
         const auto finished = body.Finish();
         require(finished.Relocations.empty(), "test stubs must not relocate");
         const VectorExecution::Runner reference(vex);
-        const VectorExecution::Runner stub(Bytes(finished.Bytes.begin(), finished.Bytes.begin() + static_cast<std::ptrdiff_t>(finished.ReturnBranchOffset)));
+        const VectorExecution::Runner stub(pooled(finished));
         for (int seed = 0; seed < 4; ++seed) {
             auto start = VectorExecution::Initial();
             for (auto& reg : start.Ymm)
@@ -324,13 +345,7 @@ void fmaExecution() {
         const auto finished = body.Finish();
         const VectorExecution::Runner reference(vex);
         require(finished.Relocations.empty(), "test stubs must not relocate");
-        constexpr std::size_t kRunnerPrologue = 7 + 16 * 9 + 16 * 15;
-        Bytes code((16 - kRunnerPrologue % 16) % 16, 0x90);
-        const auto start = code.size();
-        code.insert(code.end(), finished.Bytes.begin(), finished.Bytes.end());
-        const auto skip = static_cast<std::int32_t>(finished.Bytes.size() - finished.ReturnBranchOffset - 5);
-        std::memcpy(code.data() + start + finished.ReturnBranchOffset + 1, &skip, sizeof(skip));
-        const VectorExecution::Runner stub(code);
+        const VectorExecution::Runner stub(pooled(finished));
         const bool doubles = fma->Double;
         for (int seed = 0; seed < 4; ++seed) {
             auto start = VectorExecution::Initial();
