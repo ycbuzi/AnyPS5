@@ -426,7 +426,7 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -437,6 +437,7 @@ Special SpecialOf(const Parsed& h) {
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
+    if (h.Map == 3 && (h.Op == 0x4A || h.Op == 0x4B || h.Op == 0x4C)) return Special::BlendV;
     if (h.Map == 3 && h.L && (h.Op == 0x18 || h.Op == 0x38)) return Special::Insert;
     if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
     if (h.Map == 3 && h.L && (h.Op == 0x06 || h.Op == 0x46)) return Special::Permute2;
@@ -464,15 +465,64 @@ std::uint8_t QwordShuffle(const unsigned first, const unsigned second) {
     return static_cast<std::uint8_t>(2 * first | (2 * first + 1) << 2 | (2 * second) << 4 | (2 * second + 1) << 6);
 }
 
+template <std::size_t N>
+std::array<std::uint8_t, N> Scratches(std::initializer_list<std::uint8_t> excluded) {
+    std::array<std::uint8_t, N> scratch{};
+    std::uint8_t candidate = 0;
+    for (std::size_t n = 0; n < N; ++n, ++candidate) {
+        while (candidate < 16 && std::find(excluded.begin(), excluded.end(), candidate) != excluded.end()) ++candidate;
+        if (candidate >= 16) throw CodegenException("No scratch XMM registers for a VEX stub");
+        scratch[n] = candidate;
+    }
+    return scratch;
+}
+
+void EmitBlendV(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto first = h.Vvvv;
+    const auto selector = static_cast<std::uint8_t>(data[length - 1] >> 4);
+    const auto second = h.Memory ? first : h.Rm;
+    const auto [out, picked, upperFirst, upperSelector] = Scratches<4>({dst, first, second, selector});
+    const auto memory = h.Memory ? std::optional<MemoryOperand>(Operand(data, length, h)) : std::nullopt;
+    const auto half = [&](const std::uint8_t one, const std::uint8_t mask, const bool upper) {
+        if (h.Op == 0x4C) {
+            body.Raw(Xorps(out));
+            body.Sse(0x66, {0x0F, 0x64}, out, mask);
+        } else {
+            body.Raw(Movaps(out, mask));
+            body.ShiftDwordImm(4, out, 31);
+            if (h.Op == 0x4B) body.Raw(RegisterOp(0x66, {0x0F, 0x70}, out, out, std::uint8_t{0xF5}));
+        }
+        if (memory) body.Load(picked, upper ? OffsetMemoryOperand(*memory, 16) : *memory);
+        else if (upper) LoadUpper(body, picked, *shadow, second);
+        else body.Raw(Movaps(picked, second));
+        body.Sse(0x66, {0x0F, 0xDB}, picked, out);
+        body.Sse(0x66, {0x0F, 0xDF}, out, one);
+        body.Sse(0x66, {0x0F, 0xEB}, out, picked);
+    };
+    body.Spill(out);
+    body.Spill(picked);
+    if (h.L) {
+        body.Spill(upperFirst);
+        body.Spill(upperSelector);
+        LoadUpper(body, upperFirst, *shadow, first);
+        LoadUpper(body, upperSelector, *shadow, selector);
+        half(upperFirst, upperSelector, true);
+        StoreUpper(body, out, *shadow, dst);
+        body.Restore(upperSelector);
+        body.Restore(upperFirst);
+    }
+    half(first, selector, false);
+    body.Raw(Movaps(dst, out));
+    body.Restore(picked);
+    body.Restore(out);
+    if (!h.L && shadow) ClearUpper(body, *shadow, dst);
+}
+
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
     const auto dst = h.Reg;
     const auto index = h.Vvvv;
-    std::array<std::uint8_t, 6> scratch{};
-    for (std::size_t n = 0; n < scratch.size(); ++n) {
-        std::uint8_t candidate = 0;
-        while (candidate == dst || candidate == index || std::find(scratch.begin(), scratch.begin() + static_cast<std::ptrdiff_t>(n), candidate) != scratch.begin() + static_cast<std::ptrdiff_t>(n)) ++candidate;
-        scratch[n] = candidate;
-    }
+    const auto scratch = Scratches<6>({dst, index});
     const auto [low, high, out, control, left, right] = scratch;
     for (const auto reg : scratch) body.Spill(reg);
     LoadHalves(body, data, length, h, low, high, shadow);
@@ -619,6 +669,9 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     }
     case Special::PermuteD:
         EmitPermuteD(body, data, length, h, *shadow);
+        return;
+    case Special::BlendV:
+        EmitBlendV(body, data, length, h, shadow);
         return;
     case Special::PermuteImm: {
         const auto imm = data[length - 1];
