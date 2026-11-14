@@ -19,3 +19,4 @@ f173a4b0da38d3081bf120b67f233c14bf0fe6fd refs/heads/quest/terrifier-format-diag 
 1f613a635feb764bf8dd7ee130cd6abf61047269 refs/heads/quest/terrifier-format-diag terrifier-stopb-fmt12-1f613a635f
 e59e53169605fc0a6fb69cea58a3e34d97b35868 refs/heads/quest/terrifier-format-diag terrifier-stopb-peek-e59e531696
 3bae74106f4f1480d74d1ffd98fbc690b2b7ad7d refs/heads/quest/arena-exhausted-detail stray-arena-detail-3bae74106f
+1c6345430adfa1189d57adb0eba06bb338bb29d8 refs/heads/quest/arena-exhausted-detail stray-arena-enomem-1c6345430a
