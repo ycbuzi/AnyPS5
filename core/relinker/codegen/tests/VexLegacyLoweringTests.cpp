@@ -130,6 +130,13 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE2, 0x69, 0x47, 0xCB},
+    Bytes{0xC4, 0xE2, 0x6D, 0x47, 0xCB},
+    Bytes{0xC4, 0xE2, 0xED, 0x47, 0x08},
+    Bytes{0xC4, 0xE2, 0x6D, 0x45, 0xD2},
+    Bytes{0xC4, 0xE2, 0xE9, 0x45, 0xCB},
+    Bytes{0xC4, 0xE2, 0x6D, 0x46, 0xCB},
+    Bytes{0xC4, 0x42, 0x29, 0x46, 0xC3},
     Bytes{0xC4, 0xE2, 0x79, 0x13, 0xCA},
     Bytes{0xC4, 0x42, 0x79, 0x13, 0xC0},
     Bytes{0xC4, 0xE3, 0x79, 0x1D, 0xD1, 0x00},
@@ -402,6 +409,45 @@ void halfExecution() {
     }
 }
 
+void shiftExecution() {
+    const auto offset = shadowOffset();
+    const std::vector<Bytes> shifts{
+        Bytes{0xC4, 0xE2, 0x6D, 0x47, 0xCB}, Bytes{0xC4, 0xE2, 0xED, 0x47, 0xCB}, Bytes{0xC4, 0xE2, 0x6D, 0x45, 0xCB},
+        Bytes{0xC4, 0xE2, 0xED, 0x45, 0xCB}, Bytes{0xC4, 0xE2, 0x6D, 0x46, 0xCB}, Bytes{0xC4, 0xE2, 0x69, 0x46, 0xCB},
+    };
+    std::uint64_t state = 0x9E3779B97F4A7C15ull;
+    const auto next = [&] {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return state;
+    };
+    for (const auto& vex : shifts) {
+        const auto site = Codegen::DecodeVexShadow(vex.data(), vex.size(), true);
+        require(site.has_value(), "VEX " + hex(vex) + " has no shadow lowering");
+        Codegen::StubBodyBuilder body;
+        Codegen::EmitVexShadow(body, *site, offset);
+        const VectorExecution::Runner reference(vex);
+        const VectorExecution::Runner stub(pooled(body.Finish()));
+        for (int round = 0; round < 256; ++round) {
+            auto start = VectorExecution::Initial();
+            for (auto& q : start.Ymm[2]) q = next();
+            for (auto& q : start.Ymm[3]) {
+                const auto pick = next();
+                q = (pick >> 8) % 70 | ((pick >> 24) % 70) << 32;
+                if ((pick & 15) == 0) q |= 0x100000000ull << (pick >> 4 & 15);
+            }
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                shadowArea[reg * 2] = start.Ymm[reg][2];
+                shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+            }
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            require(got.Ymm[1][0] == wanted.Ymm[1][0] && got.Ymm[1][1] == wanted.Ymm[1][1] && shadowArea[2] == wanted.Ymm[1][2] && shadowArea[3] == wanted.Ymm[1][3], "variable shift " + hex(vex) + " differs in round " + std::to_string(round));
+        }
+    }
+}
+
 void fmaExecution() {
     const auto offset = shadowOffset();
     for (const auto& vex : kFma) {
@@ -469,6 +515,7 @@ void fmaExecution() {
 #else
 
 void halfExecution() {}
+void shiftExecution() {}
 void fmaExecution() { std::cout << "FMA execution checks require a Linux/macOS x86-64 build\n"; }
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
 void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
@@ -499,6 +546,7 @@ int main() {
         execution();
         shadowExecution();
         halfExecution();
+        shiftExecution();
         fmaExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {

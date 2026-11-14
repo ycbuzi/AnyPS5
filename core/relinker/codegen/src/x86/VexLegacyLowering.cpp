@@ -426,7 +426,7 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -435,6 +435,7 @@ Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t l
     if (h.Pp != 1) return Special::None;
     if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
+    if (h.Map == 2 && (h.Op == 0x45 || h.Op == 0x47 || (h.Op == 0x46 && !h.W))) return Special::VariableShift;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
     if (h.Map == 2 && h.Op == 0x13 && !h.L && h.Vvvv == 0 && !h.Memory) return Special::HalfToSingle;
@@ -621,6 +622,41 @@ void EmitSingleToHalf(StubBodyBuilder& body, const Parsed& h, const std::uint8_t
     if (shadow) ClearUpper(body, *shadow, dst);
 }
 
+void EmitVariableShift(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto source = h.Vvvv;
+    const bool dwords = !h.W;
+    const std::uint8_t opcode = h.Op == 0x47 ? (dwords ? 0xF2 : 0xF3) : h.Op == 0x46 ? 0xE2 : (dwords ? 0xD2 : 0xD3);
+    const auto counts = h.Memory ? source : h.Rm;
+    const auto [result, lane, count, upperSource, loaded] = Scratches<5>({dst, source, counts});
+    const auto memory = h.Memory ? std::optional<MemoryOperand>(Operand(data, length, h)) : std::nullopt;
+    const auto half = [&](const std::uint8_t from, const std::uint8_t by) {
+        const unsigned lanes = dwords ? 4 : 2;
+        for (unsigned index = 0; index < lanes; ++index) {
+            body.Raw(Movaps(count, by));
+            if (index) body.ShiftImm(3, count, static_cast<std::uint8_t>((dwords ? 4 : 8) * index));
+            if (dwords) body.Sse(0x66, {0x0F, 0x38, 0x35}, count, count);
+            const auto into = index ? lane : result;
+            body.Raw(Movaps(into, from));
+            body.Sse(0x66, {0x0F, opcode}, into, count);
+            if (index) body.SseImm(0x66, {0x0F, 0x3A, 0x0E}, result, lane, static_cast<std::uint8_t>(dwords ? 3u << (2 * index) : 0xFu << (4 * index)));
+        }
+    };
+    for (const auto reg : {result, lane, count, upperSource, loaded}) body.Spill(reg);
+    if (h.L) {
+        LoadUpper(body, upperSource, *shadow, source);
+        if (memory) body.Load(loaded, OffsetMemoryOperand(*memory, 16));
+        else LoadUpper(body, loaded, *shadow, counts);
+        half(upperSource, loaded);
+        StoreUpper(body, result, *shadow, dst);
+    }
+    if (memory) body.Load(loaded, *memory);
+    half(source, memory ? loaded : counts);
+    body.Raw(Movaps(dst, result));
+    for (const auto reg : {loaded, upperSource, count, lane, result}) body.Restore(reg);
+    if (!h.L && shadow) ClearUpper(body, *shadow, dst);
+}
+
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
     const auto dst = h.Reg;
     const auto index = h.Vvvv;
@@ -774,6 +810,9 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
         return;
     case Special::BlendV:
         EmitBlendV(body, data, length, h, shadow);
+        return;
+    case Special::VariableShift:
+        EmitVariableShift(body, data, length, h, shadow);
         return;
     case Special::HalfToSingle:
         EmitHalfToSingle(body, h, shadow);
