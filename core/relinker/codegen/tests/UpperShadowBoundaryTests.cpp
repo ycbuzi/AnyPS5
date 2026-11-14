@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -128,8 +129,17 @@ void boundaries() { std::cout << "Upper shadow boundary checks require a Linux x
 
 }
 
+void unloweredReported() {
+    const Bytes code{0xC4, 0xE2, 0x7D, 0x13, 0xCA, 0xC4, 0xE3, 0x79, 0x1D, 0xD1, 0x04, 0xC4, 0xE2, 0x79, 0x13, 0xCA, 0xC3};
+    const Domain::ProgramHeader header{1, 5, 0, 0, 0, code.size(), code.size(), 16};
+    const auto converted = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTarget::Sse, {}, std::nullopt)->Convert(code, {header});
+    const std::map<std::string, std::size_t> wanted{{"VEX.256.66.0F38.W0 13", 1}, {"VEX.128.66.0F3A.W0 1D", 1}};
+    require(converted.Unlowered == wanted, "unlowered F16C forms were not reported");
+}
+
 int main() {
     try {
+        unloweredReported();
         boundaries();
         std::cout << "Upper shadow boundary checks passed\n";
     } catch (const std::exception& error) {

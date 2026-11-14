@@ -100,7 +100,14 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
         }
         for (const auto& [name, count] : stubsByName)
             { std::ostringstream message; message << "Intel substitution: " << name << " at " << count << " sites\n"; inputProgress.Message(message.str()); }
-        { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept\n"; inputProgress.Message(message.str()); }
+        std::size_t unlowered = 0;
+        for (const auto& [form, count] : converted.Unlowered) {
+            unlowered += count;
+            std::ostringstream message;
+            message << "Intel conversion: " << form << " not lowered at " << count << " sites\n";
+            inputProgress.Message(message.str());
+        }
+        { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept, " << unlowered << " VEX instructions not lowered\n"; inputProgress.Message(message.str()); }
     }
 
     auto elfReader = std::make_shared<Relinker::ElfReader>(std::move(sourceBytes));

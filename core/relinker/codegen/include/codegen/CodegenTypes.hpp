@@ -4,6 +4,8 @@
 #include <codegen/x86/Amd64OnlySubstitutionTypes.hpp>
 #include <domain/Types.hpp>
 #include <cstdint>
+#include <map>
+#include <string>
 #include <vector>
 
 namespace Codegen {
@@ -45,6 +47,7 @@ struct ConvertResult {
     std::vector<TrampolineSite> Trampolines;
     std::vector<Amd64OnlySubstitutionReport> Reports;
     std::size_t KeptCount = 0;
+    std::map<std::string, std::size_t> Unlowered = {};
 };
 
 enum class ControlFlowKind : std::uint8_t {

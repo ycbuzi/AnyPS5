@@ -5,6 +5,7 @@
 #include <codegen/x86/FmaLowering.hpp>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Codegen {
@@ -26,6 +27,7 @@ struct VexShadow {
 
 [[nodiscard]] std::optional<FmaOperands> DecodeFmaSse(const std::uint8_t* data, std::size_t length, bool shadow);
 void EmitFmaSse(StubBodyBuilder& body, const FmaOperands& operands, std::optional<std::int32_t> shadow);
+[[nodiscard]] std::optional<std::string> VexFormName(const std::uint8_t* data, std::size_t length);
 [[nodiscard]] bool VexWide(const std::uint8_t* data, std::size_t length);
 [[nodiscard]] std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, std::size_t length, bool shadow);
 void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, std::optional<std::int32_t> shadow);

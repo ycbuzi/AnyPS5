@@ -257,6 +257,7 @@ public:
     Amd64OnlyConverter(const Amd64OnlyTarget target, std::function<void(std::uint64_t, std::uint64_t)> progress, std::optional<UpperShadowContext> shadow)
         : _matcher(MakeAmd64OnlyInstructionMatcher(target)),
           _shadowMatcher(shadow && target == Amd64OnlyTarget::Sse ? MakeAmd64OnlyInstructionMatcher(target, shadow->Offset) : nullptr),
+          _reportUnlowered(target == Amd64OnlyTarget::Sse),
           _functions(shadow ? shadow->Functions : std::vector<std::pair<std::uint64_t, std::uint64_t>>{}),
           progress(std::move(progress)) {
         std::sort(_functions.begin(), _functions.end());
@@ -276,6 +277,7 @@ private:
 
     std::unique_ptr<IAmd64OnlyInstructionMatcher> _matcher;
     std::unique_ptr<IAmd64OnlyInstructionMatcher> _shadowMatcher;
+    bool _reportUnlowered;
     std::vector<std::pair<std::uint64_t, std::uint64_t>> _functions;
     std::function<void(std::uint64_t, std::uint64_t)> progress;
 
@@ -404,6 +406,8 @@ void Amd64OnlyConverter::_convertSegment(
         auto substitution = _atFileOffset(ph.Offset + match.Offset, [&] { return matcherAt(match.Offset).Match(seg.data() + match.Offset, match.Length); });
         if (substitution.has_value())
             pending.push_back({index, match, std::move(*substitution)});
+        else if (_reportUnlowered)
+            if (const auto form = VexFormName(seg.data() + match.Offset, match.Length)) ++result.Unlowered[*form];
     }
     if (progress) progress(completed + std::uint64_t{2} * segSize, total);
     if (pending.empty()) {

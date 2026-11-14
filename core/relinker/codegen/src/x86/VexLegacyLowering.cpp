@@ -995,6 +995,19 @@ void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, const std::opti
     if (const auto written = XmmDestination(p); written && shadow) ClearUpper(body, *shadow, *written);
 }
 
+std::optional<std::string> VexFormName(const std::uint8_t* data, const std::size_t length) {
+    const auto header = Parse(data, length, false);
+    if (!header) return std::nullopt;
+    constexpr const char* kPrefix[] = {"NP", "66", "F3", "F2"};
+    constexpr const char* kMap[] = {"?", "0F", "0F38", "0F3A"};
+    constexpr char kHex[] = "0123456789ABCDEF";
+    std::string name = std::string("VEX.") + (header->L ? "256." : "128.") + kPrefix[header->Pp] + "." + (header->Map < 4 ? kMap[header->Map] : "?") + ".W" + (header->W ? "1 " : "0 ");
+    name += kHex[header->Op >> 4];
+    name += kHex[header->Op & 15];
+    if (header->OpIndex + 1 < length && header->Memory) name += " mem";
+    return name;
+}
+
 bool VexWide(const std::uint8_t* data, const std::size_t length) {
     std::size_t vex = 0;
     while (vex < length && ScalarLowering::LegacyPrefix(data[vex])) ++vex;
