@@ -426,12 +426,14 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
 
 Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
+    if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 1 && (h.Op == 0x5A || h.Op == 0xE6)) || (h.Pp == 3 && h.Op == 0xE6))) return Special::Narrow;
+    if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 0 && h.Op == 0x5A) || (h.Pp == 2 && h.Op == 0xE6))) return Special::Widen;
     if (h.Pp != 1) return Special::None;
     if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
@@ -811,6 +813,42 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     case Special::BlendV:
         EmitBlendV(body, data, length, h, shadow);
         return;
+    case Special::Narrow: {
+        const auto prefix = kMandatoryPrefix[h.Pp];
+        const auto low = Scratch({dst, h.Rm});
+        const auto high = Scratch({dst, h.Rm, low});
+        body.Spill(low);
+        body.Spill(high);
+        LoadHalves(body, data, length, h, low, high, *shadow);
+        body.Sse(prefix, {0x0F, h.Op}, low, low);
+        body.Sse(prefix, {0x0F, h.Op}, high, high);
+        body.Sse(0x66, {0x0F, 0x6C}, low, high);
+        body.Raw(Movaps(dst, low));
+        body.Restore(high);
+        body.Restore(low);
+        ClearUpper(body, *shadow, dst);
+        return;
+    }
+    case Special::Widen: {
+        const auto prefix = kMandatoryPrefix[h.Pp];
+        const auto convert = [&](const std::uint8_t into, const std::uint8_t from) {
+            if (prefix) body.Sse(prefix, {0x0F, h.Op}, into, from);
+            else body.SsePlain({0x0F, h.Op}, into, from);
+        };
+        const auto scratch = Scratch({dst, h.Rm});
+        body.Spill(scratch);
+        if (h.Memory) {
+            body.MemoryOp(prefix, {0x0F, h.Op}, scratch, OffsetMemoryOperand(Operand(data, length, h), 8));
+        } else {
+            body.Raw(RegisterOp(0x66, {0x0F, 0x70}, scratch, h.Rm, std::uint8_t{0xEE}));
+            convert(scratch, scratch);
+        }
+        StoreUpper(body, scratch, *shadow, dst);
+        body.Restore(scratch);
+        if (h.Memory) EmitLegacy(body, MemoryOp(data, length, h, prefix, {0x0F, h.Op}, dst), kName);
+        else convert(dst, h.Rm);
+        return;
+    }
     case Special::VariableShift:
         EmitVariableShift(body, data, length, h, shadow);
         return;
