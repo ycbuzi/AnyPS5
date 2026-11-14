@@ -259,7 +259,7 @@ void ReportCallTrace() {
         const long requested = value != nullptr ? std::strtol(value, nullptr, 10) : 32;
         return static_cast<std::size_t>(std::clamp<long>(requested, 1, 4096));
     }();
-    static CallTraceCount counts[32];
+    static CallTraceCount counts[4096];
     ReportLine line;
     const std::size_t count = CopyCallTrace_nid_no_patch(entries, std::size(entries));
     if (count == 0) return;

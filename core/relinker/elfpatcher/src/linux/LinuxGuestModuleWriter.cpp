@@ -5,6 +5,7 @@
 #include <codegen/x86/StubBodyBuilder.hpp>
 #include <io/BufferUtils.hpp>
 #include <algorithm>
+#include <cstdlib>
 #include <limits>
 #include <set>
 #include <span>
@@ -167,6 +168,66 @@ std::vector<std::uint8_t> GuestModuleWriter::WriteLinux(const Relinker::GuestIma
         Io::WriteU16(symbols, entry + 6, 1);
         Io::WriteU64(symbols, entry + 8, lifecycleTable);
         Io::WriteU64(symbols, entry + 16, address() - lifecycleTable);
+    }
+    if (std::getenv("APS5_RELINK_TRACE_GUEST_IMPORTS") != nullptr) {
+        constexpr char importsExport[] = "__aps5_guest_imports_nid_no_patch";
+        struct TracedGuestImport {
+            std::uint64_t slot;
+            std::string name;
+            std::string library;
+        };
+        std::vector<TracedGuestImport> traced;
+        const auto collect = [&](const std::vector<std::uint8_t>& table) {
+            for (std::size_t entry = 0; entry + 24 <= table.size(); entry += 24) {
+                const auto target = Io::ReadU64(table, entry);
+                const auto info = Io::ReadU64(table, entry + 8);
+                const auto type = static_cast<std::uint32_t>(info);
+                const auto symbol = info >> 32;
+                if ((type != 6 && type != 7) || symbol == 0) continue;
+                if (type == 6 && !image.Dynamic.FunctionImports.contains(target)) continue;
+                const auto symbolOffset = static_cast<std::size_t>(symbol * 24);
+                if (symbolOffset + 24 > image.Dynamic.DynSymData.size()) continue;
+                if (Io::ReadU16(image.Dynamic.DynSymData, symbolOffset + 6) != 0 || image.Dynamic.DynSymData[symbolOffset + 4] >> 4 == 2) continue;
+                const auto nameOffset = Io::ReadU32(image.Dynamic.DynSymData, symbolOffset);
+                if (nameOffset >= image.Dynamic.DynStrData.size()) continue;
+                std::string name(reinterpret_cast<const char*>(image.Dynamic.DynStrData.data() + nameOffset));
+                if (name.empty()) continue;
+                const auto library = image.Dynamic.ImportModules.find(target);
+                traced.push_back({target, std::move(name), library == image.Dynamic.ImportModules.end() ? std::string{} : library->second});
+            }
+        };
+        collect(image.Dynamic.RelaData);
+        collect(image.Dynamic.RelaPltData);
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> textAddresses;
+        for (const auto& import : traced) {
+            const auto nameAddress = address();
+            Io::AppendString(bytes, import.name);
+            const auto libraryAddress = address();
+            Io::AppendString(bytes, import.library);
+            textAddresses.emplace_back(nameAddress, libraryAddress);
+        }
+        Io::AlignBuffer(bytes, 8);
+        const auto table = address();
+        Io::AppendU64(bytes, traced.size());
+        const auto relative = [&](std::uint64_t target) {
+            const auto slot = address();
+            Io::AppendU64(bytes, 0);
+            Io::AppendU64(relaData, slot);
+            Io::AppendU64(relaData, 8);
+            Io::AppendU64(relaData, target);
+        };
+        for (std::size_t index = 0; index < traced.size(); ++index) {
+            relative(traced[index].slot);
+            relative(textAddresses[index].first);
+            relative(textAddresses[index].second);
+        }
+        const auto entry = symbols.size();
+        symbols.resize(entry + 24, 0);
+        Io::WriteU32(symbols, entry, addString(importsExport));
+        symbols[entry + 4] = 0x11;
+        Io::WriteU16(symbols, entry + 6, 1);
+        Io::WriteU64(symbols, entry + 8, table);
+        Io::WriteU64(symbols, entry + 16, address() - table);
     }
     if (passesModuleArgs) {
         argsImport = addUndefinedImport("__aps5_get_pending_module_args_nid_no_patch");
