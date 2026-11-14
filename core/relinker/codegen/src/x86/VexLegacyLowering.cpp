@@ -426,17 +426,19 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
 
-Special SpecialOf(const Parsed& h) {
+Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
     if (h.Pp != 1) return Special::None;
     if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
+    if (h.Map == 2 && h.Op == 0x13 && !h.L && h.Vvvv == 0 && !h.Memory) return Special::HalfToSingle;
+    if (h.Map == 3 && h.Op == 0x1D && !h.L && h.Vvvv == 0 && !h.Memory && (data[length - 1] & 4) == 0 && (data[length - 1] & 3) % 3 == 0) return Special::SingleToHalf;
     if (h.Map == 3 && (h.Op == 0x4A || h.Op == 0x4B || h.Op == 0x4C)) return Special::BlendV;
     if (h.Map == 3 && h.L && (h.Op == 0x18 || h.Op == 0x38)) return Special::Insert;
     if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
@@ -464,6 +466,12 @@ void LoadHalves(StubBodyBuilder& body, const std::uint8_t* data, const std::size
 
 std::uint8_t QwordShuffle(const unsigned first, const unsigned second) {
     return static_cast<std::uint8_t>(2 * first | (2 * first + 1) << 2 | (2 * second) << 4 | (2 * second + 1) << 6);
+}
+
+constexpr StubConstant Splat(const std::uint32_t value) {
+    StubConstant constant{};
+    for (std::size_t index = 0; index < constant.size(); ++index) constant[index] = static_cast<std::uint8_t>(value >> (8 * (index % 4)));
+    return constant;
 }
 
 template <std::size_t N>
@@ -518,6 +526,99 @@ void EmitBlendV(StubBodyBuilder& body, const std::uint8_t* data, const std::size
     body.Restore(picked);
     body.Restore(out);
     if (!h.L && shadow) ClearUpper(body, *shadow, dst);
+}
+
+void EmitHalfToSingle(StubBodyBuilder& body, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto scratch = Scratches<5>({dst, h.Rm});
+    const auto [words, magnitude, normal, small, out] = scratch;
+    for (const auto reg : scratch) body.Spill(reg);
+    body.Sse(0x66, {0x0F, 0x38, 0x33}, words, h.Rm);
+    body.Raw(Movaps(magnitude, words));
+    body.RipOperand({0x0F, 0xDB}, magnitude, Splat(0x7FFF));
+    body.Raw(Movaps(normal, magnitude));
+    body.ShiftDwordImm(6, normal, 13);
+    body.RipOperand({0x0F, 0xFE}, normal, Splat(0x38000000));
+    body.SsePlain({0x0F, 0x5B}, small, magnitude);
+    body.RipOperand({0x0F, 0x6F}, out, Splat(0x33800000));
+    body.SsePlain({0x0F, 0x59}, small, out);
+    body.RipOperand({0x0F, 0x6F}, out, Splat(0x400));
+    body.Sse(0x66, {0x0F, 0x66}, out, magnitude);
+    body.Sse(0x66, {0x0F, 0xDB}, small, out);
+    body.Sse(0x66, {0x0F, 0xDF}, out, normal);
+    body.Sse(0x66, {0x0F, 0xEB}, out, small);
+    body.Raw(Movaps(normal, magnitude));
+    body.RipOperand({0x0F, 0x66}, normal, Splat(0x7BFF));
+    body.RipOperand({0x0F, 0xDB}, normal, Splat(0x38000000));
+    body.Sse(0x66, {0x0F, 0xFE}, out, normal);
+    body.RipOperand({0x0F, 0x66}, magnitude, Splat(0x7C00));
+    body.RipOperand({0x0F, 0xDB}, magnitude, Splat(0x00400000));
+    body.Sse(0x66, {0x0F, 0xEB}, out, magnitude);
+    body.ShiftDwordImm(6, words, 16);
+    body.RipOperand({0x0F, 0xDB}, words, Splat(0x80000000));
+    body.Sse(0x66, {0x0F, 0xEB}, out, words);
+    body.Raw(Movaps(dst, out));
+    for (auto reg = scratch.rbegin(); reg != scratch.rend(); ++reg) body.Restore(*reg);
+    if (shadow) ClearUpper(body, *shadow, dst);
+}
+
+void EmitSingleToHalf(StubBodyBuilder& body, const Parsed& h, const std::uint8_t imm, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Rm;
+    const bool truncate = (imm & 3) == 3;
+    const auto scratch = Scratches<6>({dst, h.Reg});
+    const auto [magnitude, sign, normal, small, select, over] = scratch;
+    for (const auto reg : scratch) body.Spill(reg);
+    body.Raw(Movaps(magnitude, h.Reg));
+    body.Raw(Movaps(sign, h.Reg));
+    body.RipOperand({0x0F, 0xDB}, magnitude, Splat(0x7FFFFFFF));
+    body.ShiftDwordImm(2, sign, 31);
+    body.ShiftDwordImm(6, sign, 15);
+    body.Raw(Movaps(normal, magnitude));
+    if (truncate) {
+        body.RipOperand({0x0F, 0xFE}, normal, Splat(0xC8000000));
+    } else {
+        body.ShiftDwordImm(2, normal, 13);
+        body.RipOperand({0x0F, 0xDB}, normal, Splat(1));
+        body.Sse(0x66, {0x0F, 0xFE}, normal, magnitude);
+        body.RipOperand({0x0F, 0xFE}, normal, Splat(0xC8000FFF));
+    }
+    body.ShiftDwordImm(2, normal, 13);
+    body.RipOperand({0x0F, 0x6F}, small, Splat(0x4B800000));
+    body.SsePlain({0x0F, 0x59}, small, magnitude);
+    if (truncate) body.Sse(0xF3, {0x0F, 0x5B}, small, small);
+    else body.Sse(0x66, {0x0F, 0x5B}, small, small);
+    body.RipOperand({0x0F, 0x6F}, select, Splat(0x38800000));
+    body.Sse(0x66, {0x0F, 0x66}, select, magnitude);
+    body.Sse(0x66, {0x0F, 0xDB}, small, select);
+    body.Sse(0x66, {0x0F, 0xDF}, select, normal);
+    body.Sse(0x66, {0x0F, 0xEB}, select, small);
+    body.Raw(Movaps(over, magnitude));
+    body.RipOperand({0x0F, 0x66}, over, Splat(0x477FFFFF));
+    if (truncate) {
+        body.Raw(Movaps(normal, magnitude));
+        body.RipOperand({0x0F, 0x76}, normal, Splat(0x7F800000));
+        body.RipOperand({0x0F, 0x6F}, small, Splat(0x7BFF));
+        body.Sse(0x66, {0x0F, 0xFA}, small, normal);
+    } else {
+        body.RipOperand({0x0F, 0x6F}, small, Splat(0x7C00));
+    }
+    body.Sse(0x66, {0x0F, 0xDB}, small, over);
+    body.Sse(0x66, {0x0F, 0xDF}, over, select);
+    body.Sse(0x66, {0x0F, 0xEB}, over, small);
+    body.Raw(Movaps(select, magnitude));
+    body.RipOperand({0x0F, 0x66}, select, Splat(0x7F800000));
+    body.ShiftDwordImm(2, magnitude, 13);
+    body.RipOperand({0x0F, 0xDB}, magnitude, Splat(0x3FF));
+    body.RipOperand({0x0F, 0xEB}, magnitude, Splat(0x7E00));
+    body.Sse(0x66, {0x0F, 0xDB}, magnitude, select);
+    body.Sse(0x66, {0x0F, 0xDF}, select, over);
+    body.Sse(0x66, {0x0F, 0xEB}, select, magnitude);
+    body.Sse(0x66, {0x0F, 0xEB}, select, sign);
+    body.Raw(Xorps(magnitude));
+    body.Sse(0x66, {0x0F, 0x38, 0x2B}, select, magnitude);
+    body.Raw(Movaps(dst, select));
+    for (auto reg = scratch.rbegin(); reg != scratch.rend(); ++reg) body.Restore(*reg);
+    if (shadow) ClearUpper(body, *shadow, dst);
 }
 
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
@@ -674,6 +775,12 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     case Special::BlendV:
         EmitBlendV(body, data, length, h, shadow);
         return;
+    case Special::HalfToSingle:
+        EmitHalfToSingle(body, h, shadow);
+        return;
+    case Special::SingleToHalf:
+        EmitSingleToHalf(body, h, data[length - 1], shadow);
+        return;
     case Special::Extend: {
         constexpr std::uint8_t kHighOffset[] = {8, 4, 2, 8, 4, 8};
         const auto offset = kHighOffset[h.Op & 7];
@@ -816,7 +923,7 @@ std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, const std::si
     if (header->Map == 1 && header->Op == 0x77 && header->Pp == 0 && header->Vvvv == 0 && header->OpIndex + 1 == length)
         return shadow ? std::optional<VexShadow>(VexShadow{header->L ? kZeroAll : kZeroUpper, std::vector<std::uint8_t>(data, data + length)}) : std::nullopt;
     if (header->OpIndex + 2 > length) return std::nullopt;
-    const auto special = SpecialOf(*header);
+    const auto special = SpecialOf(*header, data, length);
     if (special != Special::None && (shadow || !header->L)) return VexShadow{header->L ? kName256 : kName, std::vector<std::uint8_t>(data, data + length)};
     const auto p = Parse(data, length);
     if (!p || (p->L && !shadow)) return std::nullopt;
@@ -835,7 +942,7 @@ void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, const std::opti
         }
         return;
     }
-    if (const auto special = SpecialOf(header); special != Special::None) {
+    if (const auto special = SpecialOf(header, data, length); special != Special::None) {
         EmitSpecial(body, data, length, header, special, shadow);
         return;
     }

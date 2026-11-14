@@ -130,6 +130,11 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE2, 0x79, 0x13, 0xCA},
+    Bytes{0xC4, 0x42, 0x79, 0x13, 0xC0},
+    Bytes{0xC4, 0xE3, 0x79, 0x1D, 0xD1, 0x00},
+    Bytes{0xC4, 0xE3, 0x79, 0x1D, 0xD1, 0x03},
+    Bytes{0xC4, 0xE3, 0x79, 0x1D, 0xC0, 0x00},
     Bytes{0xC4, 0xE2, 0x7D, 0x30, 0xCA},
     Bytes{0xC4, 0xE2, 0x7D, 0x31, 0xD2},
     Bytes{0xC4, 0xE2, 0x7D, 0x32, 0x18},
@@ -348,6 +353,55 @@ void shadowExecution() {
     }
 }
 
+void halfExecution() {
+    const auto offset = shadowOffset();
+    const auto compile = [&](const Bytes& vex) {
+        const auto site = Codegen::DecodeVexShadow(vex.data(), vex.size(), true);
+        require(site.has_value(), "VEX " + hex(vex) + " has no shadow lowering");
+        Codegen::StubBodyBuilder body;
+        Codegen::EmitVexShadow(body, *site, offset);
+        return pooled(body.Finish());
+    };
+    const auto compare = [&](const Bytes& vex, const VectorExecution::Runner& reference, const VectorExecution::Runner& stub, const std::uint64_t low, const std::uint64_t high) {
+        auto start = VectorExecution::Initial();
+        start.Ymm[2][0] = low;
+        start.Ymm[2][1] = high;
+        auto wanted = start;
+        auto got = start;
+        reference.Run(wanted);
+        stub.Run(got);
+        require(got.Ymm[1][0] == wanted.Ymm[1][0] && got.Ymm[1][1] == wanted.Ymm[1][1], "half conversion " + hex(vex) + " differs for input " + std::to_string(low) + ":" + std::to_string(high));
+    };
+    const Bytes widen{0xC4, 0xE2, 0x79, 0x13, 0xCA};
+    const VectorExecution::Runner widenReference(widen);
+    const VectorExecution::Runner widenStub(compile(widen));
+    for (std::uint64_t half = 0; half < 0x10000; half += 4)
+        compare(widen, widenReference, widenStub, half | (half + 1) << 16 | (half + 2) << 32 | (half + 3) << 48, 0);
+    std::uint64_t state = 0x2545F4914F6CDD1Dull;
+    for (const std::uint8_t mode : {std::uint8_t{0}, std::uint8_t{3}}) {
+        const Bytes narrow{0xC4, 0xE3, 0x79, 0x1D, 0xD1, mode};
+        const VectorExecution::Runner narrowReference(narrow);
+        const VectorExecution::Runner narrowStub(compile(narrow));
+        for (int round = 0; round < 16384; ++round) {
+            std::uint64_t words[2]{};
+            for (auto& word : words) {
+                std::uint64_t pair = 0;
+                for (int lane = 0; lane < 2; ++lane) {
+                    state = state * 6364136223846793005ull + 1442695040888963407ull;
+                    const auto bits = static_cast<std::uint32_t>(state >> 32);
+                    const auto exponent = 98u + (bits >> 8) % 60u;
+                    auto single = (bits & 0x80000000u) | exponent << 23 | (static_cast<std::uint32_t>(state >> 9) & 0x7FFFFFu);
+                    if ((bits & 7u) == 0) single = (single & ~0x1FFFu) | 0x1000u;
+                    if ((bits & 63u) == 1) single = (bits & 0x80000000u) | 0x7F800000u | (bits & 0x10u ? (bits >> 10 & 0x7FFFFFu) | 1u : 0u);
+                    pair |= static_cast<std::uint64_t>(single) << (32 * lane);
+                }
+                word = pair;
+            }
+            compare(narrow, narrowReference, narrowStub, words[0], words[1]);
+        }
+    }
+}
+
 void fmaExecution() {
     const auto offset = shadowOffset();
     for (const auto& vex : kFma) {
@@ -414,6 +468,7 @@ void fmaExecution() {
 
 #else
 
+void halfExecution() {}
 void fmaExecution() { std::cout << "FMA execution checks require a Linux/macOS x86-64 build\n"; }
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
 void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
@@ -443,6 +498,7 @@ int main() {
         stubbing();
         execution();
         shadowExecution();
+        halfExecution();
         fmaExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {
