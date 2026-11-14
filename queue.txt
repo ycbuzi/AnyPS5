@@ -21,3 +21,5 @@ e59e53169605fc0a6fb69cea58a3e34d97b35868 refs/heads/quest/terrifier-format-diag 
 3bae74106f4f1480d74d1ffd98fbc690b2b7ad7d refs/heads/quest/arena-exhausted-detail stray-arena-detail-3bae74106f
 1c6345430adfa1189d57adb0eba06bb338bb29d8 refs/heads/quest/arena-exhausted-detail stray-arena-enomem-1c6345430a
 2b7a841c8bef41a986291be6deeaf6724b4584db refs/heads/quest/integration integration-2b7a841c8b
+4af231b2e7ad141abbb926c19871614226a24c12 refs/heads/quest/integration-crash-diag integration-crash-diag-4af231b2e7
+ade5d31817da069c63f9bef4d4c3e3d32c97d464 refs/heads/quest/integration-arena-enomem integration-arena-enomem-ade5d31817
