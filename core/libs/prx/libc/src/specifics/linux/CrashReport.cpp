@@ -289,6 +289,52 @@ void ReportCallTrace() {
     for (std::size_t index = 0; index < counted; ++index) line.Text("    ").Decimal(counts[index].calls).Text(" ").Text(counts[index].library).Text(" ").Text(counts[index].name).Write();
 }
 
+// Diag (local only): APS5_CRASH_PEEK="A[>O...]:LEN,..." dumps guest memory in the crash report, from inside the process
+// (an outside reader gets killed on the Quest while the game runs). A is a hex address; each ">O" loads the qword at the
+// current address and adds hex O; LEN (hex, at most 0x400) bytes are then printed as hex and ASCII.
+void ReportPeeks() {
+    static const char* spec = std::getenv("APS5_CRASH_PEEK");
+    if (spec == nullptr || spec[0] == '\0') return;
+    ReportLine line;
+    const char* cursor = spec;
+    const char* end = spec + std::strlen(spec);
+    auto parse = [&](std::uint64_t& value) {
+        if (end - cursor >= 2 && cursor[0] == '0' && cursor[1] == 'x') cursor += 2;
+        return ParseHex(cursor, end, value);
+    };
+    while (cursor < end) {
+        const char* item = cursor;
+        std::uint64_t address = 0;
+        bool ok = parse(address);
+        while (ok && cursor < end && *cursor == '>') {
+            ++cursor;
+            std::uint64_t offset = 0, loaded = 0;
+            ok = parse(offset) && ReadWord(address, loaded);
+            address = loaded + offset;
+        }
+        std::uint64_t length = 0x40;
+        if (ok && cursor < end && *cursor == ':') { ++cursor; ok = parse(length); }
+        const char* itemEnd = cursor;
+        while (cursor < end && *cursor != ',') ++cursor;
+        if (cursor < end) ++cursor;
+        line.Text("  peek ");
+        for (const char* c = item; c < itemEnd; ++c) { const char text[2] = {*c, 0}; line.Text(text); }
+        if (!ok) { line.Text(": unreadable or bad spec").Write(); continue; }
+        line.Text(" = ").Hex(address, 16).Write();
+        length = std::min<std::uint64_t>(length, 0x400);
+        unsigned char bytes[16];
+        for (std::uint64_t at = 0; at < length; at += 16) {
+            const std::size_t n = static_cast<std::size_t>(std::min<std::uint64_t>(16, length - at));
+            line.Text("    +").Hex(at, 3).Text(" ");
+            if (!ReadMemory(address + at, bytes, n)) { line.Text("unreadable").Write(); break; }
+            for (std::size_t i = 0; i < n; ++i) { const char text[4] = {' ', "0123456789abcdef"[bytes[i] >> 4], "0123456789abcdef"[bytes[i] & 0xf], 0}; line.Text(text); }
+            line.Text("  ");
+            for (std::size_t i = 0; i < n; ++i) { const char text[2] = {static_cast<char>(bytes[i] >= 32 && bytes[i] < 127 ? bytes[i] : '.'), 0}; line.Text(text); }
+            line.Write();
+        }
+    }
+}
+
 void OnFatalSignal(int signal, siginfo_t* info, void* context) {
     const int savedErrno = errno;
     if (!g_reporting.exchange(true, std::memory_order_acq_rel)) {
@@ -296,6 +342,7 @@ void OnFatalSignal(int signal, siginfo_t* info, void* context) {
         ReportCallTrace();
         ReportRecentFormats();
         CallTracePrintOpenCapture_nid_no_patch();
+        ReportPeeks();
         g_reporting.store(false, std::memory_order_release);
     } else {
         const timespec pause{0, 1000000};
