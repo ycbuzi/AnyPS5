@@ -426,13 +426,14 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, Test, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
 constexpr StubConstant kQwordByteRepeat{0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8, 8, 8, 8, 8};
 constexpr StubConstant kQwordByteOffsets{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
 constexpr StubConstant kQwordBitOne{2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0};
+constexpr StubConstant kQwordSigns{0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0x80};
 
 Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 1 && (h.Op == 0x5A || h.Op == 0xE6)) || (h.Pp == 3 && h.Op == 0xE6))) return Special::Narrow;
@@ -441,6 +442,7 @@ Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t l
     if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
     if (h.Map == 2 && !h.W && (h.Op == 0x0C || h.Op == 0x0D)) return Special::PermuteVar;
+    if (h.Map == 2 && !h.W && h.Vvvv == 0 && ((h.Op == 0x17 && h.L) || h.Op == 0x0E || h.Op == 0x0F)) return Special::Test;
     if (h.Map == 2 && (h.Op == 0x45 || h.Op == 0x47 || (h.Op == 0x46 && !h.W))) return Special::VariableShift;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
@@ -717,6 +719,48 @@ void EmitPermuteVar(StubBodyBuilder& body, const std::uint8_t* data, const std::
     if (!h.L && shadow) ClearUpper(body, *shadow, dst);
 }
 
+void EmitTest(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto first = h.Reg;
+    const auto second = h.Memory ? first : h.Rm;
+    const auto [both, onlySecond, temp, upperFirst, upperSecond] = Scratches<5>({first, second});
+    const auto memory = h.Memory ? std::optional<MemoryOperand>(Operand(data, length, h)) : std::nullopt;
+    for (const auto reg : {both, onlySecond, temp, upperFirst, upperSecond}) body.Spill(reg);
+    auto low = second;
+    if (memory) {
+        body.Load(temp, *memory);
+        low = temp;
+    }
+    body.Raw(Movaps(both, first));
+    body.Sse(0x66, {0x0F, 0xDB}, both, low);
+    body.Raw(Movaps(onlySecond, first));
+    body.Sse(0x66, {0x0F, 0xDF}, onlySecond, low);
+    if (h.L) {
+        LoadUpper(body, upperFirst, *shadow, first);
+        if (memory) body.Load(upperSecond, OffsetMemoryOperand(*memory, 16));
+        else LoadUpper(body, upperSecond, *shadow, second);
+        body.Raw(Movaps(temp, upperFirst));
+        body.Sse(0x66, {0x0F, 0xDB}, temp, upperSecond);
+        body.Sse(0x66, {0x0F, 0xEB}, both, temp);
+        body.Sse(0x66, {0x0F, 0xDF}, upperFirst, upperSecond);
+        body.Sse(0x66, {0x0F, 0xEB}, onlySecond, upperFirst);
+    }
+    if (h.Op != 0x17) {
+        const auto signs = h.Op == 0x0F ? kQwordSigns : Splat(0x80000000);
+        body.RipOperand({0x0F, 0xDB}, both, signs);
+        body.RipOperand({0x0F, 0xDB}, onlySecond, signs);
+    }
+    for (const auto reg : {both, onlySecond}) {
+        body.Raw(Movaps(temp, reg));
+        body.ShiftImm(3, temp, 8);
+        body.Sse(0x66, {0x0F, 0xEB}, reg, temp);
+    }
+    body.Sse(0x66, {0x0F, 0x6C}, both, onlySecond);
+    body.Sse(0x66, {0x0F, 0x76}, temp, temp);
+    body.ShiftImm(3, temp, 8);
+    body.Sse(0x66, {0x0F, 0x38, 0x17}, temp, both);
+    for (const auto reg : {upperSecond, upperFirst, temp, onlySecond, both}) body.Restore(reg);
+}
+
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
     const auto dst = h.Reg;
     const auto index = h.Vvvv;
@@ -867,6 +911,9 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     }
     case Special::PermuteD:
         EmitPermuteD(body, data, length, h, *shadow);
+        return;
+    case Special::Test:
+        EmitTest(body, data, length, h, shadow);
         return;
     case Special::PermuteVar:
         EmitPermuteVar(body, data, length, h, shadow);

@@ -469,6 +469,58 @@ void shiftExecution() {
     }
 }
 
+void flagsExecution() {
+    const auto offset = shadowOffset();
+    const Bytes saveFlags{0x9C, 0x59, 0x66, 0x4C, 0x0F, 0x6E, 0xF9};
+    const std::vector<Bytes> tests{
+        Bytes{0xC4, 0xE2, 0x7D, 0x17, 0xCA}, Bytes{0xC4, 0xE2, 0x7D, 0x17, 0x08}, Bytes{0xC4, 0xE2, 0x79, 0x0E, 0xCA},
+        Bytes{0xC4, 0xE2, 0x7D, 0x0E, 0xCA}, Bytes{0xC4, 0xE2, 0x79, 0x0F, 0xCA}, Bytes{0xC4, 0xE2, 0x7D, 0x0F, 0x08},
+        Bytes{0xC4, 0x42, 0x7D, 0x17, 0xC1},
+    };
+    std::uint64_t state = 0xD1B54A32D192ED03ull;
+    const auto next = [&] {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return state;
+    };
+    for (const auto& vex : tests) {
+        const auto site = Codegen::DecodeVexShadow(vex.data(), vex.size(), true);
+        require(site.has_value(), "VEX " + hex(vex) + " has no shadow lowering");
+        Codegen::StubBodyBuilder body;
+        Codegen::EmitVexShadow(body, *site, offset);
+        auto lowered = pooled(body.Finish());
+        lowered.insert(lowered.end(), saveFlags.begin(), saveFlags.end());
+        auto native = vex;
+        native.insert(native.end(), saveFlags.begin(), saveFlags.end());
+        const VectorExecution::Runner reference(native);
+        const VectorExecution::Runner stub(lowered);
+        for (int round = 0; round < 200; ++round) {
+            auto start = VectorExecution::Initial();
+            const auto first = vex[1] == 0x42 ? 8 : 1;
+            const auto second = vex[1] == 0x42 ? 9 : 2;
+            for (std::size_t q = 0; q < 4; ++q) {
+                const auto a = next();
+                const auto r = next();
+                const auto shape = (round + static_cast<int>(q)) % 6;
+                const auto b = shape == 0 ? 0 : shape == 1 ? a : shape == 2 ? ~a : shape == 3 ? (a & r) : shape == 4 ? (~a & r & 0x7FFFFFFF7FFFFFFFull) : r;
+                start.Ymm[first][q] = round % 7 == 0 ? 0 : a;
+                start.Ymm[second][q] = b;
+                start.Memory[q] = b;
+            }
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                shadowArea[reg * 2] = start.Ymm[reg][2];
+                shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+            }
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            require((got.Ymm[15][0] & 0x8D5) == (wanted.Ymm[15][0] & 0x8D5), "test " + hex(vex) + " sets different flags in round " + std::to_string(round));
+            for (std::size_t reg = 0; reg < 15; ++reg)
+                require(got.Ymm[reg][0] == wanted.Ymm[reg][0] && got.Ymm[reg][1] == wanted.Ymm[reg][1], "test " + hex(vex) + " changed register " + std::to_string(reg));
+        }
+    }
+}
+
 void fmaExecution() {
     const auto offset = shadowOffset();
     for (const auto& vex : kFma) {
@@ -537,6 +589,7 @@ void fmaExecution() {
 
 void halfExecution() {}
 void shiftExecution() {}
+void flagsExecution() {}
 void fmaExecution() { std::cout << "FMA execution checks require a Linux/macOS x86-64 build\n"; }
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
 void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
@@ -568,6 +621,7 @@ int main() {
         shadowExecution();
         halfExecution();
         shiftExecution();
+        flagsExecution();
         fmaExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {
