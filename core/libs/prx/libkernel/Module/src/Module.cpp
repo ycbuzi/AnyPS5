@@ -1,4 +1,6 @@
 #include "prx/libkernel/include/Api.hpp"
+#include <cstdlib>
+#include <cstdio>
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
@@ -20,7 +22,9 @@
 #include <windows.h>
 #include <psapi.h>
 #elif defined(__APPLE__)
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 #include <mach-o/getsect.h>
 #include <mach-o/loader.h>
 #elif !defined(__EMSCRIPTEN__)
@@ -172,6 +176,13 @@ int APS5_VABI sceKernelDlsym(KernelModule handle, const char* symbol, void** add
  if (!symbol || !addr) return SCE_KERNEL_ERROR_EFAULT;
  void* module = handle == 0 ? dlopen_nid_postfix(nullptr, kRtldNow) : reinterpret_cast<void*>(static_cast<intptr_t>(handle));
  void* found = dlsym_nid_postfix(module, symbol);
+#ifndef _WIN32
+ if (std::getenv("APS5_TRACE_DLSYM") != nullptr) {
+  Dl_info info{};
+  const bool named = found != nullptr && ::dladdr(found, &info) != 0;
+  std::fprintf(stderr, "[dlsym] sceKernelDlsym(handle %lld, \"%s\") -> %p (%s+0x%llx, nearest %s)\n", static_cast<long long>(handle), symbol, found, named && info.dli_fname ? info.dli_fname : "?", named && info.dli_fbase ? static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(found) - reinterpret_cast<std::uintptr_t>(info.dli_fbase)) : 0ull, named && info.dli_sname ? info.dli_sname : "?");
+ }
+#endif
  if (handle == 0 && module) dlclose_nid_postfix(module);
  if (!found) return SCE_KERNEL_ERROR_ESRCH;
  *addr = found;
