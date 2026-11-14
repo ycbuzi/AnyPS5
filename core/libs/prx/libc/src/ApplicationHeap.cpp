@@ -2,6 +2,10 @@
 #include "prx/libc/include/ApplicationHeap.hpp"
 #include "prx/libc/include/GuestHeap.hpp"
 #include "prx/libc/include/general/VabiMacros.hpp"
+#ifndef _WIN32
+#include <dlfcn.h>
+#endif
+#include <cstdio>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -241,19 +245,39 @@ void* ApplicationHeapAlign_nid_no_patch(std::size_t alignment, std::size_t bytes
     return pointer;
 }
 
+static void TraceScriptingMem(const char* what, std::size_t first, std::size_t second, const void* result, const void* caller) {
+    static const bool trace = std::getenv("APS5_TRACE_SCRIPTINGMEM") != nullptr;
+    if (!trace) return;
+    static std::atomic<std::uint64_t> calls{0};
+    const auto call = ++calls;
+    if (call > 2000 && call % 1000 != 0) return;
+#ifndef _WIN32
+    Dl_info info{};
+    const bool named = ::dladdr(caller, &info) != 0 && info.dli_fname != nullptr;
+    const char* module = named ? std::strrchr(info.dli_fname, '/') : nullptr;
+    std::fprintf(stderr, "[scriptingmem] #%llu %s(0x%zx, 0x%zx) -> %p from %s+0x%llx\n", static_cast<unsigned long long>(call), what, first, second, result, module != nullptr ? module + 1 : (named ? info.dli_fname : "?"), named ? static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(caller) - reinterpret_cast<std::uintptr_t>(info.dli_fbase)) : 0ull);
+#else
+    std::fprintf(stderr, "[scriptingmem] #%llu %s(0x%zx, 0x%zx) -> %p from %p\n", static_cast<unsigned long long>(call), what, first, second, result, caller);
+#endif
+}
+
 extern "C" void* APS5_VABI scriptingGetMem_nid_postfix(std::size_t alignment, std::size_t bytes) {
+    const auto requestedAlignment = alignment;
+    void* result = nullptr;
     alignment = std::max<std::size_t>(alignment, 16);
-    if ((alignment & (alignment - 1)) != 0) return nullptr;
-    try {
-        return GuestHeap::GuestHeapAlign_nid_postfix(alignment, bytes);
-    } catch (const std::bad_alloc&) {
-        return nullptr;
-    } catch (const std::length_error&) {
-        return nullptr;
+    if ((alignment & (alignment - 1)) == 0) {
+        try {
+            result = GuestHeap::GuestHeapAlign_nid_postfix(alignment, bytes);
+        } catch (const std::bad_alloc&) {
+        } catch (const std::length_error&) {
+        }
     }
+    TraceScriptingMem("scriptingGetMem", requestedAlignment, bytes, result, __builtin_return_address(0));
+    return result;
 }
 
 extern "C" void APS5_VABI scriptingFreeMem_nid_postfix(void* pointer) {
+    TraceScriptingMem("scriptingFreeMem", reinterpret_cast<std::uintptr_t>(pointer), 0, nullptr, __builtin_return_address(0));
     GuestHeap::GuestHeapFree_nid_postfix(pointer);
 }
 
