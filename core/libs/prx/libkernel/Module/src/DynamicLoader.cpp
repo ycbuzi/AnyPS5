@@ -591,6 +591,20 @@ void* APS5_VABI dlopen_nid_postfix(const char* path, int flags) {
 }
 void* APS5_VABI dlsym_nid_postfix(void* handle, const char* name) {
     if (!name || !*name) { Error("dlsym: empty symbol name"); return nullptr; }
+    if (const char* deny = std::getenv("APS5_DLSYM_DENY")) {
+        const std::string_view list(deny), wanted(name);
+        for (std::size_t start = 0; start <= list.size();) {
+            const auto comma = list.find(',', start);
+            const auto item = list.substr(start, comma == std::string_view::npos ? std::string_view::npos : comma - start);
+            if (!item.empty() && item == wanted) {
+                std::fprintf(stderr, "[dlsym] %s denied by APS5_DLSYM_DENY\n", name);
+                Error("dlsym: symbol not found");
+                return nullptr;
+            }
+            if (comma == std::string_view::npos) break;
+            start = comma + 1;
+        }
+    }
     try {
         std::vector<std::shared_ptr<Module>> search;
         bool defaultScope = handle == nullptr || handle == reinterpret_cast<void*>(static_cast<std::intptr_t>(-2));
