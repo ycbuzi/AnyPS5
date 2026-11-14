@@ -1162,6 +1162,17 @@ int PlaceHintInReservation(void* addr, size_t len, int flags) {
     return flags | GuestMapFixedFlag;
 }
 
+static void* MapAlignedOrExhausted(void* addr, size_t len, int prot, int flags, size_t alignment) {
+    static const bool enomem = std::getenv("APS5_ARENA_ENOMEM") != nullptr;
+    try {
+        return MapAligned(addr, len, prot, flags, alignment);
+    } catch (const std::runtime_error& error) {
+        if (!enomem || std::strstr(error.what(), "arena exhausted") == nullptr) throw;
+        std::fprintf(stderr, "[memory] APS5_ARENA_ENOMEM: SCE_KERNEL_ERROR_ENOMEM instead of abort for %p+0x%zx flags=0x%x align=0x%zx: %s\n", addr, len, flags, alignment, error.what());
+        return nullptr;
+    }
+}
+
 int DoMapDirect(void** addr, size_t len, int prot, int flags, int64_t physStart, size_t alignment) {
     ValidateOutput(addr);
     ValidateAlignment(alignment);
@@ -1186,7 +1197,8 @@ int DoMapDirect(void** addr, size_t len, int prot, int flags, int64_t physStart,
     RequireAliasesUnpinned(mutation, static_cast<std::uint64_t>(physStart), len);
     std::lock_guard lock(g_directLock);
     ValidatePhysicalRange(static_cast<std::uint64_t>(physStart), len);
-    void* mapped = MapAligned(*addr, len, PROT_NONE, flags, alignment);
+    void* mapped = MapAlignedOrExhausted(*addr, len, PROT_NONE, flags, alignment);
+    if (mapped == nullptr) return SCE_KERNEL_ERROR_ENOMEM;
     try {
         AddMapping(reinterpret_cast<std::uintptr_t>(mapped), len, static_cast<std::uint64_t>(physStart), LinuxProtFromSce(prot));
         mutation.Add(mapped, len, (prot & 3) != 0, (prot & 2) != 0, (prot & GuestProtGpuReadWrite) != 0);
@@ -1214,7 +1226,8 @@ static int MapAnonymous(void** addr, size_t len, int prot, int flags, size_t ali
         return 0;
     }
     ReplaceFixedOverlap(mutation, *addr, len, flags);
-    void* mapped = MapAligned(*addr, len, zero ? PROT_NONE : LinuxProtFromSce(prot), flags, alignment);
+    void* mapped = MapAlignedOrExhausted(*addr, len, zero ? PROT_NONE : LinuxProtFromSce(prot), flags, alignment);
+    if (mapped == nullptr) return SCE_KERNEL_ERROR_ENOMEM;
     try {
 #ifdef _WIN32
         if (zero) GuestArena::GuestArenaMapZero_nid_postfix(mapped, len);
@@ -1641,7 +1654,8 @@ int DoReserveVirtual(void** addr, size_t len, int flags, size_t alignment) {
     }
     if (fixed) mutation.RequireAvailable(*addr, len);
     constexpr int GuestMapNoCoalesce = 0x400000;
-    void* mapped = MapAligned(*addr, len, PROT_NONE, fixed ? GuestMapFixedFlag | (flags & GuestMapNoCoalesce) : 0, alignment);
+    void* mapped = MapAlignedOrExhausted(*addr, len, PROT_NONE, fixed ? GuestMapFixedFlag | (flags & GuestMapNoCoalesce) : 0, alignment);
+    if (mapped == nullptr) return SCE_KERNEL_ERROR_ENOMEM;
     try {
         mutation.Add(mapped, len, false, false, false);
     } catch (...) {
