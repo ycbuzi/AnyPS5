@@ -426,10 +426,13 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
+constexpr StubConstant kQwordByteRepeat{0, 0, 0, 0, 0, 0, 0, 0, 8, 8, 8, 8, 8, 8, 8, 8};
+constexpr StubConstant kQwordByteOffsets{0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3, 4, 5, 6, 7};
+constexpr StubConstant kQwordBitOne{2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0};
 
 Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 1 && (h.Op == 0x5A || h.Op == 0xE6)) || (h.Pp == 3 && h.Op == 0xE6))) return Special::Narrow;
@@ -437,6 +440,7 @@ Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t l
     if (h.Pp != 1) return Special::None;
     if (h.Map == 3 && h.L && h.W && h.Vvvv == 0 && (h.Op == 0x00 || h.Op == 0x01)) return Special::PermuteQ;
     if (h.Map == 2 && h.L && !h.W && (h.Op == 0x36 || h.Op == 0x16)) return Special::PermuteD;
+    if (h.Map == 2 && !h.W && (h.Op == 0x0C || h.Op == 0x0D)) return Special::PermuteVar;
     if (h.Map == 2 && (h.Op == 0x45 || h.Op == 0x47 || (h.Op == 0x46 && !h.W))) return Special::VariableShift;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
@@ -453,7 +457,22 @@ Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t l
     if ((h.Op == 0x1A || h.Op == 0x5A) && h.L && h.Memory) return Special::Broadcast128;
     if (h.Op == 0x58) return Special::BroadcastD;
     if (h.Op == 0x59) return Special::BroadcastQ;
+    if (h.Op == 0x78) return Special::BroadcastB;
+    if (h.Op == 0x79) return Special::BroadcastW;
     return Special::None;
+}
+
+std::vector<std::uint8_t> MemoryOpImm(const std::uint8_t* data, const std::size_t length, const Parsed& p, const std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, const std::uint8_t reg, const std::uint8_t imm) {
+    auto bytes = MemoryOp(data, length, p, prefix, opcode, reg);
+    bytes.push_back(imm);
+    const auto info = X64InstructionDecoder().DecodeInstruction(bytes.data(), bytes.size());
+    if (info.HasRipRelativeDisp) {
+        std::int32_t displacement = 0;
+        std::memcpy(&displacement, bytes.data() + info.RipRelativeDispOffset, sizeof(displacement));
+        --displacement;
+        std::memcpy(bytes.data() + info.RipRelativeDispOffset, &displacement, sizeof(displacement));
+    }
+    return bytes;
 }
 
 void LoadHalves(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::uint8_t low, const std::uint8_t high, const std::int32_t shadow) {
@@ -659,6 +678,45 @@ void EmitVariableShift(StubBodyBuilder& body, const std::uint8_t* data, const st
     if (!h.L && shadow) ClearUpper(body, *shadow, dst);
 }
 
+void EmitPermuteVar(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto source = h.Vvvv;
+    const bool doubles = h.Op == 0x0D;
+    const auto controls = h.Memory ? source : h.Rm;
+    const auto [out, control] = Scratches<2>({dst, source, controls});
+    const auto memory = h.Memory ? std::optional<MemoryOperand>(Operand(data, length, h)) : std::nullopt;
+    const auto half = [&](const bool upper) {
+        if (memory) body.Load(control, upper ? OffsetMemoryOperand(*memory, 16) : *memory);
+        else if (upper) LoadUpper(body, control, *shadow, controls);
+        else body.Raw(Movaps(control, controls));
+        if (doubles) {
+            body.RipOperand({0x0F, 0xDB}, control, kQwordBitOne);
+            body.ShiftImm(6, control, 2);
+            body.RipOperand({0x0F, 0x38, 0x00}, control, kQwordByteRepeat);
+            body.RipOperand({0x0F, 0xEB}, control, kQwordByteOffsets);
+        } else {
+            body.ShiftDwordImm(6, control, 30);
+            body.ShiftDwordImm(2, control, 28);
+            body.RipOperand({0x0F, 0x38, 0x00}, control, kDwordByteRepeat);
+            body.RipOperand({0x0F, 0xEB}, control, kDwordByteOffsets);
+        }
+        if (upper) LoadUpper(body, out, *shadow, source);
+        else body.Raw(Movaps(out, source));
+        body.Sse(0x66, {0x0F, 0x38, 0x00}, out, control);
+    };
+    body.Spill(out);
+    body.Spill(control);
+    if (h.L) {
+        half(true);
+        StoreUpper(body, out, *shadow, dst);
+    }
+    half(false);
+    body.Raw(Movaps(dst, out));
+    body.Restore(control);
+    body.Restore(out);
+    if (!h.L && shadow) ClearUpper(body, *shadow, dst);
+}
+
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
     const auto dst = h.Reg;
     const auto index = h.Vvvv;
@@ -810,9 +868,25 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     case Special::PermuteD:
         EmitPermuteD(body, data, length, h, *shadow);
         return;
+    case Special::PermuteVar:
+        EmitPermuteVar(body, data, length, h, shadow);
+        return;
     case Special::BlendV:
         EmitBlendV(body, data, length, h, shadow);
         return;
+    case Special::BroadcastB:
+    case Special::BroadcastW: {
+        const bool bytes = kind == Special::BroadcastB;
+        std::uint8_t from = dst;
+        if (h.Memory) EmitLegacy(body, bytes ? MemoryOpImm(data, length, h, 0x66, {0x0F, 0x3A, 0x20}, dst, 0) : MemoryOpImm(data, length, h, 0x66, {0x0F, 0xC4}, dst, 0), kName);
+        else if (bytes && dst != h.Rm) body.Raw(Movaps(dst, h.Rm));
+        else if (!bytes) from = h.Rm;
+        if (bytes) body.Sse(0x66, {0x0F, 0x60}, dst, dst);
+        body.SseImm(0xF2, {0x0F, 0x70}, dst, from, 0);
+        body.Sse(0x66, {0x0F, 0x6C}, dst, dst);
+        settle(dst);
+        return;
+    }
     case Special::Narrow: {
         const auto prefix = kMandatoryPrefix[h.Pp];
         const auto low = Scratch({dst, h.Rm});
