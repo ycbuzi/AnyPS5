@@ -504,6 +504,18 @@ void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t re
     if (strings & 2) CopyGuestText(slot.text1, arg1);
     if (strings & 4) CopyGuestText(slot.text0, arg2);
     if (strings & 8) CopyGuestText(slot.text0, arg0);
+    if (strings & 16) {
+        static const auto range = [] {
+            std::pair<std::uint64_t, std::uint64_t> result{0, 0};
+            if (const char* text = std::getenv("APS5_TRACE_MEMCPY_SRC")) {
+                char* end = nullptr;
+                result.first = std::strtoull(text, &end, 0);
+                if (end != nullptr && *end == ':') result.second = result.first + std::strtoull(end + 1, nullptr, 0);
+            }
+            return result;
+        }();
+        if (arg1 >= range.first && arg1 < range.second) std::snprintf(slot.text0, sizeof(slot.text0), "src=%#llx dst=%#llx n=%#llx", static_cast<unsigned long long>(arg1), static_cast<unsigned long long>(arg0), static_cast<unsigned long long>(arg2));
+    }
     slot.sequence.store(sequence, std::memory_order_release);
     if (auto* capture = g_openCapture) {
         const auto thread = CurrentThread();
@@ -576,6 +588,7 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
         else if (nid.starts_with("Q2V+iqvjgC0")) record.strings = 4;
         else if (nid.starts_with("biY+kcVB5D4") || nid.starts_with("LwG8g3niqwA")) record.strings = 2;
         else if (nid.starts_with("UteVS6B1ZrU") || nid.starts_with("wzvqT4UqKX8")) record.strings = 1;
+        else if (std::getenv("APS5_TRACE_MEMCPY_SRC") != nullptr && (nid.starts_with("Q3VBxCXhUHs") || nid.starts_with("+P6FRGH4LfA"))) record.strings = 16;
     }
     void* thunk = WriteThunk(record, index);
     g_thunkByTarget.emplace(target, thunk);

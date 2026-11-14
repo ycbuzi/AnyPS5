@@ -196,6 +196,26 @@ void _readFile(const Apr::ReadFileCommand& command) {
 #endif
     if (read != command.size && (!stream.eof() || command.offset + read < std::filesystem::file_size(hostPath))) throw std::runtime_error("APR: read of " + file.path.string() + " at offset " + std::to_string(command.offset) + " returned " + std::to_string(read) + " of " + std::to_string(command.size) + " bytes");
     if (read != command.size) std::memset(reinterpret_cast<char*>(command.destination) + read, 0, static_cast<std::size_t>(command.size - read));
+    if (trace) {
+        std::fprintf(stderr, "[apr] read done %s: %llu bytes, thread %llu\n", file.path.filename().string().c_str(), static_cast<unsigned long long>(read), static_cast<unsigned long long>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
+        const char* dump = std::getenv("APS5_TRACE_APR_DUMP");
+        if (dump != nullptr && file.path.string().find(dump) != std::string::npos) {
+            const auto* bytes = reinterpret_cast<const unsigned char*>(command.destination);
+            std::uint64_t hash = 1469598103934665603ull;
+            for (std::uint64_t index = 0; index < command.size; ++index) hash = (hash ^ bytes[index]) * 1099511628211ull;
+            const auto show = [&](std::uint64_t from, std::uint64_t to) {
+                std::string text;
+                for (auto index = from; index < to; ++index) {
+                    const auto c = bytes[index];
+                    if (c >= 0x20 && c < 0x7f) text.push_back(static_cast<char>(c));
+                    else { char escaped[8]; std::snprintf(escaped, sizeof(escaped), "\\x%02x", c); text += escaped; }
+                }
+                return text;
+            };
+            std::fprintf(stderr, "[apr] dump %s: fnv1a64 %016llx, first 256: %s\n", file.path.filename().string().c_str(), static_cast<unsigned long long>(hash), show(0, std::min<std::uint64_t>(256, command.size)).c_str());
+            if (command.size > 256) std::fprintf(stderr, "[apr] dump %s: last 256: %s\n", file.path.filename().string().c_str(), show(command.size - 256, command.size).c_str());
+        }
+    }
 }
 
 std::string _addressText(std::uint64_t address) {
@@ -970,11 +990,18 @@ int APS5_VABI sceKernelAprSubmitCommandBufferAndGetId(const Apr::CommandBufferOb
 int APS5_VABI sceKernelAprSubmitCommandBufferAndGetResult(const Apr::CommandBufferObject* buffer, uint32_t priority, uint32_t* result, uint32_t* id) {
     if (!result) return _fail(GUEST_EINVAL);
     if (!id) return _fail(GUEST_EINVAL);
-    return _submitGuest(buffer, priority, id, result);
+    static const bool trace = std::getenv("APS5_TRACE_APR") != nullptr;
+    if (trace) std::fprintf(stderr, "[apr] submit-and-get-result begin, thread %llu\n", static_cast<unsigned long long>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
+    const int status = _submitGuest(buffer, priority, id, result);
+    if (trace) std::fprintf(stderr, "[apr] submit-and-get-result end: status %d id %u result %u\n", status, *id, *result);
+    return status;
 }
 
 int APS5_VABI sceKernelAprWaitCommandBuffer(uint32_t id) {
+    static const bool trace = std::getenv("APS5_TRACE_APR") != nullptr;
+    if (trace) std::fprintf(stderr, "[apr] wait id %u begin, thread %llu\n", id, static_cast<unsigned long long>(std::hash<std::thread::id>{}(std::this_thread::get_id())));
     _waitSubmitted(id, false);
+    if (trace) std::fprintf(stderr, "[apr] wait id %u end\n", id);
     return 0;
 }
 
