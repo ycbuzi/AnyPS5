@@ -1,3 +1,4 @@
+#include "prx/libc/include/CallTrace.hpp"
 #include "prx/libkernel/include/Api.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libc/include/GuestAllocations.hpp"
@@ -25,6 +26,7 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <sys/mman.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
@@ -249,6 +251,43 @@ static void InitializeLinuxGuestModule(void* native) {
     table[7] = thread;
     lock.unlock();
     try {
+        if (std::getenv("APS5_TRACE_CALLS") != nullptr) {
+            auto* imports = static_cast<const std::uint64_t*>(::dlsym(native, "__aps5_guest_imports_nid_no_patch"));
+            link_map* importsOwner = nullptr;
+            Dl_info importsInfo{};
+            if (imports != nullptr && ::dladdr1(imports, &importsInfo, reinterpret_cast<void**>(&importsOwner), RTLD_DL_LINKMAP) && importsOwner == requested) {
+                const auto protectionOf = [](std::uintptr_t address) {
+                    int protection = PROT_READ;
+                    if (FILE* maps = std::fopen("/proc/self/maps", "r")) {
+                        char line[512];
+                        while (std::fgets(line, sizeof(line), maps)) {
+                            unsigned long long begin = 0, end = 0;
+                            char flags[8]{};
+                            if (std::sscanf(line, "%llx-%llx %7s", &begin, &end, flags) != 3 || address < begin || address >= end) continue;
+                            protection = (flags[0] == 'r' ? PROT_READ : 0) | (flags[1] == 'w' ? PROT_WRITE : 0) | (flags[2] == 'x' ? PROT_EXEC : 0);
+                            break;
+                        }
+                        std::fclose(maps);
+                    }
+                    return protection;
+                };
+                const auto pageSize = static_cast<std::uintptr_t>(::sysconf(_SC_PAGESIZE));
+                std::size_t wrapped = 0;
+                for (std::uint64_t index = 0; index < imports[0]; ++index) {
+                    auto** slot = reinterpret_cast<void**>(imports[1 + index * 3]);
+                    const auto* name = reinterpret_cast<const char*>(imports[2 + index * 3]);
+                    const auto* library = reinterpret_cast<const char*>(imports[3 + index * 3]);
+                    const auto page = reinterpret_cast<std::uintptr_t>(slot) & ~(pageSize - 1);
+                    const int protection = protectionOf(page);
+                    if ((protection & PROT_WRITE) == 0 && ::mprotect(reinterpret_cast<void*>(page), pageSize, protection | PROT_WRITE) != 0) continue;
+                    void* thunk = TraceImport_nid_no_patch(*slot, name, library);
+                    if (thunk != *slot) ++wrapped;
+                    *slot = thunk;
+                    if ((protection & PROT_WRITE) == 0) ::mprotect(reinterpret_cast<void*>(page), pageSize, protection);
+                }
+                std::fprintf(stderr, "[module] linux start %s: %zu of %llu imports wrapped for the call trace\n", moduleName().c_str(), wrapped, static_cast<unsigned long long>(imports[0]));
+            }
+        }
         const auto pending = *static_cast<const PendingModuleArgs*>(__aps5_get_pending_module_args_nid_no_patch());
         std::fprintf(stderr, "[module] linux start %s: entry %s, %llu initializers, thread %llu\n", moduleName().c_str(), table[2] == 0 ? "none" : "yes", static_cast<unsigned long long>(table[4]), static_cast<unsigned long long>(thread));
         const int result = table[2] == 0 ? 0 : reinterpret_cast<Entry>(table[2])(pending.args, pending.argp, nullptr);

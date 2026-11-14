@@ -574,6 +574,8 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
         if (nid.starts_with("Ovb2dSJOAuE")) record.strings = 3;
         else if (nid.starts_with("j4ViWNHEgww") || nid.starts_with("ob5xAW4ln-0")) record.strings = 1;
         else if (nid.starts_with("Q2V+iqvjgC0")) record.strings = 4;
+        else if (nid.starts_with("biY+kcVB5D4") || nid.starts_with("LwG8g3niqwA")) record.strings = 2;
+        else if (nid.starts_with("UteVS6B1ZrU") || nid.starts_with("wzvqT4UqKX8")) record.strings = 1;
     }
     void* thunk = WriteThunk(record, index);
     g_thunkByTarget.emplace(target, thunk);
