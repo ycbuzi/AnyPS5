@@ -426,7 +426,7 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -442,6 +442,7 @@ Special SpecialOf(const Parsed& h) {
     if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
     if (h.Map == 3 && h.L && (h.Op == 0x06 || h.Op == 0x46)) return Special::Permute2;
     if (h.Map != 2 || h.Vvvv != 0) return Special::None;
+    if (h.L && (In(h.Op, 0x20, 0x25) || In(h.Op, 0x30, 0x35))) return Special::Extend;
     if (h.Op == 0x18) return Special::BroadcastSs;
     if (h.Op == 0x19 && h.L) return Special::BroadcastSd;
     if ((h.Op == 0x1A || h.Op == 0x5A) && h.L && h.Memory) return Special::Broadcast128;
@@ -673,6 +674,24 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
     case Special::BlendV:
         EmitBlendV(body, data, length, h, shadow);
         return;
+    case Special::Extend: {
+        constexpr std::uint8_t kHighOffset[] = {8, 4, 2, 8, 4, 8};
+        const auto offset = kHighOffset[h.Op & 7];
+        const auto scratch = Scratch({dst, h.Rm});
+        body.Spill(scratch);
+        if (h.Memory) {
+            body.MemoryOp(0x66, {0x0F, 0x38, h.Op}, scratch, OffsetMemoryOperand(Operand(data, length, h), offset));
+        } else {
+            body.Raw(Movaps(scratch, h.Rm));
+            body.ShiftImm(3, scratch, offset);
+            body.Sse(0x66, {0x0F, 0x38, h.Op}, scratch, scratch);
+        }
+        StoreUpper(body, scratch, *shadow, dst);
+        body.Restore(scratch);
+        if (h.Memory) EmitLegacy(body, MemoryOp(data, length, h, 0x66, {0x0F, 0x38, h.Op}, dst), kName);
+        else body.Sse(0x66, {0x0F, 0x38, h.Op}, dst, h.Rm);
+        return;
+    }
     case Special::PermuteImm: {
         const auto imm = data[length - 1];
         const bool doubles = h.Op == 0x05;
