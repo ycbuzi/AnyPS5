@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <filesystem>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -252,6 +253,26 @@ static void InitializeLinuxGuestModule(void* native) {
         std::fprintf(stderr, "[module] linux start %s: entry %s, %llu initializers, thread %llu\n", moduleName().c_str(), table[2] == 0 ? "none" : "yes", static_cast<unsigned long long>(table[4]), static_cast<unsigned long long>(thread));
         const int result = table[2] == 0 ? 0 : reinterpret_cast<Entry>(table[2])(pending.args, pending.argp, nullptr);
         std::fprintf(stderr, "[module] linux start %s: entry returned %d\n", moduleName().c_str(), result);
+        if (const char* spec = std::getenv("APS5_DUMP_CODEREG")) {
+            const std::string text(spec);
+            const auto first = text.find(':');
+            const auto second = first == std::string::npos ? std::string::npos : text.find(':', first + 1);
+            link_map* map = nullptr;
+            if (second != std::string::npos && moduleName().find(text.substr(0, first)) != std::string::npos && ::dlinfo(native, RTLD_DI_LINKMAP, &map) == 0 && map != nullptr) {
+                const auto base = static_cast<std::uintptr_t>(map->l_addr);
+                const auto countOffset = std::strtoull(text.substr(first + 1, second - first - 1).c_str(), nullptr, 0);
+                const auto arrayOffset = std::strtoull(text.substr(second + 1).c_str(), nullptr, 0);
+                const auto count = *reinterpret_cast<const std::uint64_t*>(base + countOffset);
+                const auto array = *reinterpret_cast<const std::uint64_t* const*>(base + arrayOffset);
+                std::fprintf(stderr, "[codereg] %s base 0x%llx: count at +0x%llx = %llu, array at +0x%llx = %p (module +0x%llx)\n", moduleName().c_str(), static_cast<unsigned long long>(base), static_cast<unsigned long long>(countOffset), static_cast<unsigned long long>(count), static_cast<unsigned long long>(arrayOffset), static_cast<const void*>(array), static_cast<unsigned long long>(reinterpret_cast<std::uintptr_t>(array) - base));
+                const auto shown = std::min<std::uint64_t>(count & 0xffffffffu, 128);
+                for (std::uint64_t index = 0; array != nullptr && index < shown; ++index) {
+                    const auto entry = array[index];
+                    const auto* name = entry != 0 ? *reinterpret_cast<const char* const*>(entry) : nullptr;
+                    std::fprintf(stderr, "[codereg]   [%llu] 0x%llx name %p \"%.60s\"\n", static_cast<unsigned long long>(index), static_cast<unsigned long long>(entry), static_cast<const void*>(name), name != nullptr ? name : "(null)");
+                }
+            }
+        }
         for (std::uint64_t index = 0; index < table[4]; ++index) {
             const auto initializer = *reinterpret_cast<Initializer*>(table[8 + index]);
             if (initializer) initializer(0, nullptr, nullptr);
