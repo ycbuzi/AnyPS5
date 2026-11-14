@@ -466,12 +466,19 @@ static OpenCapture* g_openCapture = nullptr;
 static void PrintOpenCapture(OpenCapture& capture) {
     if (capture.printed.exchange(true)) return;
     std::fprintf(stderr, "[calltrace] %zu calls of thread %llu after the open of \"%s\":\n", capture.calls.size(), static_cast<unsigned long long>(capture.thread.load()), capture.pattern.c_str());
+    std::size_t skipped = 0;
     for (const auto& call : capture.calls) {
+        const std::string_view nid(call.record->name);
+        if (call.text0[0] == '\0' && call.text1[0] == '\0' && (nid.starts_with("Q3VBxCXhUHs") || nid.starts_with("8zTFvBIAIN8") || nid.starts_with("aI+OeCz8xrQ"))) {
+            ++skipped;
+            continue;
+        }
         std::fprintf(stderr, "[calltrace]   #%llu %s %s from 0x%llx", static_cast<unsigned long long>(call.sequence), call.record->library.c_str(), call.record->name.c_str(), static_cast<unsigned long long>(call.returnAddress));
         if (call.text0[0] != '\0') std::fprintf(stderr, " [%s]", call.text0);
         if (call.text1[0] != '\0') std::fprintf(stderr, " [%s]", call.text1);
         std::fprintf(stderr, "\n");
     }
+    std::fprintf(stderr, "[calltrace] %zu memcpy/memset/scePthreadSelf calls without string arguments not listed\n", skipped);
 }
 
 static void CopyGuestText(char* out, std::uint64_t address) {
@@ -554,7 +561,7 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
         const auto colon = spec.rfind(':');
         auto* capture = new OpenCapture;
         capture->pattern = std::string(spec.substr(0, colon));
-        capture->length = colon == std::string_view::npos ? 2000 : std::min<std::size_t>(std::strtoul(std::string(spec.substr(colon + 1)).c_str(), nullptr, 10), 20000);
+        capture->length = colon == std::string_view::npos ? 2000 : std::min<std::size_t>(std::strtoul(std::string(spec.substr(colon + 1)).c_str(), nullptr, 10), 200000);
         capture->calls.reserve(capture->length);
         g_openCapture = capture;
     }
