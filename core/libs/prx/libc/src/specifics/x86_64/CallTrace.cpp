@@ -447,6 +447,7 @@ extern "C" {
 
 struct CapturedCall {
     std::uint64_t sequence;
+    std::uint64_t thread;
     std::uint64_t returnAddress;
     const ImportRecord* record;
     char text0[48];
@@ -459,6 +460,8 @@ struct OpenCapture {
     std::vector<CapturedCall> calls;
     std::atomic<std::uint64_t> thread{0};
     std::atomic<bool> printed{false};
+    bool allThreads = false;
+    std::mutex lock;
 };
 
 static OpenCapture* g_openCapture = nullptr;
@@ -473,7 +476,7 @@ static void PrintOpenCapture(OpenCapture& capture) {
             ++skipped;
             continue;
         }
-        std::fprintf(stderr, "[calltrace]   #%llu %s %s from 0x%llx", static_cast<unsigned long long>(call.sequence), call.record->library.c_str(), call.record->name.c_str(), static_cast<unsigned long long>(call.returnAddress));
+        std::fprintf(stderr, "[calltrace]   #%llu t%llu %s %s from 0x%llx", static_cast<unsigned long long>(call.sequence), static_cast<unsigned long long>(call.thread), call.record->library.c_str(), call.record->name.c_str(), static_cast<unsigned long long>(call.returnAddress));
         if (call.text0[0] != '\0') std::fprintf(stderr, " [%s]", call.text0);
         if (call.text1[0] != '\0') std::fprintf(stderr, " [%s]", call.text1);
         std::fprintf(stderr, "\n");
@@ -523,12 +526,17 @@ void APS5_VABI CallTraceRecord_nid_no_patch(const void* record, std::uint64_t re
             std::uint64_t expected = 0;
             capture->thread.compare_exchange_strong(expected, thread);
         }
-        if (capture->thread.load(std::memory_order_acquire) == thread && capture->calls.size() < capture->length) {
-            CapturedCall call{sequence, returnAddress, static_cast<const ImportRecord*>(record), {}, {}};
-            std::memcpy(call.text0, slot.text0, sizeof(call.text0));
-            std::memcpy(call.text1, slot.text1, sizeof(call.text1));
-            capture->calls.push_back(call);
-            if (capture->calls.size() == capture->length) PrintOpenCapture(*capture);
+        const auto owner = capture->thread.load(std::memory_order_acquire);
+        if (owner != 0 && (owner == thread || capture->allThreads)) {
+            std::unique_lock guard(capture->lock, std::defer_lock);
+            if (capture->allThreads) guard.lock();
+            if (capture->calls.size() < capture->length) {
+                CapturedCall call{sequence, thread, returnAddress, static_cast<const ImportRecord*>(record), {}, {}};
+                std::memcpy(call.text0, slot.text0, sizeof(call.text0));
+                std::memcpy(call.text1, slot.text1, sizeof(call.text1));
+                capture->calls.push_back(call);
+                if (capture->calls.size() == capture->length) PrintOpenCapture(*capture);
+            }
         }
     }
 }
@@ -575,6 +583,7 @@ void* TraceImport_nid_no_patch(void* target, const char* name, const char* libra
         capture->pattern = std::string(spec.substr(0, colon));
         capture->length = colon == std::string_view::npos ? 2000 : std::min<std::size_t>(std::strtoul(std::string(spec.substr(colon + 1)).c_str(), nullptr, 10), 200000);
         capture->calls.reserve(capture->length);
+        capture->allThreads = std::getenv("APS5_TRACE_DUMP_ALL_THREADS") != nullptr;
         g_openCapture = capture;
     }
     if (dumpAfterOpen != nullptr) {
