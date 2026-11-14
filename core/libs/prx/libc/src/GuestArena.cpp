@@ -93,7 +93,9 @@ public:
         RequireAllocatable(alignment);
         std::lock_guard lock(_lock);
         if (hint >= _end) throw std::runtime_error("mapping address hint is above the guest address space arena");
-        return Claim(FindAtOrAbove(hint, bytes, alignment), bytes);
+        const auto candidate = FindAtOrAbove(hint, bytes, alignment);
+        if (candidate == 0) ThrowExhausted(hint, bytes, alignment);
+        return Claim(candidate, bytes);
     }
 
     void* AllocateFromHint(std::uintptr_t hint, std::size_t bytes, std::size_t alignment) {
@@ -101,6 +103,7 @@ public:
         std::lock_guard lock(_lock);
         auto candidate = hint < _end ? FindAtOrAbove(hint, bytes, alignment) : 0;
         if (candidate == 0 && hint > _base) candidate = FindAtOrAbove(hint < DefaultAllocationStart ? _base : DefaultAllocationStart, bytes, alignment);
+        if (candidate == 0) ThrowExhausted(hint, bytes, alignment);
         return Claim(candidate, bytes);
     }
 
@@ -409,6 +412,21 @@ private:
         }
         if (candidate > _end || bytes > _end - candidate) return 0;
         return candidate;
+    }
+
+    // Says what was asked and what is left, so an exhausted arena can be told apart from one huge request (caller holds _lock).
+    [[noreturn]] void ThrowExhausted(std::uintptr_t hint, std::size_t bytes, std::size_t alignment) const {
+        std::uintptr_t largest = 0, largestAt = 0, cursor = _base;
+        for (const auto& [start, end] : _used) {
+            if (start > cursor && start - cursor > largest) { largest = start - cursor; largestAt = cursor; }
+            cursor = std::max(cursor, end);
+            if (cursor >= _end) break;
+        }
+        if (cursor < _end && _end - cursor > largest) { largest = _end - cursor; largestAt = cursor; }
+        char text[256];
+        std::snprintf(text, sizeof(text), "guest address space arena exhausted: 0x%zx bytes (align 0x%zx, hint 0x%zx) requested; arena 0x%zx-0x%zx, largest free 0x%zx at 0x%zx",
+                      bytes, alignment, static_cast<std::size_t>(hint), static_cast<std::size_t>(_base), static_cast<std::size_t>(_end), static_cast<std::size_t>(largest), static_cast<std::size_t>(largestAt));
+        throw std::runtime_error(text);
     }
 
     void* Claim(std::uintptr_t candidate, std::size_t bytes) {
