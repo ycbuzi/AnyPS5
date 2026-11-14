@@ -24,6 +24,7 @@
 #elif defined(__APPLE__)
 #ifndef _WIN32
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 #include <mach-o/getsect.h>
 #include <mach-o/loader.h>
@@ -299,10 +300,24 @@ thread_local int pendingModuleInitResult = 0;
 extern "C" {
 
 const void* __aps5_get_pending_module_args_nid_no_patch() {
+#ifndef _WIN32
+    if (std::getenv("APS5_TRACE_MODULE_INIT") != nullptr) {
+        Dl_info info{};
+        const bool named = ::dladdr(__builtin_return_address(0), &info) != 0 && info.dli_fname != nullptr;
+        std::fprintf(stderr, "[module] init stub of %s starts (thread %llu)\n", named ? info.dli_fname : "?", static_cast<unsigned long long>(::gettid()));
+    }
+#endif
     return &pendingModuleArgs;
 }
 
 void __aps5_set_module_init_result_nid_no_patch(int result) {
+#ifndef _WIN32
+    if (std::getenv("APS5_TRACE_MODULE_INIT") != nullptr) {
+        Dl_info info{};
+        const bool named = ::dladdr(__builtin_return_address(0), &info) != 0 && info.dli_fname != nullptr;
+        std::fprintf(stderr, "[module] init stub of %s returned %d\n", named ? info.dli_fname : "?", result);
+    }
+#endif
     pendingModuleInitResult = result;
 }
 
