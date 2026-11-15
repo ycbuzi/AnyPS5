@@ -236,11 +236,26 @@ void StubBodyBuilder::RipRelative(const std::span<const std::uint8_t> instructio
     _relocations.push_back({start + displacementOffset, start + instruction.size(), _siteOffset + target, _addressSize32(instruction)});
 }
 
-void StubBodyBuilder::MoveControlFlow(const std::span<const std::uint8_t> instruction, const DecodedInstructionInfo& info) {
+void StubBodyBuilder::MoveControlFlow(const std::span<const std::uint8_t> instruction, const DecodedInstructionInfo& info, const bool allowIndirectCall) {
     using namespace X64OpcodeConstants;
     const auto end = _siteOffset + static_cast<std::int64_t>(instruction.size());
-    if (info.FlowKind == ControlFlowKind::IndirectCall)
-        throw CodegenException("A register or memory call cannot move into a stub");
+    if (info.FlowKind == ControlFlowKind::IndirectCall) {
+        if (!allowIndirectCall)
+            throw CodegenException("A register or memory call cannot move into a stub");
+        const auto at = info.OpcodeOffset + 1;
+        if (instruction[info.OpcodeOffset] != 0xFF || at >= instruction.size() || (instruction[at] >> 3 & 7) != 2)
+            throw CodegenException("This indirect call form cannot move into a stub");
+        const auto modrm = instruction[at];
+        const bool rexB = info.OpcodeOffset > 0 && (instruction[info.OpcodeOffset - 1] & 0xF0) == kRexBase && (instruction[info.OpcodeOffset - 1] & 1) != 0;
+        const bool stackRegister = (modrm & 7) == 4 && !rexB && ((modrm >> 6) == 3 || (at + 1 < instruction.size() && (instruction[at + 1] & 7) == 4));
+        if (stackRegister)
+            throw CodegenException("An indirect call through the stack pointer cannot move into a stub");
+        _pushReturnAddress(end);
+        std::vector<std::uint8_t> jump(instruction.begin(), instruction.end());
+        jump[at] = static_cast<std::uint8_t>((modrm & ~(ModRmRegMask << ModRmRegShift)) | (4u << ModRmRegShift));
+        Move(jump, info.HasRipRelativeDisp ? std::optional<std::size_t>(info.RipRelativeDispOffset) : std::nullopt);
+        return;
+    }
     if (info.TruncatesBranchTarget)
         throw CodegenException("A relative branch with this prefix cannot move into a stub");
     if (info.FlowKind == ControlFlowKind::Call && info.HasRipRelativeDisp) {

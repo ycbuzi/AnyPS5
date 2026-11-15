@@ -73,6 +73,33 @@ public:
         return fallback;
     }
 
+    [[nodiscard]] std::optional<Placement> WideWindow(const std::size_t index) const {
+        constexpr std::size_t kReach = 5;
+        for (std::size_t count = 2; count <= 2 * kReach + 1; ++count) {
+            for (std::size_t before = 0; before < count; ++before) {
+                const auto after = count - 1 - before;
+                if (before > kReach || after > kReach || before > index || index + after >= _matches.size())
+                    continue;
+                const auto first = index - before;
+                const auto last = index + after;
+                bool usable = true;
+                for (auto k = first; usable && k <= last; ++k) {
+                    if (k < last && _address(k + 1) != _end(k))
+                        usable = false;
+                    else if (k < index)
+                        usable = _movable(k, false);
+                    else if (k > index)
+                        usable = _pending.contains(k) ? !_claimed.contains(k) : _movable(k, k == last);
+                }
+                if (!usable)
+                    continue;
+                if (auto placement = _relocate(index, first, last, false, true))
+                    return placement;
+            }
+        }
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::optional<Placement> Island(const std::size_t index) {
         const auto store = _address(index);
         for (std::size_t distance = 1;; ++distance) {
@@ -170,7 +197,7 @@ private:
         };
     }
 
-    [[nodiscard]] std::optional<Placement> _relocate(const std::size_t index, const std::size_t first, const std::size_t last, const bool allowInPlace = false) const {
+    [[nodiscard]] std::optional<Placement> _relocate(const std::size_t index, const std::size_t first, const std::size_t last, const bool allowInPlace = false, const bool allowIndirectCall = false) const {
         if (_enteredWithin(first, last) || _end(last) - _address(first) < Amd64OnlySubstitutionTable::kJmpRel32.Size)
             return std::nullopt;
         StubBodyBuilder body;
@@ -182,7 +209,7 @@ private:
                     if (k != index)
                         placement.Consumed.push_back(k);
                 } else {
-                    body.MoveControlFlow(_bytes(k), _info(k));
+                    body.MoveControlFlow(_bytes(k), _info(k), allowIndirectCall);
                 }
                 placement.Claimed.push_back(k);
             }
@@ -445,6 +472,8 @@ void Amd64OnlyConverter::_convertSegment(
             std::copy(substitution.ReplacementBytes.begin(), substitution.ReplacementBytes.end(), seg.begin() + static_cast<std::ptrdiff_t>(match.Offset));
             replacementLength = substitution.ReplacementBytes.size();
             ++result.ReplacedCount;
+            if (_reportUnlowered)
+                pendingIndices.erase(item.Index);
             break;
         }
         case Amd64OnlyLowering::Trampoline: {
@@ -453,6 +482,8 @@ void Amd64OnlyConverter::_convertSegment(
                 auto placement = placer.Window(item.Index);
                 if (!placement)
                     placement = placer.Island(item.Index);
+                if (!placement && _reportUnlowered)
+                    placement = placer.WideWindow(item.Index);
                 if (!placement && substitution.Optional) {
                     ++result.KeptCount;
                     result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});

@@ -58,7 +58,7 @@ public:
     void Raw(std::span<const std::uint8_t> bytes);
     void Move(std::span<const std::uint8_t> instruction, std::optional<std::size_t> ripDisplacementOffset);
     void RipRelative(std::span<const std::uint8_t> instruction, std::size_t displacementOffset, std::int64_t target);
-    void MoveControlFlow(std::span<const std::uint8_t> instruction, const DecodedInstructionInfo& info);
+    void MoveControlFlow(std::span<const std::uint8_t> instruction, const DecodedInstructionInfo& info, bool allowIndirectCall = false);
     void JumpTo(std::int64_t siteTarget);
     void Seek(std::int64_t siteOffset);
     void Advance(std::size_t length);
