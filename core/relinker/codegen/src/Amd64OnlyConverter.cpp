@@ -73,6 +73,10 @@ public:
         return fallback;
     }
 
+    [[nodiscard]] std::optional<Placement> Merge(const std::size_t index, const std::size_t first) const {
+        return _relocate(index, first, index, false, true);
+    }
+
     [[nodiscard]] std::optional<Placement> WideWindow(const std::size_t index) const {
         constexpr std::size_t kReach = 5;
         for (std::size_t count = 2; count <= 2 * kReach + 1; ++count) {
@@ -484,6 +488,19 @@ void Amd64OnlyConverter::_convertSegment(
                     placement = placer.Island(item.Index);
                 if (!placement && _reportUnlowered)
                     placement = placer.WideWindow(item.Index);
+                if (!placement && _reportUnlowered && !result.Trampolines.empty()) {
+                    const auto& previous = result.Trampolines.back();
+                    if (static_cast<std::uint64_t>(previous.Address) + previous.Length == static_cast<std::uint64_t>(address) && static_cast<std::uint64_t>(previous.Address) >= ph.MappedAddress) {
+                        const auto start = static_cast<std::uint64_t>(previous.Address) - ph.MappedAddress;
+                        const auto first = std::lower_bound(matches.begin(), matches.end(), start, [](const auto& candidate, const std::uint64_t offset) { return candidate.Offset < offset; });
+                        if (first != matches.end() && first->Offset == start) {
+                            if (auto merged = placer.Merge(item.Index, static_cast<std::size_t>(first - matches.begin()))) {
+                                result.Trampolines.pop_back();
+                                placement = std::move(merged);
+                            }
+                        }
+                    }
+                }
                 if (!placement && substitution.Optional) {
                     ++result.KeptCount;
                     result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});
