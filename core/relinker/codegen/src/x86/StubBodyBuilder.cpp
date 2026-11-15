@@ -64,7 +64,7 @@ void _shiftImm(std::vector<std::uint8_t>& out, const std::uint8_t opcode, const 
 MemoryOperand OffsetMemoryOperand(MemoryOperand operand, const std::int32_t delta) {
     using namespace X64OpcodeConstants;
     operand.Displacement += delta;
-    const bool absolute = operand.Mod == ModRmModIndirect && operand.Rm == ModRmRmSibPresent && (operand.Sib & SibBaseMask) == ModRmRmSibPresent;
+    const bool absolute = operand.Mod == ModRmModIndirect && operand.Rm == ModRmRmSibPresent && (operand.Sib & SibBaseMask) == SibBaseDisp32;
     if (!operand.RipRelative && !absolute && operand.Mod != ModRmModDisp32)
         operand.Mod = ModRmModDisp32;
     return operand;

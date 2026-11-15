@@ -264,6 +264,17 @@ const std::vector<Bytes> kFma{
     Bytes{0xC4, 0xE2, 0x65, 0xAA, 0xDB},
 };
 
+void offsetOperands() {
+    const Bytes r12{0x14, 0x24};
+    const auto viaR12 = Codegen::OffsetMemoryOperand(Codegen::DecodeMemoryOperand(r12.data(), r12.size(), 0, 1, {}), 16);
+    require(viaR12.Mod == 2 && viaR12.Displacement == 16, "a 16-byte offset from (%r12) lost its displacement");
+    const auto viaRsp = Codegen::OffsetMemoryOperand(Codegen::DecodeMemoryOperand(r12.data(), r12.size(), 0, 0, {}), 16);
+    require(viaRsp.Mod == 2 && viaRsp.Displacement == 16 && viaRsp.StackBase, "a 16-byte offset from (%rsp) lost its displacement");
+    const Bytes absolute{0x04, 0x25, 0x00, 0x10, 0x00, 0x00};
+    const auto viaAbsolute = Codegen::OffsetMemoryOperand(Codegen::DecodeMemoryOperand(absolute.data(), absolute.size(), 0, 0, {}), 16);
+    require(viaAbsolute.Mod == 0 && viaAbsolute.Displacement == 0x1010, "an absolute address changed its addressing form");
+}
+
 void rewriting() {
     for (const auto& [vex, legacy] : kPairs) {
         const auto decoded = Codegen::DecodeVexLegacy(vex.data(), vex.size());
@@ -739,6 +750,7 @@ void outOfLine() {
 int main() {
     try {
         shadowLayout();
+        offsetOperands();
         rewriting();
         matching();
         outOfLine();
