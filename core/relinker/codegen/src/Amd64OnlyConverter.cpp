@@ -74,6 +74,9 @@ public:
     }
 
     [[nodiscard]] std::optional<Placement> Merge(const std::size_t index, const std::size_t first) const {
+        for (auto k = first; k < index; ++k)
+            if (_blocksFollowing(k) || _address(k + 1) != _end(k))
+                return std::nullopt;
         return _relocate(index, first, index, false, true);
     }
 
