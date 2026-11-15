@@ -52,6 +52,7 @@ public:
     void Load(std::uint8_t reg, const MemoryOperand& operand);
     void Store(std::uint8_t reg, const MemoryOperand& operand);
     void MemoryOp(std::uint8_t prefix, std::initializer_list<std::uint8_t> opcode, std::uint8_t reg, const MemoryOperand& operand);
+    void Lea(std::uint8_t reg, const MemoryOperand& operand);
     void Spill(std::uint8_t reg);
     void Restore(std::uint8_t reg);
     void Raw(std::span<const std::uint8_t> bytes);

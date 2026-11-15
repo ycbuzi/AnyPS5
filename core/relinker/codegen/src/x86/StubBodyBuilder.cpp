@@ -182,6 +182,15 @@ void StubBodyBuilder::MemoryOp(const std::uint8_t prefix, const std::initializer
         _bytes.push_back(static_cast<std::uint8_t>(value >> (index * 8)));
 }
 
+void StubBodyBuilder::Lea(const std::uint8_t reg, const MemoryOperand& operand) {
+    MemoryOperand plain = operand;
+    plain.Prefixes.clear();
+    for (const auto prefix : operand.Prefixes)
+        if (prefix == X64OpcodeConstants::PrefixAddressSize) plain.Prefixes.push_back(prefix);
+    plain.RexIndexBase = static_cast<std::uint8_t>(operand.RexIndexBase | 0x08);
+    MemoryOp(0, {0x8D}, reg, plain);
+}
+
 void StubBodyBuilder::Spill(const std::uint8_t reg) {
     _stackDepth += kRedZoneSpillFrame;
     _bytes.insert(_bytes.end(), kLeaRspBelowRedZone.Bytes, kLeaRspBelowRedZone.Bytes + kLeaRspBelowRedZone.Size);

@@ -107,6 +107,14 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             message << "Intel conversion: " << form << " not lowered at " << count << " sites\n";
             inputProgress.Message(message.str());
         }
+        std::size_t maskOperations = 0;
+        for (const auto& [form, count] : converted.Avx512Mask) {
+            maskOperations += count;
+            std::ostringstream message;
+            message << "Intel conversion: " << form << " kept as an AVX-512 mask instruction (not on PS5 hardware) at " << count << " sites\n";
+            inputProgress.Message(message.str());
+        }
+        { std::ostringstream message; message << "Intel conversion: " << maskOperations << " AVX-512 mask instructions kept (not on PS5 hardware)\n"; inputProgress.Message(message.str()); }
         { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept, " << unlowered << " VEX instructions not lowered\n"; inputProgress.Message(message.str()); }
     }
 

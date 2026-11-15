@@ -48,6 +48,7 @@ struct ConvertResult {
     std::vector<Amd64OnlySubstitutionReport> Reports;
     std::size_t KeptCount = 0;
     std::map<std::string, std::size_t> Unlowered = {};
+    std::map<std::string, std::size_t> Avx512Mask = {};
 };
 
 enum class ControlFlowKind : std::uint8_t {

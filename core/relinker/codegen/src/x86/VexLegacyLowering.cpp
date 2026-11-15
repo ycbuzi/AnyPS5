@@ -426,7 +426,7 @@ void EmitHigh(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     body.Restore(first);
 }
 
-enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, Test, MoveMask, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
+enum class Special : std::uint8_t { None, Insert, Extract, Permute2, PermuteQ, PermuteD, PermuteImm, BlendV, Extend, HalfToSingle, SingleToHalf, VariableShift, Narrow, Widen, BroadcastB, BroadcastW, PermuteVar, Test, MoveMask, MaskMove, Gather, CompareExtended, Mxcsr, BroadcastSs, BroadcastSd, Broadcast128, BroadcastD, BroadcastQ };
 
 constexpr StubConstant kDwordByteRepeat{0, 0, 0, 0, 4, 4, 4, 4, 8, 8, 8, 8, 12, 12, 12, 12};
 constexpr StubConstant kDwordByteOffsets{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3};
@@ -436,6 +436,11 @@ constexpr StubConstant kQwordBitOne{2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,
 constexpr StubConstant kQwordSigns{0, 0, 0, 0, 0, 0, 0, 0x80, 0, 0, 0, 0, 0, 0, 0, 0x80};
 
 Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t length) {
+    const bool segmented = std::any_of(data, data + h.Vex, [](const std::uint8_t prefix) { return prefix == 0x64 || prefix == 0x65; });
+    if (h.Map == 1 && !h.L && h.Pp == 0 && h.Op == 0xAE && h.Vvvv == 0 && h.Memory && (h.Reg & 7) >= 2 && (h.Reg & 7) <= 3) return Special::Mxcsr;
+    if (h.Map == 1 && !h.L && h.Op == 0xC2 && data[length - 1] >= 8 && data[length - 1] < 32) return Special::CompareExtended;
+    if (h.Map == 2 && h.Pp == 1 && h.Memory && !segmented && ((!h.W && (h.Op == 0x2C || h.Op == 0x2D || h.Op == 0x2E || h.Op == 0x2F)) || h.Op == 0x8C || h.Op == 0x8E)) return Special::MaskMove;
+    if (h.Map == 2 && h.Pp == 1 && h.W && h.Op == 0x91 && h.Memory && !segmented && (h.Modrm & 7) == 4) return Special::Gather;
     if (h.Map == 1 && h.L && h.Vvvv == 0 && !h.Memory && ((h.Pp == 1 && h.Op == 0xD7) || (h.Pp < 2 && h.Op == 0x50))) return Special::MoveMask;
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 1 && (h.Op == 0x5A || h.Op == 0xE6)) || (h.Pp == 3 && h.Op == 0xE6))) return Special::Narrow;
     if (h.Map == 1 && h.L && h.Vvvv == 0 && ((h.Pp == 0 && h.Op == 0x5A) || (h.Pp == 2 && h.Op == 0xE6))) return Special::Widen;
@@ -762,6 +767,186 @@ void EmitTest(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t
     for (const auto reg : {upperSecond, upperFirst, temp, onlySecond, both}) body.Restore(reg);
 }
 
+std::vector<std::uint8_t> Encoded66(const bool wide, const std::uint8_t reg, const std::uint8_t index, const std::uint8_t base, std::initializer_list<std::uint8_t> opcode, const std::uint8_t modrm, std::initializer_list<std::uint8_t> tail) {
+    std::vector<std::uint8_t> bytes{0x66};
+    const auto rex = static_cast<std::uint8_t>((wide ? 8 : 0) | (reg >> 3) << 2 | (index >> 3) << 1 | base >> 3);
+    if (rex) bytes.push_back(static_cast<std::uint8_t>(0x40 | rex));
+    bytes.insert(bytes.end(), opcode);
+    bytes.push_back(modrm);
+    bytes.insert(bytes.end(), tail);
+    return bytes;
+}
+
+std::vector<std::uint8_t> XmmFromGpr(const std::uint8_t xmm, const std::uint8_t gpr) {
+    return Encoded66(true, xmm, 0, gpr, {0x0F, 0x6E}, static_cast<std::uint8_t>(0xC0 | (xmm & 7) << 3 | (gpr & 7)), {});
+}
+
+std::vector<std::uint8_t> GprFromXmm(const std::uint8_t gpr, const std::uint8_t xmm) {
+    return Encoded66(true, xmm, 0, gpr, {0x0F, 0x7E}, static_cast<std::uint8_t>(0xC0 | (xmm & 7) << 3 | (gpr & 7)), {});
+}
+
+std::vector<std::uint8_t> ExtractToGpr(const bool wide, const std::uint8_t gpr, const std::uint8_t xmm, const std::uint8_t lane) {
+    return Encoded66(wide, xmm, 0, gpr, {0x0F, 0x3A, 0x16}, static_cast<std::uint8_t>(0xC0 | (xmm & 7) << 3 | (gpr & 7)), {lane});
+}
+
+void SkipUnlessRcx(StubBodyBuilder& body, const std::vector<std::uint8_t>& guarded) {
+    const std::uint8_t skip[] = {0xE3, static_cast<std::uint8_t>(guarded.size())};
+    body.Raw(skip);
+    body.Raw(guarded);
+}
+
+void SignMask(StubBodyBuilder& body, const std::uint8_t reg, const bool qwords) {
+    body.ShiftDwordImm(4, reg, 31);
+    if (qwords) body.Raw(RegisterOp(0x66, {0x0F, 0x70}, reg, reg, std::uint8_t{0xF5}));
+}
+
+constexpr std::uint8_t kRax = 0;
+constexpr std::uint8_t kRcx = 1;
+constexpr std::uint8_t kRdx = 2;
+
+void EmitMaskMove(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const bool store = h.Op == 0x2E || h.Op == 0x2F || h.Op == 0x8E;
+    const bool qwords = h.Op == 0x2D || h.Op == 0x2F || (h.Op >= 0x8C && h.W);
+    const auto value = h.Reg;
+    const auto mask = h.Vvvv;
+    const auto [savedRax, savedRcx, signs, lanes] = Scratches<4>({value, mask});
+    for (const auto reg : {savedRax, savedRcx, signs, lanes}) body.Spill(reg);
+    body.Raw(XmmFromGpr(savedRax, kRax));
+    body.Raw(XmmFromGpr(savedRcx, kRcx));
+    body.Lea(kRax, Operand(data, length, h));
+    const unsigned size = qwords ? 8 : 4;
+    const std::array<bool, 2> halves{true, false};
+    for (std::size_t half = h.L ? 0 : 1; half < halves.size(); ++half) {
+        const bool upper = halves[half];
+        if (upper) LoadUpper(body, signs, *shadow, mask);
+        else body.Raw(Movaps(signs, mask));
+        SignMask(body, signs, qwords);
+        if (!store) body.Raw(Xorps(lanes));
+        else if (upper) LoadUpper(body, lanes, *shadow, value);
+        else body.Raw(Movaps(lanes, value));
+        for (std::uint8_t lane = 0; lane < 16 / size; ++lane) {
+            body.Raw(ExtractToGpr(qwords, kRcx, signs, lane));
+            const auto displacement = static_cast<std::uint8_t>((upper ? 16 : 0) + size * lane);
+            const auto modrm = static_cast<std::uint8_t>(0x40 | (lanes & 7) << 3 | kRax);
+            SkipUnlessRcx(body, Encoded66(qwords, lanes, 0, kRax, {0x0F, 0x3A, static_cast<std::uint8_t>(store ? 0x16 : 0x22)}, modrm, {displacement, lane}));
+        }
+        if (store) continue;
+        if (upper) StoreUpper(body, lanes, *shadow, value);
+        else body.Raw(Movaps(value, lanes));
+    }
+    body.Raw(GprFromXmm(kRcx, savedRcx));
+    body.Raw(GprFromXmm(kRax, savedRax));
+    for (const auto reg : {lanes, signs, savedRcx, savedRax}) body.Restore(reg);
+    if (!store && !h.L && shadow) ClearUpper(body, *shadow, value);
+}
+
+void EmitGather(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto mask = h.Vvvv;
+    const auto sib = data[h.OpIndex + 2];
+    const auto index = static_cast<std::uint8_t>(h.X << 3 | (sib >> 3 & 7));
+    const auto scale = static_cast<std::uint8_t>(sib >> 6);
+    auto base = Operand(data, length, h);
+    base.Sib = static_cast<std::uint8_t>(0x20 | (sib & 7));
+    base.RexIndexBase = static_cast<std::uint8_t>(base.RexIndexBase & 1);
+    const auto [savedRax, savedRcx, savedRdx, signs, lanes, indices] = Scratches<6>({dst, mask, index});
+    for (const auto reg : {savedRax, savedRcx, savedRdx, signs, lanes, indices}) body.Spill(reg);
+    body.Raw(XmmFromGpr(savedRax, kRax));
+    body.Raw(XmmFromGpr(savedRcx, kRcx));
+    body.Raw(XmmFromGpr(savedRdx, kRdx));
+    body.Lea(kRax, base);
+    const std::array<bool, 2> halves{true, false};
+    for (std::size_t half = h.L ? 0 : 1; half < halves.size(); ++half) {
+        const bool upper = halves[half];
+        if (upper) {
+            LoadUpper(body, signs, *shadow, mask);
+            LoadUpper(body, lanes, *shadow, dst);
+            LoadUpper(body, indices, *shadow, index);
+        } else {
+            body.Raw(Movaps(signs, mask));
+            body.Raw(Movaps(lanes, dst));
+            body.Raw(Movaps(indices, index));
+        }
+        SignMask(body, signs, true);
+        for (std::uint8_t lane = 0; lane < 2; ++lane) {
+            body.Raw(ExtractToGpr(true, kRcx, signs, lane));
+            auto guarded = ExtractToGpr(true, kRdx, indices, lane);
+            const auto load = Encoded66(true, lanes, 0, 0, {0x0F, 0x3A, 0x22}, static_cast<std::uint8_t>(0x04 | (lanes & 7) << 3), {static_cast<std::uint8_t>(scale << 6 | kRdx << 3 | kRax), lane});
+            guarded.insert(guarded.end(), load.begin(), load.end());
+            SkipUnlessRcx(body, guarded);
+        }
+        if (upper) StoreUpper(body, lanes, *shadow, dst);
+        else body.Raw(Movaps(dst, lanes));
+    }
+    body.Raw(GprFromXmm(kRdx, savedRdx));
+    body.Raw(GprFromXmm(kRcx, savedRcx));
+    body.Raw(GprFromXmm(kRax, savedRax));
+    for (const auto reg : {indices, lanes, signs, savedRdx, savedRcx, savedRax}) body.Restore(reg);
+    body.Raw(Xorps(mask));
+    if (shadow) {
+        ClearUpper(body, *shadow, mask);
+        if (!h.L) ClearUpper(body, *shadow, dst);
+    }
+}
+
+void EmitCompareExtended(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
+    const auto dst = h.Reg;
+    const auto first = h.Vvvv;
+    const auto predicate = static_cast<std::uint8_t>(data[length - 1] & 15);
+    const auto prefix = kMandatoryPrefix[h.Pp];
+    const bool scalar = h.Pp >= 2;
+    const auto [result, other, loaded] = Scratches<3>({dst, first, h.Memory ? first : h.Rm});
+    const auto compare = [&](const std::uint8_t into, const std::uint8_t with, const std::uint8_t imm) {
+        if (prefix) body.SseImm(prefix, {0x0F, 0xC2}, into, with, imm);
+        else body.Raw(RegisterOp(0, {0x0F, 0xC2}, into, with, imm));
+    };
+    for (const auto reg : {result, other, loaded}) body.Spill(reg);
+    auto second = h.Rm;
+    if (h.Memory) {
+        if (scalar) body.MemoryOp(prefix, {0x0F, 0x10}, loaded, Operand(data, length, h));
+        else body.Load(loaded, Operand(data, length, h));
+        second = loaded;
+    }
+    switch (predicate) {
+    case 8:
+    case 12:
+        body.Raw(Movaps(result, first));
+        compare(result, second, predicate == 8 ? 0 : 4);
+        body.Raw(Movaps(other, first));
+        compare(other, second, predicate == 8 ? 3 : 7);
+        body.Raw(RegisterOp(0, {0x0F, static_cast<std::uint8_t>(predicate == 8 ? 0x56 : 0x54)}, result, other));
+        break;
+    case 9:
+    case 10:
+    case 13:
+    case 14: {
+        constexpr std::uint8_t kSwapped[] = {6, 5, 0, 0, 2, 1};
+        body.Raw(Movaps(result, second));
+        compare(result, first, kSwapped[predicate - 9]);
+        break;
+    }
+    case 11:
+        body.Raw(Xorps(result));
+        break;
+    case 15:
+        body.Sse(0x66, {0x0F, 0x76}, result, result);
+        break;
+    default:
+        body.Raw(Movaps(result, first));
+        compare(result, second, predicate);
+        break;
+    }
+    if (scalar) {
+        body.Raw(Movaps(other, first));
+        body.Sse(prefix, {0x0F, 0x10}, other, result);
+        body.Raw(Movaps(dst, other));
+    } else {
+        body.Raw(Movaps(dst, result));
+    }
+    for (const auto reg : {loaded, other, result}) body.Restore(reg);
+    if (shadow) ClearUpper(body, *shadow, dst);
+}
+
 void EmitPermuteD(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::int32_t shadow) {
     const auto dst = h.Reg;
     const auto index = h.Vvvv;
@@ -941,6 +1126,18 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
         body.Restore(low);
         return;
     }
+    case Special::MaskMove:
+        EmitMaskMove(body, data, length, h, shadow);
+        return;
+    case Special::Gather:
+        EmitGather(body, data, length, h, shadow);
+        return;
+    case Special::CompareExtended:
+        EmitCompareExtended(body, data, length, h, shadow);
+        return;
+    case Special::Mxcsr:
+        EmitLegacy(body, MemoryOp(data, length, h, 0, {0x0F, 0xAE}, h.Reg), kName);
+        return;
     case Special::Test:
         EmitTest(body, data, length, h, shadow);
         return;
@@ -1194,6 +1391,13 @@ std::optional<std::string> VexFormName(const std::uint8_t* data, const std::size
     name += kHex[header->Op & 15];
     if (header->OpIndex + 1 < length && header->Memory) name += " mem";
     return name;
+}
+
+bool VexMaskOperation(const std::uint8_t* data, const std::size_t length) {
+    const auto header = Parse(data, length, false);
+    if (!header) return false;
+    if (header->Map == 1) return In(header->Op, 0x41, 0x4B) || In(header->Op, 0x90, 0x93) || header->Op == 0x98 || header->Op == 0x99;
+    return header->Map == 3 && In(header->Op, 0x30, 0x33);
 }
 
 bool VexWide(const std::uint8_t* data, const std::size_t length) {

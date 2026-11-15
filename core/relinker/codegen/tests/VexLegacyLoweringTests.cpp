@@ -130,6 +130,13 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC4, 0xE2, 0x6D, 0x8C, 0x20},
+    Bytes{0xC4, 0xE2, 0xB5, 0x8E, 0x28},
+    Bytes{0xC4, 0xE2, 0x69, 0x2C, 0x08},
+    Bytes{0xC4, 0xE2, 0x65, 0x2F, 0x30},
+    Bytes{0xC4, 0x62, 0xE5, 0x8C, 0x10},
+    Bytes{0xC4, 0xE2, 0x61, 0x8E, 0x10},
+    Bytes{0xC5, 0xF8, 0xAE, 0x18},
     Bytes{0xC4, 0xE2, 0x69, 0x0C, 0xCB},
     Bytes{0xC4, 0xE2, 0x6D, 0x0C, 0xCB},
     Bytes{0xC4, 0xE2, 0x6D, 0x0C, 0x08},
@@ -557,6 +564,74 @@ void flagsExecution() {
     }
 }
 
+void compareShadowed(const Bytes& vex, const VectorExecution::Machine& start, const std::string& label) {
+    const auto site = Codegen::DecodeVexShadow(vex.data(), vex.size(), true);
+    require(site.has_value(), "VEX " + hex(vex) + " has no shadow lowering");
+    Codegen::StubBodyBuilder body;
+    Codegen::EmitVexShadow(body, *site, shadowOffset());
+    const VectorExecution::Runner reference(vex);
+    const VectorExecution::Runner stub(pooled(body.Finish()));
+    for (std::size_t reg = 0; reg < 16; ++reg) {
+        shadowArea[reg * 2] = start.Ymm[reg][2];
+        shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+    }
+    auto wanted = start;
+    auto got = start;
+    reference.Run(wanted);
+    stub.Run(got);
+    for (std::size_t reg = 0; reg < 16; ++reg) {
+        require(got.Ymm[reg][0] == wanted.Ymm[reg][0] && got.Ymm[reg][1] == wanted.Ymm[reg][1], label + " " + hex(vex) + " differs in the low half of register " + std::to_string(reg));
+        require(shadowArea[reg * 2] == wanted.Ymm[reg][2] && shadowArea[reg * 2 + 1] == wanted.Ymm[reg][3], label + " " + hex(vex) + " differs in the upper half of register " + std::to_string(reg));
+    }
+    require(got.Memory == wanted.Memory, label + " " + hex(vex) + " changed memory");
+}
+
+void gatherExecution() {
+    std::uint64_t state = 0x853C49E6748FEA9Bull;
+    const auto next = [&] {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return state;
+    };
+    const std::vector<std::pair<Bytes, unsigned>> gathers{
+        {Bytes{0xC4, 0xE2, 0xD5, 0x91, 0x24, 0x00}, 1}, {Bytes{0xC4, 0xE2, 0xD5, 0x91, 0x24, 0xC0}, 8}, {Bytes{0xC4, 0xE2, 0xD1, 0x91, 0x24, 0x00}, 1},
+    };
+    for (const auto& [vex, scale] : gathers) {
+        for (int round = 0; round < 32; ++round) {
+            auto start = VectorExecution::Initial();
+            for (auto& reg : start.Ymm)
+                for (auto& q : reg) q = next();
+            for (auto& q : start.Ymm[0]) q = (next() % 4) * (8 / scale);
+            for (auto& q : start.Ymm[5]) q = round % 8 == 0 ? ~0ull : round % 8 == 1 ? 0 : next();
+            compareShadowed(vex, start, "gather");
+        }
+    }
+}
+
+void compareExecution() {
+    const std::array<std::uint32_t, 4> singles{0x3F800000u, 0x40000000u, 0x7FC00000u, 0xBF800000u};
+    const std::array<std::uint64_t, 4> doubles{0x3FF0000000000000ull, 0x4000000000000000ull, 0x7FF8000000000000ull, 0xBFF0000000000000ull};
+    for (std::uint8_t predicate = 0; predicate < 32; ++predicate) {
+        const std::vector<Bytes> forms{Bytes{0xC5, 0xEA, 0xC2, 0xCB, predicate}, Bytes{0xC5, 0xE8, 0xC2, 0xCB, predicate}, Bytes{0xC5, 0xEB, 0xC2, 0x08, predicate}, Bytes{0xC5, 0xE9, 0xC2, 0xCB, predicate}};
+        for (std::size_t form = 0; form < forms.size(); ++form) {
+            const bool isDouble = form >= 2;
+            for (unsigned combo = 0; combo < 16; ++combo) {
+                auto start = VectorExecution::Initial();
+                for (std::size_t q = 0; q < 2; ++q) {
+                    if (isDouble) {
+                        start.Ymm[2][q] = doubles[(combo + q) % 4];
+                        start.Ymm[3][q] = doubles[(combo / 4 + q * 3) % 4];
+                    } else {
+                        start.Ymm[2][q] = singles[combo % 4] | static_cast<std::uint64_t>(singles[(combo + 1 + q) % 4]) << 32;
+                        start.Ymm[3][q] = singles[combo / 4] | static_cast<std::uint64_t>(singles[(combo + 2 * q) % 4]) << 32;
+                    }
+                }
+                start.Memory[0] = start.Ymm[3][0];
+                compareShadowed(forms[form], start, "compare predicate " + std::to_string(predicate));
+            }
+        }
+    }
+}
+
 void fmaExecution() {
     const auto offset = shadowOffset();
     for (const auto& vex : kFma) {
@@ -627,6 +702,8 @@ void halfExecution() {}
 void shiftExecution() {}
 void flagsExecution() {}
 void maskExecution() {}
+void gatherExecution() {}
+void compareExecution() {}
 void fmaExecution() { std::cout << "FMA execution checks require a Linux/macOS x86-64 build\n"; }
 void execution() { std::cout << "VEX.128 stub execution checks require a Linux/macOS x86-64 build\n"; }
 void shadowExecution() { std::cout << "VEX shadow execution checks require a Linux/macOS x86-64 build\n"; }
@@ -660,6 +737,8 @@ int main() {
         shiftExecution();
         flagsExecution();
         maskExecution();
+        gatherExecution();
+        compareExecution();
         fmaExecution();
         std::cout << "VEX.128 legacy lowering checks passed\n";
     } catch (const std::exception& error) {

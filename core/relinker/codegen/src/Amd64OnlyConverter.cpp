@@ -407,7 +407,7 @@ void Amd64OnlyConverter::_convertSegment(
         if (substitution.has_value())
             pending.push_back({index, match, std::move(*substitution)});
         else if (_reportUnlowered)
-            if (const auto form = VexFormName(seg.data() + match.Offset, match.Length)) ++result.Unlowered[*form];
+            if (const auto form = VexFormName(seg.data() + match.Offset, match.Length)) ++(VexMaskOperation(seg.data() + match.Offset, match.Length) ? result.Avx512Mask : result.Unlowered)[*form];
     }
     if (progress) progress(completed + std::uint64_t{2} * segSize, total);
     if (pending.empty()) {
