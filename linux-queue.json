@@ -5,20 +5,23 @@
   "branch": "test/16922-fixed-base",
   "main": "a3fecbe3ded876086b381d0479e1a10d1abc03c5",
   "targets": "guest_dynamic_loader_tests guest_dynamic_loader_fixed_base_tests guest_dynamic_loader_variants_tests guest_module_info_tests guest_unwind_module_info_tests guest_unwind_module_info_failure_tests guest_module_fixture",
-  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)"
+  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)",
+  "batch": "2"
  },
  {
   "pr": "16922",
   "head": "698a7ad27720690141f343207f776f85c2cdf197",
   "main": "a3fecbe3ded876086b381d0479e1a10d1abc03c5",
   "targets": "guest_dynamic_loader_tests guest_dynamic_loader_fixed_base_tests guest_dynamic_loader_variants_tests guest_module_info_tests guest_unwind_module_info_tests guest_unwind_module_info_failure_tests guest_module_fixture",
-  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)"
+  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)",
+  "batch": "2"
  },
  {
   "pr": "0",
   "head": "",
   "main": "a3fecbe3ded876086b381d0479e1a10d1abc03c5",
   "targets": "guest_dynamic_loader_tests guest_dynamic_loader_fixed_base_tests guest_dynamic_loader_variants_tests guest_module_info_tests guest_unwind_module_info_tests guest_unwind_module_info_failure_tests guest_module_fixture",
-  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)"
+  "tests": "^(guest_dynamic_loader|guest_module_info|guest_unwind_module_info)",
+  "batch": "2"
  }
 ]

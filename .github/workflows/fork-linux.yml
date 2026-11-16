@@ -100,13 +100,13 @@ jobs:
           cmake --build build --target $TARGETS -- -k 0 > "$RUNNER_TEMP/out/build.log" 2>&1
           echo $? > "$RUNNER_TEMP/out/build-rc"
           echo $(( $(date +%s) - start )) > "$RUNNER_TEMP/out/build-sec"
-          grep '^FAILED:' -A 12 "$RUNNER_TEMP/out/build.log" | head -n 60
+          grep '^FAILED:' -A 12 "$RUNNER_TEMP/out/build.log" | head -n 60 || true
       - name: Test
         if: steps.merge.outputs.ok == '1'
         run: |
           [ -f "$RUNNER_TEMP/out/status" ] && exit 0
           for i in $(seq 1 "$REPEAT"); do ctest --test-dir build --output-on-failure --timeout 300 -R "$TESTS" > "$RUNNER_TEMP/out/ctest-$i.log" 2>&1 || true; done
-          grep -h 'tests passed\|Failed\|Passed' "$RUNNER_TEMP"/out/ctest-*.log | head -n 40
+          grep -h 'tests passed\|Failed\|Passed' "$RUNNER_TEMP"/out/ctest-*.log | head -n 40 || true
       - name: Write the report
         if: always()
         run: |
