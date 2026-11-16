@@ -1,0 +1,137 @@
+name: Fork Linux focused tests
+
+on:
+  push:
+    branches: [prtest-runner]
+    paths: [linux-queue.json]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-linux
+  cancel-in-progress: false
+
+env:
+  CONFIGURE: >-
+    -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+    -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++
+    -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.q.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: q
+        run: echo "matrix=$(jq -c . linux-queue.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: plan
+    name: ${{ matrix.pr }} linux ${{ matrix.targets }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+    env:
+      PR: ${{ matrix.pr }}
+      HEAD: ${{ matrix.head }}
+      MAIN: ${{ matrix.main }}
+      TARGETS: ${{ matrix.targets }}
+      TESTS: ${{ matrix.tests }}
+      REPEAT: ${{ matrix.repeat || '3' }}
+      FORK_BRANCH: ${{ matrix.branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: boykopovar/AnyPS5
+          ref: ${{ matrix.main }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge the pull request into main
+        id: merge
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          if [ "$PR" = "0" ]; then echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"; echo ok=1 >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ -n "$FORK_BRANCH" ]; then
+            git fetch --no-tags "https://github.com/$GITHUB_REPOSITORY.git" "+refs/heads/$FORK_BRANCH:refs/remotes/fork/$FORK_BRANCH"
+            ref="refs/remotes/fork/$FORK_BRANCH"
+            if [ -n "$HEAD" ] && [ "$(git rev-parse "$ref")" != "$HEAD" ]; then echo "stale" > "$RUNNER_TEMP/out/status"; exit 0; fi
+          else
+            git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR"
+            ref="refs/remotes/pull/$PR"
+            if [ -n "$HEAD" ] && [ "$(git rev-parse "$ref")" != "$HEAD" ]; then echo "stale" > "$RUNNER_TEMP/out/status"; exit 0; fi
+          fi
+          if ! git -c user.name=ci -c user.email=ci@localhost merge --no-ff --no-edit "$ref"; then echo "conflict" > "$RUNNER_TEMP/out/status"; exit 0; fi
+          echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"
+          echo ok=1 >> "$GITHUB_OUTPUT"
+      - name: Check out the submodules
+        if: steps.merge.outputs.ok == '1'
+        run: git submodule update --init --recursive --depth 1 --jobs 8
+      - name: Install the build dependencies
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ninja-build ccache libx11-dev libxext-dev libxrandr-dev libwayland-dev libxkbcommon-dev \
+            libegl-dev libdecor-0-dev libpipewire-0.3-dev libpulse-dev libasound2-dev > /dev/null
+      - if: steps.merge.outputs.ok == '1'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: fork-linux
+          max-size: 2G
+      - name: Configure
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          cmake -S . -B build $CONFIGURE > "$RUNNER_TEMP/out/configure.log" 2>&1 || echo "configure-failed" > "$RUNNER_TEMP/out/status"
+          tail -n 30 "$RUNNER_TEMP/out/configure.log"
+      - name: Build
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          start=$(date +%s)
+          set +e
+          cmake --build build --target $TARGETS -- -k 0 > "$RUNNER_TEMP/out/build.log" 2>&1
+          echo $? > "$RUNNER_TEMP/out/build-rc"
+          echo $(( $(date +%s) - start )) > "$RUNNER_TEMP/out/build-sec"
+          grep '^FAILED:' -A 12 "$RUNNER_TEMP/out/build.log" | head -n 60
+      - name: Test
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          for i in $(seq 1 "$REPEAT"); do ctest --test-dir build --output-on-failure --timeout 300 -R "$TESTS" > "$RUNNER_TEMP/out/ctest-$i.log" 2>&1 || true; done
+          grep -h 'tests passed\|Failed\|Passed' "$RUNNER_TEMP"/out/ctest-*.log | head -n 40
+      - name: Write the report
+        if: always()
+        run: |
+          o="$RUNNER_TEMP/out"
+          {
+            echo "pr=$PR"
+            echo "head=$HEAD"
+            echo "main=$MAIN"
+            echo "merged=${{ steps.merge.outputs.merged }}"
+            echo "status=$(cat "$o/status" 2>/dev/null || echo tested)"
+            echo "targets=$TARGETS"
+            echo "tests=$TESTS"
+            echo "build_rc=$(cat "$o/build-rc" 2>/dev/null)"
+            echo "build_sec=$(cat "$o/build-sec" 2>/dev/null)"
+            for f in "$o"/ctest-*.log; do [ -f "$f" ] && echo "$(basename "$f" .log)=$(grep -h 'tests passed' "$f")"; done
+            echo "gcc=$(gcc -dumpfullversion 2>/dev/null)"
+            echo "runner=${ImageOS:-ubuntu} ${ImageVersion:-}"
+            echo "url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > "$o/report.txt"
+          grep -h '^FAILED:' -A 12 "$o/build.log" 2>/dev/null | head -n 80 > "$o/build-errors.txt" || true
+          rm -f "$o/build.log"
+          cat "$o/report.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: linux-${{ matrix.pr }}-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/out
+          retention-days: 14
