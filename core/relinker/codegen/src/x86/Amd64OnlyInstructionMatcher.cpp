@@ -322,6 +322,10 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
         EmitFma(body, *fma);
         return fma->Name;
     }
+    if (const auto reciprocal = DecodeReciprocal(instr.Data, instr.Length)) {
+        _reciprocalLowering.EmitOutOfLine(body, *reciprocal, _target == Amd64OnlyTarget::Sse, _shadow);
+        return _reciprocalEntry(*reciprocal).Name;
+    }
     if (const auto fma = _target == Amd64OnlyTarget::Sse ? DecodeFmaSse(instr.Data, instr.Length, _shadow.has_value()) : std::nullopt) {
         EmitFmaSse(body, *fma, _shadow);
         return fma->Name;
@@ -368,10 +372,6 @@ const char* Amd64OnlyInstructionMatcher::_emitOutOfLine(StubBodyBuilder& body, c
     if (instr.IsClzero()) {
         _clzeroLowering.EmitOutOfLine(body, DecodeClzero(instr.Data, instr.Length));
         return kClzero.Name;
-    }
-    if (const auto reciprocal = DecodeReciprocal(instr.Data, instr.Length)) {
-        _reciprocalLowering.EmitOutOfLine(body, *reciprocal);
-        return _reciprocalEntry(*reciprocal).Name;
     }
     if (instr.IsRdpru()) {
         if (!_validWait(instr))
@@ -530,7 +530,7 @@ std::optional<Amd64OnlyMatch> Amd64OnlyInstructionMatcher::Match(
         return _validWait(instr) ? _inPlace(kMwaitx, length, std::vector<std::uint8_t>(kPause.Bytes, kPause.Bytes + kPause.Size)) : _unsupported(kMwaitx, length);
 
     if (const auto reciprocal = DecodeReciprocal(data, length)) {
-        return _trampoline(_reciprocalEntry(*reciprocal).Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { _reciprocalLowering.EmitOutOfLine(body, *reciprocal); }), true);
+        return _trampoline(_reciprocalEntry(*reciprocal).Name, length, _outOfLine(length, trailing, [&](StubBodyBuilder& body) { _reciprocalLowering.EmitOutOfLine(body, *reciprocal, _target == Amd64OnlyTarget::Sse, _shadow); }), true);
     }
 
     if (instr.IsClzero())

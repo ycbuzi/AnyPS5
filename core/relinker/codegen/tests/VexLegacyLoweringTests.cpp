@@ -1,4 +1,5 @@
 #include <codegen/x86/VexLegacyLowering.hpp>
+#include <codegen/x86/ReciprocalLowering.hpp>
 #include <codegen/x86/IAmd64OnlyInstructionMatcher.hpp>
 #include <codegen/x86/StubBodyBuilder.hpp>
 #include "VectorExecution.hpp"
@@ -74,6 +75,7 @@ const std::vector<std::pair<Bytes, Bytes>> kPairs{
     {Bytes{0xC5, 0xFA, 0x5A, 0xC1}, Bytes{0xF3, 0x0F, 0x5A, 0xC1}},
     {Bytes{0xC5, 0xF8, 0x5B, 0xC1}, Bytes{0x0F, 0x5B, 0xC1}},
     {Bytes{0xC5, 0xF8, 0x50, 0xC1}, Bytes{0x0F, 0x50, 0xC1}},
+    {Bytes{0xC5, 0xF2, 0x53, 0x08}, Bytes{0xF3, 0x0F, 0x53, 0x08}},
     {Bytes{0xC5, 0xF9, 0xD7, 0xC1}, Bytes{0x66, 0x0F, 0xD7, 0xC1}},
     {Bytes{0xC4, 0xE2, 0x79, 0x17, 0xC1}, Bytes{0x66, 0x0F, 0x38, 0x17, 0xC1}},
     {Bytes{0x64, 0xC5, 0xFA, 0x10, 0x04, 0x25, 0x10, 0x00, 0x00, 0x00}, Bytes{0x64, 0xF3, 0x0F, 0x10, 0x04, 0x25, 0x10, 0x00, 0x00, 0x00}},
@@ -96,6 +98,8 @@ const std::vector<Bytes> kKept{
 };
 
 const std::vector<Bytes> kStubbed{
+    Bytes{0xC5, 0xF8, 0x53, 0x08},
+    Bytes{0xC5, 0xF8, 0x52, 0x48, 0x10},
     Bytes{0xC5, 0xE1, 0xC4, 0xC9, 0x01},
     Bytes{0xC4, 0xE3, 0x61, 0x02, 0x08, 0x09},
     Bytes{0xC5, 0xE0, 0x58, 0xCA},
@@ -130,6 +134,8 @@ void shadowLayout() {
 }
 
 const std::vector<Bytes> kShadowed{
+    Bytes{0xC5, 0xFC, 0x53, 0xCA},
+    Bytes{0xC5, 0xFC, 0x52, 0xCA},
     Bytes{0xC4, 0xE2, 0x75, 0x36, 0xC8},
     Bytes{0xC4, 0xE2, 0x6D, 0x36, 0xD0},
     Bytes{0xC5, 0xDD, 0xDB, 0xD8},
@@ -407,6 +413,39 @@ void shadowExecution() {
             }
             require(got.Memory == wanted.Memory, "shadow stub of " + hex(vex) + " changed memory");
             for (const auto red : got.RedZone) require(red == LoweringExecution::kSentinel, "shadow stub of " + hex(vex) + " overwrote the red zone");
+        }
+    }
+}
+
+void reciprocalExecution() {
+    const auto offset = shadowOffset();
+    const Codegen::ReciprocalLowering lowering;
+    for (const Bytes& vex : {Bytes{0xC5, 0xF8, 0x53, 0xCA}, Bytes{0xC5, 0xF8, 0x52, 0xCA}, Bytes{0xC5, 0xF8, 0x53, 0xC9}, Bytes{0xC4, 0x41, 0x78, 0x52, 0xC1},
+             Bytes{0xC5, 0xE2, 0x53, 0xCA}, Bytes{0xC5, 0xE2, 0x52, 0xCA}, Bytes{0xC5, 0xF2, 0x52, 0xC9}, Bytes{0xC5, 0xEA, 0x53, 0xCA}, Bytes{0xC4, 0x41, 0x52, 0x53, 0xC9}}) {
+        const auto operands = Codegen::DecodeReciprocal(vex.data(), vex.size());
+        require(operands && operands->Vex, "VEX " + hex(vex) + " is not a VEX reciprocal");
+        const auto intel = lowering.LowerOutOfLine(*operands);
+        const auto legacy = lowering.LowerOutOfLine(*operands, true, offset);
+        require(intel.Relocations.empty() && legacy.Relocations.empty(), "test stubs must not relocate");
+        const VectorExecution::Runner reference(pooled(intel));
+        const VectorExecution::Runner stub(pooled(legacy));
+        for (int seed = 0; seed < 4; ++seed) {
+            auto start = VectorExecution::Initial();
+            for (auto& reg : start.Ymm)
+                for (auto& q : reg) q = (q * 0x9E3779B97F4A7C15ull & 0x3FFF3FFF3FFF3FFFull) | 0x3F0000003F000000ull | static_cast<std::uint64_t>(seed) * 0x0001000000010000ull;
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                shadowArea[reg * 2] = start.Ymm[reg][2];
+                shadowArea[reg * 2 + 1] = start.Ymm[reg][3];
+            }
+            auto wanted = start;
+            auto got = start;
+            reference.Run(wanted);
+            stub.Run(got);
+            for (std::size_t reg = 0; reg < 16; ++reg) {
+                require(got.Ymm[reg][0] == wanted.Ymm[reg][0] && got.Ymm[reg][1] == wanted.Ymm[reg][1], "SSE reciprocal of " + hex(vex) + " differs in the low half of register " + std::to_string(reg));
+                require(shadowArea[reg * 2] == wanted.Ymm[reg][2] && shadowArea[reg * 2 + 1] == wanted.Ymm[reg][3], "SSE reciprocal of " + hex(vex) + " differs in the upper half of register " + std::to_string(reg));
+            }
+            for (const auto red : got.RedZone) require(red == LoweringExecution::kSentinel, "SSE reciprocal of " + hex(vex) + " overwrote the red zone");
         }
     }
 }
@@ -722,6 +761,7 @@ void fmaExecution() {
 #else
 
 void halfExecution() {}
+void reciprocalExecution() {}
 void shiftExecution() {}
 void flagsExecution() {}
 void maskExecution() {}
@@ -757,6 +797,7 @@ int main() {
         stubbing();
         execution();
         shadowExecution();
+        reciprocalExecution();
         halfExecution();
         shiftExecution();
         flagsExecution();

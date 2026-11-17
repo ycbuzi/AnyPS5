@@ -53,6 +53,7 @@ Form Map0F(const std::uint8_t pp, const std::uint8_t op) {
         if (op == 0x12 || op == 0x16) return Nds(false);
         if (op == 0x14 || op == 0x15 || In(op, 0x54, 0x59) || In(op, 0x5C, 0x5F) || op == 0xC6) return Nds(true);
         if (op == 0x51 || op == 0x5B) return Unary(true);
+        if (pp == 0 && (op == 0x52 || op == 0x53)) return Unary(true);
         if (op == 0x5A) return Unary(pp == 1);
         if (op == 0xC2) return {Shape::Nds, true, false, true};
     }
@@ -76,6 +77,7 @@ Form Map0F(const std::uint8_t pp, const std::uint8_t op) {
         if (op == 0x70) return Unary(true);
     }
     if (pp == 2) {
+        if (op == 0x52 || op == 0x53) return Nds(false);
         if (op == 0x12 || op == 0x16 || op == 0x5B) return Unary(true);
         if (op == 0x6F || op == 0x7E || op == 0x7F || op == 0xE6) return Unary(false);
     }
@@ -121,7 +123,7 @@ bool HasImmediate(const std::uint8_t map, const std::uint8_t op) {
 bool Lane256(const std::uint8_t map, const std::uint8_t pp, const std::uint8_t op, const Form& form) {
     if (form.Kind == Shape::ScalarMove || form.Kind == Shape::ScalarStore || form.GprSource || form.Wide) return false;
     if (map == 1) {
-        if (pp >= 2 && (op == 0x51 || op == 0x58 || op == 0x59 || op == 0x5A || (op >= 0x5C && op <= 0x5F) || op == 0xC2)) return false;
+        if (pp >= 2 && (op == 0x51 || op == 0x52 || op == 0x53 || op == 0x58 || op == 0x59 || op == 0x5A || (op >= 0x5C && op <= 0x5F) || op == 0xC2)) return false;
         if (op == 0x5A || op == 0xE6 || op == 0x50 || op == 0xD7 || op == 0x2E || op == 0x2F || op == 0xD6) return false;
         if ((op == 0x12 || op == 0x13 || op == 0x16 || op == 0x17) && pp < 2) return false;
         if (op == 0xF0 || op == 0xC5) return false;
@@ -1353,6 +1355,10 @@ std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, const std::si
     if (!p || (p->L && !shadow)) return std::nullopt;
     if (!shadow) return std::nullopt;
     return VexShadow{p->L ? kName256 : kName, std::vector<std::uint8_t>(data, data + length)};
+}
+
+void EmitClearUpper(StubBodyBuilder& body, const std::int32_t shadow, const std::uint8_t reg) {
+    ClearUpper(body, shadow, reg);
 }
 
 void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, const std::optional<std::int32_t> shadow) {

@@ -1,4 +1,5 @@
 #include <codegen/x86/ReciprocalLowering.hpp>
+#include <codegen/x86/VexLegacyLowering.hpp>
 #include <array>
 #include <cstring>
 
@@ -21,9 +22,9 @@ StubConstant _ones() {
     return constant;
 }
 
-std::uint8_t _scratch(const ReciprocalOperands& operands) {
+std::uint8_t _scratch(const ReciprocalOperands& operands, const std::uint8_t taken = 16) {
     std::uint8_t reg = 0;
-    while (reg == operands.Destination || reg == operands.Source)
+    while (reg == operands.Destination || reg == operands.Source || reg == operands.Upper || reg == taken)
         ++reg;
     return reg;
 }
@@ -55,13 +56,44 @@ void _emitScalar(StubBodyBuilder& body, const ReciprocalOperands& operands, cons
     body.Sse(kScalarPrefix, {0x0F, kMovss}, dst, scratch);
 }
 
+void _emitLegacyScalar(StubBodyBuilder& body, const ReciprocalOperands& operands, const std::uint8_t scratch) {
+    const auto dst = operands.Destination;
+    body.RipOperand({0x0F, kMovaps}, scratch, _ones());
+    if (operands.Operation == ReciprocalOperation::ReciprocalSquareRoot) {
+        const auto root = _scratch(operands, scratch);
+        body.Spill(root);
+        body.Sse(kScalarPrefix, {0x0F, kSqrtps}, root, operands.Source);
+        body.Sse(kScalarPrefix, {0x0F, kDivps}, scratch, root);
+        body.Restore(root);
+    } else {
+        body.Sse(kScalarPrefix, {0x0F, kDivps}, scratch, operands.Source);
+    }
+    if (operands.Upper != dst)
+        body.SsePlain({0x0F, kMovaps}, dst, operands.Upper);
+    body.Sse(kScalarPrefix, {0x0F, kMovss}, dst, scratch);
 }
 
-void ReciprocalLowering::EmitOutOfLine(StubBodyBuilder& body, const ReciprocalOperands& operands) const {
+}
+
+void ReciprocalLowering::EmitOutOfLine(StubBodyBuilder& body, const ReciprocalOperands& operands, const bool legacyOnly, const std::optional<std::int32_t> shadow) const {
     const auto scratch = _scratch(operands);
     const auto dst = operands.Destination;
     body.Spill(scratch);
-    if (operands.Scalar) {
+    if (legacyOnly && operands.Vex) {
+        if (operands.Scalar) {
+            _emitLegacyScalar(body, operands, scratch);
+        } else if (operands.Operation == ReciprocalOperation::ReciprocalSquareRoot) {
+            body.SsePlain({0x0F, kSqrtps}, scratch, operands.Source);
+            body.RipOperand({0x0F, kMovaps}, dst, _ones());
+            body.SsePlain({0x0F, kDivps}, dst, scratch);
+        } else {
+            body.RipOperand({0x0F, kMovaps}, scratch, _ones());
+            body.SsePlain({0x0F, kDivps}, scratch, operands.Source);
+            body.SsePlain({0x0F, kMovaps}, dst, scratch);
+        }
+        if (shadow)
+            EmitClearUpper(body, *shadow, dst);
+    } else if (operands.Scalar) {
         _emitScalar(body, operands, scratch);
     } else if (operands.Operation == ReciprocalOperation::ReciprocalSquareRoot) {
         body.SsePlain({0x0F, kSqrtps}, scratch, operands.Source);
@@ -80,9 +112,9 @@ void ReciprocalLowering::EmitOutOfLine(StubBodyBuilder& body, const ReciprocalOp
     body.Restore(scratch);
 }
 
-LoweredBody ReciprocalLowering::LowerOutOfLine(const ReciprocalOperands& operands) const {
+LoweredBody ReciprocalLowering::LowerOutOfLine(const ReciprocalOperands& operands, const bool legacyOnly, const std::optional<std::int32_t> shadow) const {
     StubBodyBuilder body;
-    EmitOutOfLine(body, operands);
+    EmitOutOfLine(body, operands, legacyOnly, shadow);
     return body.Finish();
 }
 

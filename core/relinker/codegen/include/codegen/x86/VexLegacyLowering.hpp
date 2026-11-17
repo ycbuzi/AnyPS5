@@ -32,6 +32,7 @@ void EmitFmaSse(StubBodyBuilder& body, const FmaOperands& operands, std::optiona
 [[nodiscard]] bool VexWide(const std::uint8_t* data, std::size_t length);
 [[nodiscard]] std::optional<VexShadow> DecodeVexShadow(const std::uint8_t* data, std::size_t length, bool shadow);
 void EmitVexShadow(StubBodyBuilder& body, const VexShadow& site, std::optional<std::int32_t> shadow);
+void EmitClearUpper(StubBodyBuilder& body, std::int32_t shadow, std::uint8_t reg);
 [[nodiscard]] std::optional<VexStub> DecodeVexStub(const std::uint8_t* data, std::size_t length);
 void EmitVexStub(StubBodyBuilder& body, const VexStub& stub);
 [[nodiscard]] std::optional<VexLegacy> DecodeVexLegacy(const std::uint8_t* data, std::size_t length);
