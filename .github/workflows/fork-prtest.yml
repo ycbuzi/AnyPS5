@@ -166,7 +166,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.cpu) }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 300
     defaults:
       run:
@@ -215,21 +215,23 @@ jobs:
           probe movbe 'movbe (%rsp),%eax'
           probe sse42 'crc32b %al,%eax'
           probe popcnt 'popcnt %eax,%eax'
+          probe hello 'nop'
           expect() {
             case "$1:$2" in
-              max:*|SandyBridge:avx|*:sse42|*:popcnt) echo ok ;;
+              max:*|SandyBridge:avx|*:sse42|*:popcnt|*:hello) echo ok ;;
               *) echo ill ;;
             esac
           }
           for m in max SandyBridge Westmere; do
-            for p in avx avx2 fma f16c bmi1 bmi2 movbe sse42 popcnt; do
-              rc=0; qemu-x86_64 -cpu "$m" "$t/$p" > /dev/null 2>&1 || rc=$?
+            for p in hello avx avx2 fma f16c bmi1 bmi2 movbe sse42 popcnt; do
+              rc=0; qemu-x86_64 -cpu "$m" "$t/$p" > /dev/null 2> "$t/err" || rc=$?
               got=ok; [ "$rc" = 132 ] && got=ill; [ "$rc" != 0 ] && [ "$rc" != 132 ] && got="rc$rc"
               want=$(expect "$m" "$p")
-              mark=pass; [ "$got" != "$want" ] && mark=MISMATCH
+              mark=pass; [ "$got" != "$want" ] && mark="MISMATCH $(grep -v -i 'warning\|uncaught target signal' "$t/err" | head -n 1)"
               echo "$m $p: $got (want $want) $mark"
             done
           done | tee "$o/emulation.txt"
+          . /etc/os-release; echo "host: $PRETTY_NAME, $(qemu-x86_64 --version | head -n 1)" | tee -a "$o/emulation.txt"
           if grep -q MISMATCH "$o/emulation.txt"; then echo "trap_check=failed" > "$o/trap"; [ -f "$o/status" ] || echo "emulator-not-trapping" > "$o/status"; else echo "trap_check=ok" > "$o/trap"; fi
           printf '#!/bin/sh\nif [ -n "$ANYPS5_QEMU_CPU" ]; then exec qemu-x86_64 -cpu "$ANYPS5_QEMU_CPU" "$@"; fi\nexec "$@"\n' > "$RUNNER_TEMP/cpu-emu"
           chmod +x "$RUNNER_TEMP/cpu-emu"
