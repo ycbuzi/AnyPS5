@@ -172,6 +172,11 @@ bool DppReadsOwnLane(std::uint32_t control) {
     return control == 0xe4u || control == (DppMoveFlags::Lanes8 | 0xfac688u);
 }
 
+bool DppMasksSplitWave(const SpirvEmitterState& state, const DppMoveFlags& flags) {
+    const auto partial = [](std::uint32_t mask, std::uint32_t every) { return (mask & every) != 0u && (mask & every) != every; };
+    return partial(flags.rowMask, (1u << (state.program.WaveSize() / 16u)) - 1u) || partial(flags.bankMask, 0xfu);
+}
+
 }
 
 std::uint32_t EmitDppWriteCondition(SpirvValueEmitContext& ctx, const IrValue& inst) {
@@ -202,6 +207,7 @@ std::uint32_t EmitDppWriteCondition(SpirvValueEmitContext& ctx, const IrValue& i
     state.module.AddFunction(spv::OpLogicalAnd, TypeBool(state), masksOk, bankOk, rowOk);
     auto writable = masksOk;
     if (OneLanePixelWave(state) && !DppReadsOwnLane(flags.control)) FailQuadPlacement(ctx, inst, "DPP control " + std::to_string(flags.control));
+    if (OneLanePixelWave(state) && DppMasksSplitWave(state, flags)) FailQuadPlacement(ctx, inst, "DPP row mask " + std::to_string(flags.rowMask) + " with bank mask " + std::to_string(flags.bankMask));
     if (!flags.boundControl) {
         const auto target = EmitDppTargetLane(state, flags.control);
         const auto bounded = state.module.AllocateId();

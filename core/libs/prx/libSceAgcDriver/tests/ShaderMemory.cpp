@@ -8430,10 +8430,11 @@ void verifySingleLanePixelWave() {
         code.insert(code.end(), {0xf800180fu, 0x01010101u, 0xbf810000u});
         return code;
     };
-    const std::array<std::pair<const char*, std::vector<std::uint32_t>>, 3> accepted{{
+    const std::array<std::pair<const char*, std::vector<std::uint32_t>>, 4> accepted{{
         {"v_mbcnt and v_readfirstlane_b32", exported({0xd7650015u, 0x000100c1u, 0xd7660015u, 0x00022ac1u, 0x7e0c0500u, 0x4a022a06u})},
         {"s_wqm_b64 of the starting EXEC and a branch on the whole-quad mask", exported({0xbefe0a7eu, 0xbf880001u, 0x7e000280u, 0x7e02027eu})},
         {"a DPP quad_perm:[0,1,2,3]", exported({0x7e0202fau, 0xff00e400u})},
+        {"a DPP8 dpp8:[0,1,2,3,4,5,6,7]", exported({0x7e0202e9u, 0xfac68800u})},
     }};
     for (const auto& [name, code] : accepted) {
         const auto withoutSubgroups = compiled(code, 32u, false);
@@ -8466,7 +8467,12 @@ void verifySingleLanePixelWave() {
         expectFailure([&] { static_cast<void>(compiled(code, 32u, false)); }, "v_readlane_b32 of a register-selected lane is outside the 1-lane host subgroup", (std::string("single-lane pixel wave: ") + name + " built in a fragment program without fragment subgroups").c_str());
         require(!compiled(code, 32u, true).empty(), (std::string("single-lane pixel wave: ") + name + " did not build with fragment subgroups").c_str());
     }
-    const std::array<std::tuple<const char*, std::vector<std::uint32_t>, const char*>, 8> quadReads{{
+    const std::array<std::tuple<const char*, std::vector<std::uint32_t>, const char*>, 13> quadReads{{
+        {"a DPP quad_perm:[0,1,2,3] row_mask:0x1", exported({0x7e0202fau, 0x1f00e400u}), "DPP row mask 1 with bank mask 15 "},
+        {"a DPP8 dpp8:[1,0,3,2,5,4,7,6]", exported({0x7e0202e9u, 0xde54c100u}), "DPP control 31347905 "},
+        {"ds_permute_b32 to address 0", exported({0x7e040280u, 0xdac80000u, 0x01000002u}), "ds_permute_b32 "},
+        {"v_permlanex16_b32 with lane selects 0x76543210", exported({0xbe8003ffu, 0x76543210u, 0xd7780001u, 0x00040100u}), "v_permlanex16_b32 "},
+        {"v_writelane_b32 of lane 0", exported({0xd7610001u, 0x00010081u}), "v_writelane_b32 "},
         {"s_wqm_b64 of a compare result", exported({0x7d880084u, 0xbefe0a6au, 0x7e020280u}), "s_wqm of a lane mask other than the pixel's starting lanes "},
         {"a DPP quad_perm:[1,0,3,2]", exported({0x7e0202fau, 0xff00b100u}), "DPP control 177 "},
         {"a DPP quad_perm:[0,0,2,2]", exported({0x7e0202fau, 0xff00a000u}), "DPP control 160 "},
