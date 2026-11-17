@@ -488,13 +488,12 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
             auto converted = Codegen::MakeAmd64OnlyConverter(target, [&](auto completed, auto total) { progress.Report({Domain::ProgressStage::Lowering, Io::Utf8Path(image.SourcePath), completed, total}); })->Convert(std::move(image.Bytes), image.Headers);
             image.Trampolines = std::move(converted.Trampolines);
             image.Bytes = std::move(converted.Bytes);
-            for (const auto* forms : {&converted.Unlowered, &converted.Avx512Mask})
-                for (const auto& [form, count] : *forms) {
-                    unloweredVex += count;
-                    std::ostringstream message;
-                    message << "Intel conversion: " << Io::Utf8Path(image.SourcePath.filename()) << ": " << form << " not lowered at " << count << " sites\n";
-                    progress.Message(message.str());
-                }
+            for (const auto& [form, count] : converted.Unlowered) {
+                unloweredVex += count;
+                std::ostringstream message;
+                message << "Intel conversion: " << Io::Utf8Path(image.SourcePath.filename()) << ": " << form << " not lowered at " << count << " sites\n";
+                progress.Message(message.str());
+            }
             if (!image.PatchedRanges.empty()) GamePatch::CheckOverlaps(Io::Utf8Path(image.SourcePath), image.PatchedRanges, {.Reports = converted.Reports, .Trampolines = image.Trampolines});
         }
         if (!image.PatchedRanges.empty()) GamePatch::CheckOverlaps(Io::Utf8Path(image.SourcePath), image.PatchedRanges, {.RelaData = image.Dynamic.RelaData, .RelaPltData = image.Dynamic.RelaPltData});

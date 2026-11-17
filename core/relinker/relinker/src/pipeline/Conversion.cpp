@@ -116,7 +116,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             inputProgress.Message(message.str());
         }
         { std::ostringstream message; message << "Intel conversion: " << maskOperations << " AVX-512 mask instructions kept (not on PS5 hardware)\n"; inputProgress.Message(message.str()); }
-        unloweredVex = unlowered + maskOperations;
+        unloweredVex = unlowered;
         { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept, " << unlowered << " VEX instructions not lowered\n"; inputProgress.Message(message.str()); }
     }
 
