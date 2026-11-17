@@ -98,12 +98,29 @@ bool MergedHullStage(const RecompileRequest& request) {
     return (stage == ShaderStage::Local || stage == ShaderStage::TessellationControl) && request.graphics && request.graphics->tessellation && request.graphics->tessellation->mergedHull;
 }
 
+bool HostStageSubgroups(const RecompileRequest& request) {
+    switch (request.shader.stage) {
+    case ShaderStage::Vertex:
+    case ShaderStage::Local:
+        return request.target.vertexSubgroups;
+    case ShaderStage::TessellationControl:
+        return request.target.tessellationControlSubgroups;
+    case ShaderStage::TessellationEvaluation:
+        return request.target.tessellationEvaluationSubgroups || (request.graphics && request.graphics->mesh);
+    case ShaderStage::Fragment:
+        return request.target.fragmentSubgroups;
+    case ShaderStage::Compute:
+    case ShaderStage::Mesh:
+    case ShaderStage::Geometry:
+        break;
+    }
+    return true;
+}
+
 // The host subgroup width wave64 programs are laid out for. Debug aid: APS5_SINGLE_LANE=<hex code
 // addresses, comma separated, or "all"> keeps the listed programs at one guest lane per invocation.
 std::uint32_t HostSubgroupSize(const RecompileRequest& request) {
-    const bool vertexStage = request.shader.stage == ShaderStage::Vertex || request.shader.stage == ShaderStage::Local;
-    if (vertexStage && !request.target.vertexSubgroups) return 1u;
-    if (request.shader.stage == ShaderStage::TessellationEvaluation && !request.target.tessellationEvaluationSubgroups && !(request.graphics && request.graphics->mesh)) return 1u;
+    if (!HostStageSubgroups(request)) return 1u;
     if (request.shader.stage == ShaderStage::TessellationControl && MergedHullStage(request)) return 1u;
     static const std::string list = [] { const char* text = std::getenv("APS5_SINGLE_LANE"); return text ? std::string(text) : std::string(); }();
     if (!list.empty()) {

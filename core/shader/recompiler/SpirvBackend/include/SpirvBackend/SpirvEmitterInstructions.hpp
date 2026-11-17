@@ -85,7 +85,7 @@ std::uint32_t EmitGetBuiltin(SpirvValueEmitContext& ctx, const IrValue* kind, co
 std::uint32_t EmitUndefU1(SpirvEmitterState& state, const IrValue& inst);
 std::uint32_t EmitDppMoveU32(SpirvValueEmitContext& ctx, const IrValue& inst);
 std::uint32_t EmitDppUpdateU32(SpirvValueEmitContext& ctx, const IrValue& inst);
-std::uint32_t EmitWqmU64(SpirvEmitterState& state, std::uint32_t value);
+std::uint32_t EmitWqmU64(SpirvValueEmitContext& ctx, const IrValue& inst);
 std::uint32_t EmitLaneId(SpirvEmitterState& state);
 std::uint32_t EmitBallot(SpirvValueEmitContext& ctx, const IrValue* predicate);
 std::uint32_t EmitReadFirstLane(SpirvValueEmitContext& ctx, const IrValue& inst);

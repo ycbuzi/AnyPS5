@@ -289,6 +289,7 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Sh
     state.float16NarrowNans = target.float16NarrowNans;
     state.hostSubgroupSize = target.subgroupSize;
     if (target.largePixelFunctionLdsBuffer && program.Resources().stage == IrShaderStage::Pixel && state.requirements.functionLds && state.requirements.functionLdsDwords > target.pixelFunctionStorageDwords) {
+        if (HostSubgroupSingleLane(state)) FailEmit("a pixel program whose " + std::to_string(state.requirements.functionLdsDwords) + " LDS dwords exceed the device's " + std::to_string(target.pixelFunctionStorageDwords) + " private dwords needs subgroup operations in the fragment stage to place them in the LDS buffer");
         state.pixelFunctionLdsBuffer = true;
         state.requirements.subgroupLocalInvocationId = true;
         state.requirements.subgroupBallot = true;

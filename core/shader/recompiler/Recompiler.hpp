@@ -364,6 +364,8 @@ struct SpirvTarget {
     std::uint32_t registrationWordLimit = 200000u;
     bool vertexSubgroups = true;
     bool tessellationEvaluationSubgroups = true;
+    bool tessellationControlSubgroups = true;
+    bool fragmentSubgroups = true;
     bool float16DenormPreserve = false;
     bool spannedWaves = false;
     bool spannedAnySubgroup = false;
