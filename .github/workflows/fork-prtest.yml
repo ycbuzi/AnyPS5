@@ -26,13 +26,17 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.q.outputs.matrix }}
+      cpu: ${{ steps.q.outputs.cpu }}
     steps:
       - uses: actions/checkout@v4
       - id: q
-        run: echo "matrix=$(jq -c . queue.json)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "matrix=$(jq -c '[.[] | select(.os != "linux")]' queue.json)" >> "$GITHUB_OUTPUT"
+          echo "cpu=$(jq -c '[.[] | select(.os == "linux")]' queue.json)" >> "$GITHUB_OUTPUT"
 
   test:
     needs: plan
+    if: needs.plan.outputs.matrix != '[]'
     name: ${{ matrix.pr }} ${{ matrix.os }} ${{ matrix.kind }}
     strategy:
       fail-fast: false
@@ -152,4 +156,175 @@ jobs:
         with:
           name: r-${{ matrix.pr }}-${{ matrix.os }}-${{ matrix.kind }}
           path: ${{ runner.temp }}/out
+          retention-days: 14
+
+  cpu:
+    needs: plan
+    if: needs.plan.outputs.cpu != '[]'
+    name: ${{ matrix.pr }} linux qemu cpus
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.cpu) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    defaults:
+      run:
+        shell: bash
+    env:
+      PR: ${{ matrix.pr }}
+      HEAD: ${{ matrix.head }}
+      MAIN: ${{ matrix.main }}
+      MODELS: SandyBridge Westmere
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: boykopovar/AnyPS5
+          ref: ${{ matrix.main }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Merge the pull request into main
+        id: merge
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          if [ "$PR" = "0" ]; then echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"; echo ok=1 >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch --no-tags origin "+refs/pull/$PR/head:refs/remotes/pull/$PR"
+          if [ "$(git rev-parse "refs/remotes/pull/$PR")" != "$HEAD" ]; then echo "stale" > "$RUNNER_TEMP/out/status"; echo "::warning::#$PR has newer commits than $HEAD"; exit 0; fi
+          if ! git -c user.name=ci -c user.email=ci@localhost merge --no-ff --no-edit "refs/remotes/pull/$PR"; then echo "conflict" > "$RUNNER_TEMP/out/status"; exit 0; fi
+          echo "merged=$(git rev-parse --short=10 HEAD)" >> "$GITHUB_OUTPUT"
+          echo ok=1 >> "$GITHUB_OUTPUT"
+      - name: Check out the submodules
+        if: steps.merge.outputs.ok == '1'
+        run: git submodule update --init --recursive --depth 1 --jobs 8
+      - name: Install Ninja, ccache and QEMU user mode
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q ninja-build ccache qemu-user > /dev/null
+          qemu-x86_64 --version | head -n 1
+          cmake --version | head -n 1
+      - name: Check that the CPU models trap missing instructions
+        run: |
+          o="$RUNNER_TEMP/out"; t="$RUNNER_TEMP/trap"; mkdir -p "$o" "$t"
+          probe() { printf 'int main(void){__asm__ volatile("%s");return 0;}\n' "$2" > "$t/$1.c"; gcc -O0 -o "$t/$1" "$t/$1.c"; }
+          probe avx 'vaddps %ymm0,%ymm0,%ymm0'
+          probe avx2 'vpaddd %ymm0,%ymm0,%ymm0'
+          probe fma 'vfmadd231ps %ymm0,%ymm0,%ymm0'
+          probe f16c 'vcvtph2ps %xmm0,%ymm0'
+          probe bmi1 'andn %eax,%eax,%eax'
+          probe bmi2 'shlx %eax,%eax,%eax'
+          probe movbe 'movbe (%rsp),%eax'
+          probe sse42 'crc32b %al,%eax'
+          probe popcnt 'popcnt %eax,%eax'
+          expect() {
+            case "$1:$2" in
+              max:*|SandyBridge:avx|*:sse42|*:popcnt) echo ok ;;
+              *) echo ill ;;
+            esac
+          }
+          for m in max SandyBridge Westmere; do
+            for p in avx avx2 fma f16c bmi1 bmi2 movbe sse42 popcnt; do
+              rc=0; qemu-x86_64 -cpu "$m" "$t/$p" > /dev/null 2>&1 || rc=$?
+              got=ok; [ "$rc" = 132 ] && got=ill; [ "$rc" != 0 ] && [ "$rc" != 132 ] && got="rc$rc"
+              want=$(expect "$m" "$p")
+              mark=pass; [ "$got" != "$want" ] && mark=MISMATCH
+              echo "$m $p: $got (want $want) $mark"
+            done
+          done | tee "$o/emulation.txt"
+          if grep -q MISMATCH "$o/emulation.txt"; then echo "trap_check=failed" > "$o/trap"; [ -f "$o/status" ] || echo "emulator-not-trapping" > "$o/status"; else echo "trap_check=ok" > "$o/trap"; fi
+          printf '#!/bin/sh\nif [ -n "$ANYPS5_QEMU_CPU" ]; then exec qemu-x86_64 -cpu "$ANYPS5_QEMU_CPU" "$@"; fi\nexec "$@"\n' > "$RUNNER_TEMP/cpu-emu"
+          chmod +x "$RUNNER_TEMP/cpu-emu"
+      - if: steps.merge.outputs.ok == '1'
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: fork-linux-cpu
+          save: ${{ matrix.pr == '0' }}
+          max-size: 1G
+      - name: Configure
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          cmake -S . -B build $CONFIGURE -DANYPS5_RELINKER_ONLY=ON -DCMAKE_CROSSCOMPILING_EMULATOR="$RUNNER_TEMP/cpu-emu" -DCMAKE_POLICY_DEFAULT_CMP0158=OLD > "$RUNNER_TEMP/out/configure.log" 2>&1 || echo "configure-failed" > "$RUNNER_TEMP/out/status"
+          tail -n 30 "$RUNNER_TEMP/out/configure.log"
+      - name: Build
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          [ -f "$RUNNER_TEMP/out/status" ] && exit 0
+          start=$(date +%s)
+          set +e
+          cmake --build build -- -k 0 > "$RUNNER_TEMP/out/build.log" 2>&1
+          echo $? > "$RUNNER_TEMP/out/build-rc"
+          echo $(( $(date +%s) - start )) > "$RUNNER_TEMP/out/build-sec"
+          echo "failed targets: $(grep -c '^FAILED:' "$RUNNER_TEMP/out/build.log" || true)"
+      - name: Test under each CPU model, failures rerun once
+        if: steps.merge.outputs.ok == '1'
+        run: |
+          o="$RUNNER_TEMP/out"
+          [ -f "$o/status" ] && exit 0
+          grep -rh --include=CTestTestfile.cmake '^add_test(' build > "$o/add_tests.txt" || true
+          grep -c cpu-emu "$o/add_tests.txt" > "$o/emulated" || true
+          wc -l < "$o/add_tests.txt" > "$o/total"
+          echo "tests run through the emulator: $(cat "$o/emulated") of $(cat "$o/total")"
+          [ "$(cat "$o/emulated")" -gt 0 ] || { echo "emulator-not-applied" > "$o/status"; exit 0; }
+          find build -name CTestTestfile.cmake -exec sed -i -E 's/TIMEOUT "([0-9]+)"/TIMEOUT "\10"/g' {} +
+          for m in $MODELS; do
+            k=$(echo "$m" | tr '[:upper:]' '[:lower:]'); mkdir -p "$o/$k"
+            start=$(date +%s)
+            rm -f build/Testing/Temporary/LastTestsFailed*.log
+            ANYPS5_QEMU_CPU=$m ctest --test-dir build --output-on-failure --timeout 900 --parallel 4 > "$o/$k/ctest-1.log" 2>&1 || true
+            if grep -q '^The following tests FAILED:' "$o/$k/ctest-1.log"; then
+              ANYPS5_QEMU_CPU=$m ctest --test-dir build --output-on-failure --timeout 900 --parallel 4 --rerun-failed > "$o/$k/ctest-2.log" 2>&1 || true
+            fi
+            echo $(( $(date +%s) - start )) > "$o/$k/test-sec"
+            echo "$m: $(grep -h 'tests passed' "$o/$k/ctest-1.log") ; rerun: $(grep -h 'tests passed\|No tests were found' "$o/$k/ctest-2.log")"
+          done
+      - name: Write the reports
+        if: always()
+        run: |
+          o="$RUNNER_TEMP/out"
+          fails() { awk '/^The following tests FAILED:/{f=1;next} f&&/^[ \t]+[0-9]+ - /{sub(/^[ \t]+[0-9]+ - /,"");sub(/ \(.*\)$/,"");print;next} f&&!/^[ \t]/{f=0}' "$@" 2>/dev/null | sort -u || true; }
+          for m in $MODELS; do
+            k=$(echo "$m" | tr '[:upper:]' '[:lower:]'); d="$o/$k"; mkdir -p "$d"
+            fails "$d/ctest-1.log" > "$d/failures-1.txt"
+            fails "$d/ctest-2.log" > "$d/failures-2.txt"
+            cp "$d/failures-1.txt" "$d/failures.txt"
+            {
+              echo "pr=$PR"
+              echo "os=linux"
+              echo "kind=$k"
+              echo "job=linux/cpu"
+              echo "cpu=$m"
+              echo "head=$HEAD"
+              echo "main=$MAIN"
+              echo "merged=${{ steps.merge.outputs.merged }}"
+              echo "status=$(cat "$o/status" 2>/dev/null || echo tested)"
+              echo "build_rc=$(cat "$o/build-rc" 2>/dev/null)"
+              echo "build_sec=$(cat "$o/build-sec" 2>/dev/null)"
+              echo "test_sec=$(cat "$d/test-sec" 2>/dev/null)"
+              echo "failed_targets=$(grep -c '^FAILED:' "$o/build.log" 2>/dev/null || true)"
+              echo "run1=$(grep -h 'tests passed' "$d/ctest-1.log" 2>/dev/null)"
+              echo "run2=rerun of run 1 failures: $(grep -h 'tests passed\|No tests were found' "$d/ctest-2.log" 2>/dev/null)"
+              echo "emulated=$(cat "$o/emulated" 2>/dev/null) of $(cat "$o/total" 2>/dev/null) tests under qemu-x86_64 -cpu $m; Python-driven tests and child processes run natively"
+              cat "$o/trap" 2>/dev/null || echo "trap_check=not run"
+              echo "qemu=$(qemu-x86_64 --version | head -n 1)"
+              echo "gcc=$(gcc -dumpfullversion 2>/dev/null)"
+              echo "runner=${ImageOS:-ubuntu} ${ImageVersion:-}"
+              echo "url=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            } > "$d/report.txt"
+            cp "$o/emulation.txt" "$d/" 2>/dev/null || true
+            grep -h '^FAILED:' -A 8 "$o/build.log" 2>/dev/null | head -n 60 > "$d/build-errors.txt" || true
+            for t in $(head -n 10 "$d/failures.txt"); do grep -h -A 25 "Test *#[0-9]*: $t " "$d/ctest-1.log" | head -n 40; done > "$d/failure-output.txt" 2>/dev/null || true
+            rm -f "$d/ctest-1.log" "$d/ctest-2.log"
+            cat "$d/report.txt"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r-${{ matrix.pr }}-linux-sandybridge
+          path: ${{ runner.temp }}/out/sandybridge
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: r-${{ matrix.pr }}-linux-westmere
+          path: ${{ runner.temp }}/out/westmere
           retention-days: 14
