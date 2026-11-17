@@ -2407,6 +2407,7 @@ bool recordDrawCommandsImpl(const Context& context, VkCommandBuffer commands, co
     };
     const auto* args = indirect != nullptr ? indirect->args : nullptr;
     if (MeshDrawRunsAsCompute(context, state)) {
+        CountVkDraw(VkDrawKind::Indirect);
         context.Function<PFN_vkCmdDrawIndirect>("vkCmdDrawIndirect")(commands, argumentBuffer, argumentOffset, 1, sizeof(VkDrawIndirectCommand));
         recorded(subdraw++);
         emitted = true;
