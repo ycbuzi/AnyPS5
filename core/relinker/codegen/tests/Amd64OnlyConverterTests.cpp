@@ -1156,6 +1156,42 @@ void converterIslandInTrapPadding() {
         require(site.Offset + site.Length <= entry, "An island in the int3 padding after a jump ran into the next function");
 }
 
+void converterIslandInDeadPadding() {
+    const auto converter = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTarget::Rosetta);
+    const Bytes halves = {0xC5, 0xF8, 0x11, 0x07, 0xC4, 0xE3, 0x7D, 0x19, 0x47, 0x10, 0x01};
+    const auto convert = [&](const Bytes& head) {
+        Bytes text = head;
+        text.insert(text.end(), {0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC5, 0xFC, 0x11, 0x07, 0x48, 0x83, 0xC1, 0x01, 0xEB, 0xF6, 0xEB, 0xF8, 0xC3});
+        Bytes file(0x300 + text.size(), 0xCC);
+        std::copy(text.begin(), text.end(), file.begin() + 0x200);
+        return converter->Convert(file, {segmentHeader(text.size())});
+    };
+    const auto dead = convert({0xE9, 0x00, 0x01, 0x00, 0x00});
+    require(dead.Trampolines.size() == 1 && dead.KeptCount == 0, "A 256-bit store between branch targets was not lowered through the dead padding after a jump");
+    const auto& island = dead.Trampolines[0];
+    Bytes jumped = halves;
+    jumped.insert(jumped.end(), {0xE9, 0, 0, 0, 0});
+    require(island.Offset == 0x208 && island.Length == 5, "The island in dead padding is not the closest five bytes inside the padding");
+    require(Bytes(island.Body.begin(), island.Body.begin() + static_cast<std::ptrdiff_t>(island.ReturnBranchOffset)) == jumped && island.Relocations.size() == 1 && island.Relocations[0].SiteTarget == 9, "The island in dead padding does not store both halves and return after the original store");
+    require(Bytes(dead.Bytes.begin() + 0x20D, dead.Bytes.begin() + 0x211) == Bytes{0xEB, 0xF9, 0xCC, 0xCC}, "The 256-bit store was not replaced by a short jump to the dead padding");
+    requireFailure([&] { (void)convert({0xE8, 0x00, 0x01, 0x00, 0x00}); }, "Padding after a call, which the call returns to, was used as an island");
+}
+
+void converterIslandOverPendingStore() {
+    const auto converter = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTarget::Rosetta);
+    const Bytes text = {0xC5, 0xFC, 0x11, 0x07, 0xC5, 0xFC, 0x11, 0x47, 0x08, 0x48, 0x83, 0xC1, 0x01, 0x48, 0x83, 0xC1, 0x01, 0xEB, 0xED, 0xEB, 0xEF, 0xC3};
+    Bytes file(0x300 + text.size(), 0xCC);
+    std::copy(text.begin(), text.end(), file.begin() + 0x200);
+    const auto result = converter->Convert(file, {segmentHeader(text.size())});
+    require(result.Trampolines.size() == 2 && result.KeptCount == 0 && result.Reports.size() == 1, "A 256-bit store followed by another store that is a branch target was not lowered through an island over the second store");
+    const auto& moved = result.Trampolines[0];
+    const auto& island = result.Trampolines[1];
+    const Bytes second = {0xC5, 0xF8, 0x11, 0x47, 0x08, 0xC4, 0xE3, 0x7D, 0x19, 0x47, 0x18, 0x01};
+    require(moved.Offset == 0x204 && moved.Length == 5 && Bytes(moved.Body.begin(), moved.Body.begin() + static_cast<std::ptrdiff_t>(second.size())) == second, "The island did not lower the second store it moved");
+    require(island.Offset == 0x209 && island.Length == 5 && island.Relocations.size() == 1 && island.Relocations[0].SiteTarget == -5, "The island does not return to the second store after lowering the first");
+    require(Bytes(result.Bytes.begin() + 0x200, result.Bytes.begin() + 0x204) == Bytes{0xEB, 0x07, 0xCC, 0xCC}, "The first store was not replaced by a short jump to its island");
+}
+
 void converterClaimedFollower() {
     const auto converter = Codegen::MakeAmd64OnlyConverter(Codegen::Amd64OnlyTarget::Rosetta);
     for (const auto& [shortInstruction, name] : {std::pair{Bytes{0x0F, 0x53, 0xCA}, "RCPPS"}, std::pair{Bytes{0xF3, 0x0F, 0xC7, 0xF8}, "RDPID"}}) {
@@ -2632,6 +2668,8 @@ int main() {
         converterWideStoreIslandAcrossInt64Max();
         converterIslandIndirectEntries();
         converterIslandInTrapPadding();
+        converterIslandInDeadPadding();
+        converterIslandOverPendingStore();
         converterClaimedFollower();
         converterJumpTableTargets();
         converterReciprocal();

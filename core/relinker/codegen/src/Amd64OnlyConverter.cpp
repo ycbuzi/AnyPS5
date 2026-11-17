@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <codegen/x86/VexLegacyLowering.hpp>
 #include <cstring>
+#include <functional>
 #include <limits>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -53,8 +55,10 @@ public:
         const std::set<std::uint64_t>& branchTargets,
         const std::set<std::size_t>& pending,
         const std::set<std::size_t>& claimed,
-        const IAmd64OnlyInstructionMatcher& matcher
-    ) : _seg(seg), _matches(matches), _ph(ph), _branchTargets(branchTargets), _pending(pending), _claimed(claimed), _matcher(matcher) {}
+        const IAmd64OnlyInstructionMatcher& matcher,
+        std::map<std::uint64_t, std::uint64_t>& deadIslands,
+        std::function<const IAmd64OnlyInstructionMatcher&(std::uint64_t)> matcherAt
+    ) : _seg(seg), _matches(matches), _ph(ph), _branchTargets(branchTargets), _pending(pending), _claimed(claimed), _matcher(matcher), _deadIslands(deadIslands), _matcherAt(std::move(matcherAt)) {}
 
     [[nodiscard]] std::optional<Placement> Window(const std::size_t index) const {
         std::optional<Placement> fallback;
@@ -126,6 +130,55 @@ public:
         }
     }
 
+    [[nodiscard]] std::optional<Placement> IslandOverPending(const std::size_t index) {
+        _takePending = true;
+        auto placement = Island(index);
+        _takePending = false;
+        return placement;
+    }
+
+    [[nodiscard]] std::optional<Placement> DeadIsland(const std::size_t index) {
+        using Amd64OnlySubstitutionTable::kJmpRel32;
+        if (_matches[index].Length < kShortJumpSize)
+            return std::nullopt;
+        const auto from = _address(index) + kShortJumpSize;
+        const auto offset = _matches[index].Offset;
+        const auto low = offset > kIslandSearchBytes ? offset - kIslandSearchBytes : 0;
+        auto k = static_cast<std::size_t>(std::lower_bound(_matches.begin(), _matches.end(), low, [](const auto& candidate, const std::uint64_t value) { return candidate.Offset < value; }) - _matches.begin());
+        std::optional<std::uint64_t> best;
+        for (; k + 1 < _matches.size() && _matches[k].Offset <= offset + kIslandSearchBytes; ++k) {
+            if (!_endsFlow(k))
+                continue;
+            const auto runStart = _end(k);
+            const auto entry = _branchTargets.lower_bound(runStart);
+            for (auto j = k + 1; j < _matches.size() && _address(j) == _end(j - 1) && _padding(j) && !_pending.contains(j) && (!_claimed.contains(j) || _deadOverlap(_address(j), _end(j))); ++j) {
+                if (entry != _branchTargets.end() && *entry < _end(j))
+                    break;
+                if (_end(j) - runStart < kJmpRel32.Size)
+                    continue;
+                for (auto island = std::clamp(from, runStart, _end(j) - kJmpRel32.Size); island + kJmpRel32.Size <= _end(j); ++island) {
+                    const auto reach = _distance(island, from);
+                    if (reach > std::numeric_limits<std::int8_t>::max())
+                        break;
+                    if (reach < std::numeric_limits<std::int8_t>::min() || _deadOverlap(island, island + kJmpRel32.Size))
+                        continue;
+                    if (!best || _gap(island, from) < _gap(*best, from))
+                        best = island;
+                    break;
+                }
+            }
+        }
+        if (!best)
+            return std::nullopt;
+        try {
+            auto placement = _buildDeadIsland(index, *best);
+            _deadIslands[*best] = *best + kJmpRel32.Size;
+            return placement;
+        } catch (const CodegenException&) {
+            return std::nullopt;
+        }
+    }
+
 private:
     std::vector<std::uint8_t>& _seg;
     const std::vector<InstructionMatch>& _matches;
@@ -134,7 +187,28 @@ private:
     const std::set<std::size_t>& _pending;
     const std::set<std::size_t>& _claimed;
     const IAmd64OnlyInstructionMatcher& _matcher;
+    std::map<std::uint64_t, std::uint64_t>& _deadIslands;
+    std::function<const IAmd64OnlyInstructionMatcher&(std::uint64_t)> _matcherAt;
+    bool _takePending = false;
     X64InstructionDecoder _decoder;
+
+    [[nodiscard]] bool _laterPending(const std::size_t index, const std::size_t k) const {
+        return _takePending && k > index && _pending.contains(k) && !_claimed.contains(k);
+    }
+
+    [[nodiscard]] static std::uint64_t _gap(const std::uint64_t a, const std::uint64_t b) { return a > b ? a - b : b - a; }
+
+    [[nodiscard]] bool _endsFlow(const std::size_t index) const {
+        const auto kind = _info(index).FlowKind;
+        return kind == ControlFlowKind::UnconditionalJump || kind == ControlFlowKind::Return || kind == ControlFlowKind::IndirectJump || kind == ControlFlowKind::Trap;
+    }
+
+    [[nodiscard]] bool _deadOverlap(const std::uint64_t start, const std::uint64_t end) const {
+        const auto next = _deadIslands.lower_bound(start);
+        if (next != _deadIslands.end() && next->first < end)
+            return true;
+        return next != _deadIslands.begin() && std::prev(next)->second > start;
+    }
 
     [[nodiscard]] std::uint64_t _address(const std::size_t index) const { return _ph.MappedAddress + _matches[index].Offset; }
     [[nodiscard]] std::uint64_t _end(const std::size_t index) const { return _address(index) + _matches[index].Length; }
@@ -232,7 +306,7 @@ private:
         using Amd64OnlySubstitutionTable::kJmpRel32;
         std::size_t head = 0;
         for (auto last = start; last < _matches.size(); ++last) {
-            if (!_movable(last, true) || _enteredWithin(start, last))
+            if ((!_laterPending(index, last) && !_movable(last, true)) || _enteredWithin(start, last))
                 return std::nullopt;
             if (head == 0 && _end(last) - _address(start) >= kJmpRel32.Size)
                 head = static_cast<std::size_t>(_end(last) - _address(start));
@@ -253,6 +327,29 @@ private:
         return std::nullopt;
     }
 
+    [[nodiscard]] Placement _buildDeadIsland(const std::size_t index, const std::uint64_t island) {
+        using Amd64OnlySubstitutionTable::kJmpRel32;
+        const auto store = _address(index);
+        Placement placement;
+        StubBodyBuilder lowered;
+        lowered.Seek(_distance(store, island));
+        _matcher.EmitOutOfLine(lowered, _bytes(index));
+        lowered.JumpTo(_distance(_end(index), island));
+        placement.Sites.push_back(_site(island, kJmpRel32.Size, lowered.Finish()));
+        placement.ReplacementLength = placement.Sites.back().Body.size();
+        placement.Claimed.push_back(index);
+        const auto start = island - _ph.MappedAddress;
+        for (auto k = static_cast<std::size_t>(std::upper_bound(_matches.begin(), _matches.end(), start, [](const std::uint64_t value, const auto& candidate) { return value < candidate.Offset; }) - _matches.begin()); k > 0 && _end(k - 1) > island; --k)
+            placement.Claimed.push_back(k - 1);
+        for (auto k = static_cast<std::size_t>(std::upper_bound(_matches.begin(), _matches.end(), start, [](const std::uint64_t value, const auto& candidate) { return value < candidate.Offset; }) - _matches.begin()); k < _matches.size() && _address(k) < island + kJmpRel32.Size; ++k)
+            placement.Claimed.push_back(k);
+        const auto offset = _matches[index].Offset;
+        std::fill_n(_seg.begin() + static_cast<std::ptrdiff_t>(offset), _matches[index].Length, Amd64OnlySubstitutionTable::kTrapFill);
+        _seg[offset] = X64OpcodeConstants::OneByteJmpRel8;
+        _seg[offset + 1] = static_cast<std::uint8_t>(static_cast<std::int8_t>(_distance(island, store + kShortJumpSize)));
+        return placement;
+    }
+
     [[nodiscard]] Placement _buildIsland(const std::size_t index, const std::size_t start, const std::size_t last, const std::size_t head) {
         using Amd64OnlySubstitutionTable::kJmpRel32;
         const auto windowStart = _address(start);
@@ -263,7 +360,12 @@ private:
 
         StubBodyBuilder moved;
         for (auto k = start; k <= last; ++k) {
-            moved.MoveControlFlow(_bytes(k), _info(k));
+            if (_laterPending(index, k)) {
+                _matcherAt(_matches[k].Offset).EmitOutOfLine(moved, _bytes(k), true);
+                placement.Consumed.push_back(k);
+            } else {
+                moved.MoveControlFlow(_bytes(k), _info(k));
+            }
             placement.Claimed.push_back(k);
         }
         if (!_blocksFollowing(last))
@@ -459,6 +561,7 @@ void Amd64OnlyConverter::_convertSegment(
         pendingIndices.insert(item.Index);
     std::set<std::size_t> claimed;
     std::set<std::size_t> consumed;
+    std::map<std::uint64_t, std::uint64_t> deadIslands;
 
     const auto countKept = [&](const auto& kept) {
         if (!_reportUnlowered) return;
@@ -489,7 +592,7 @@ void Amd64OnlyConverter::_convertSegment(
         }
         case Amd64OnlyLowering::Trampoline: {
             if (substitution.RelocatableWindow && match.Length < Amd64OnlySubstitutionTable::kJmpRel32.Size) {
-                WindowPlacer placer(seg, matches, ph, branchTargets, pendingIndices, claimed, matcherAt(match.Offset));
+                WindowPlacer placer(seg, matches, ph, branchTargets, pendingIndices, claimed, matcherAt(match.Offset), deadIslands, matcherAt);
                 auto placement = placer.Window(item.Index);
                 if (!placement)
                     placement = placer.Island(item.Index);
@@ -508,6 +611,10 @@ void Amd64OnlyConverter::_convertSegment(
                         }
                     }
                 }
+                if (!placement)
+                    placement = placer.DeadIsland(item.Index);
+                if (!placement)
+                    placement = placer.IslandOverPending(item.Index);
                 if (!placement && substitution.Optional) {
                     ++result.KeptCount;
                     result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});
