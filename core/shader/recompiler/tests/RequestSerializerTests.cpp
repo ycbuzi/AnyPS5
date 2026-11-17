@@ -879,7 +879,6 @@ int VerifyVersion56Compatibility() {
         version35.pop_back();
         version35.pop_back();
         version35.pop_back();
-        version35.pop_back();
         version35.resize(version35.size() - sizeof(std::uint32_t));
         version35.pop_back();
         version35.pop_back();
@@ -1018,7 +1017,6 @@ int VerifyVersion56Compatibility() {
         bytes[4] = 44u;
         Require(serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic == fused);
         bytes[4] = 43u;
-        bytes.pop_back();
         bytes.pop_back();
         Require(!serializer.Deserialize(EncodeBase64(bytes)).request.target.fusedExactArithmetic);
     }
