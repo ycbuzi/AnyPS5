@@ -113,6 +113,21 @@ static void CheckLowered() {
     Require(LoweredHostCpuFeatures() == 0, "the test executable carries no lowered-feature header");
 }
 
+static void CheckSseOnlyHost() {
+    auto registers = Zen2();
+    registers.Leaf1Ecx &= ~(Bit(12) | Bit(28) | Bit(29));
+    registers.Leaf7Ebx &= ~(Bit(3) | Bit(5) | Bit(8));
+    registers.Leaf80000001Ecx &= ~Bit(5);
+    registers.Xcr0 = 0x3;
+    Require(MissingHostCpuFeatures(registers, 0xF) == std::vector<std::string>{"AVX", "AVX2", "FMA", "F16C", "OS AVX state (XCR0)"}, "an executable with VEX instructions left must still need AVX, AVX2, FMA, F16C and the AVX state");
+    Require(MissingHostCpuFeatures(registers, 0x1FF).empty(), "an executable with every VEX instruction lowered must run on an SSE4.2 host");
+    Require(MissingHostCpuFeatures(registers, 0x10F) == std::vector<std::string>{"AVX", "AVX2", "FMA", "F16C"}, "each vector bit must drop only its own feature");
+    CheckHostCpu(registers, "SSE4.2 CPU", 0x1FF);
+    bool threw = false;
+    try { CheckHostCpu(registers, "SSE4.2 CPU", 0xF); } catch (const std::runtime_error&) { threw = true; }
+    Require(threw, "an SSE4.2 host passed the gate for an executable that still has VEX instructions");
+}
+
 static void CheckError() {
     auto registers = Zen2();
     registers.Leaf7Ebx &= ~Bit(8);
@@ -163,6 +178,7 @@ int main() {
         CheckAvxWithoutOsState();
         CheckPreHaswell();
         CheckLowered();
+        CheckSseOnlyHost();
         CheckError();
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

@@ -23,11 +23,18 @@ enum LoweredHostCpuFeature : std::uint32_t {
     LoweredLzcnt = 1u << 0,
     LoweredBmi1 = 1u << 1,
     LoweredBmi2 = 1u << 2,
-    LoweredMovbe = 1u << 3
+    LoweredMovbe = 1u << 3,
+    LoweredAvx = 1u << 4,
+    LoweredAvx2 = 1u << 5,
+    LoweredFma = 1u << 6,
+    LoweredF16c = 1u << 7,
+    LoweredAvxState = 1u << 8
 };
 
-[[nodiscard]] constexpr std::uint32_t LoweredHostCpuFeatures(const Amd64OnlyTarget target) {
-    return target == Amd64OnlyTarget::Sse ? LoweredLzcnt | LoweredBmi1 | LoweredBmi2 | LoweredMovbe : 0u;
+[[nodiscard]] constexpr std::uint32_t LoweredHostCpuFeatures(const Amd64OnlyTarget target, const bool everyVexLowered = false) {
+    if (target != Amd64OnlyTarget::Sse) return 0u;
+    const std::uint32_t scalar = LoweredLzcnt | LoweredBmi1 | LoweredBmi2 | LoweredMovbe;
+    return everyVexLowered ? scalar | LoweredAvx | LoweredAvx2 | LoweredFma | LoweredF16c | LoweredAvxState : scalar;
 }
 
 inline constexpr std::uint64_t kUpperShadowBytes = 256;

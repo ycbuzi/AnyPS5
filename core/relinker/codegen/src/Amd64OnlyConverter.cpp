@@ -460,6 +460,10 @@ void Amd64OnlyConverter::_convertSegment(
     std::set<std::size_t> claimed;
     std::set<std::size_t> consumed;
 
+    const auto countKept = [&](const auto& kept) {
+        if (!_reportUnlowered) return;
+        if (const auto form = VexFormName(seg.data() + kept.Offset, kept.Length)) ++result.Unlowered[*form];
+    };
     std::size_t processed = 0;
     for (const auto& item : pending) {
         if (progress && processed != 0 && processed % 256 == 0) progress(completed + std::uint64_t{2} * segSize + item.Instruction.Offset, total);
@@ -507,6 +511,7 @@ void Amd64OnlyConverter::_convertSegment(
                 if (!placement && substitution.Optional) {
                     ++result.KeptCount;
                     result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});
+                    countKept(match);
                     continue;
                 }
                 if (!placement)
@@ -573,6 +578,7 @@ void Amd64OnlyConverter::_convertSegment(
                     throw;
                 ++result.KeptCount;
                 result.Reports.push_back({substitution.InstructionName, fileOffset, match.Length, 0, Amd64OnlyLowering::Kept});
+                countKept(match);
                 continue;
             }
             break;

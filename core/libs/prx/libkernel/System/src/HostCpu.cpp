@@ -173,7 +173,7 @@ std::vector<HostCpuFeature> HostCpuFeatures(const HostCpuRegisters& registers) {
 namespace {
 
 constexpr std::uint32_t kLoweredCpuHeader = 0x61a50001;
-constexpr const char* kLoweredFeatureNames[] = {"LZCNT", "BMI1", "BMI2", "MOVBE"};
+constexpr const char* kLoweredFeatureNames[] = {"LZCNT", "BMI1", "BMI2", "MOVBE", "AVX", "AVX2", "FMA", "F16C", "OS AVX state (XCR0)"};
 
 bool Lowered(const std::string& name, const std::uint32_t lowered) {
     for (std::size_t bit = 0; bit < std::size(kLoweredFeatureNames); ++bit)
@@ -228,7 +228,7 @@ HostCpuText HostCpuModel_nid_no_patch() {
 }
 
 HostCpuText MissingHostCpuFeatures_nid_no_patch(const HostCpuRegisters* registers) {
-    return PackText(Join(MissingHostCpuFeatures(*registers)));
+    return PackText(Join(MissingHostCpuFeatures(*registers, LoweredHostCpuFeatures())));
 }
 
 }

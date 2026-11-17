@@ -483,10 +483,18 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         progress.Report({Domain::ProgressStage::Modules, Io::Utf8Path(image.SourcePath), artifacts.size(), order.size()});
         std::vector<Domain::ProgramHeader> codeHeaders;
         for (const auto& header : image.Headers) if (header.Type == 1 && (header.Flags & 1) != 0) codeHeaders.push_back(header);
+        std::size_t unloweredVex = 0;
         if (toIntel) {
             auto converted = Codegen::MakeAmd64OnlyConverter(target, [&](auto completed, auto total) { progress.Report({Domain::ProgressStage::Lowering, Io::Utf8Path(image.SourcePath), completed, total}); })->Convert(std::move(image.Bytes), image.Headers);
             image.Trampolines = std::move(converted.Trampolines);
             image.Bytes = std::move(converted.Bytes);
+            for (const auto* forms : {&converted.Unlowered, &converted.Avx512Mask})
+                for (const auto& [form, count] : *forms) {
+                    unloweredVex += count;
+                    std::ostringstream message;
+                    message << "Intel conversion: " << Io::Utf8Path(image.SourcePath.filename()) << ": " << form << " not lowered at " << count << " sites\n";
+                    progress.Message(message.str());
+                }
             if (!image.PatchedRanges.empty()) GamePatch::CheckOverlaps(Io::Utf8Path(image.SourcePath), image.PatchedRanges, {.Reports = converted.Reports, .Trampolines = image.Trampolines});
         }
         if (!image.PatchedRanges.empty()) GamePatch::CheckOverlaps(Io::Utf8Path(image.SourcePath), image.PatchedRanges, {.RelaData = image.Dynamic.RelaData, .RelaPltData = image.Dynamic.RelaPltData});
@@ -592,7 +600,7 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         std::vector<std::string> neededLibraries;
         for (const auto& name : image.Dependencies)
             if (findGuest(name) == guestNames.end() && !unavailableUnused(index, name)) neededLibraries.push_back(hostLibrary(name));
-        artifacts.push_back({target, std::move(output), std::move(imports), image.SourcePath, std::move(neededLibraries)});
+        artifacts.push_back({target, std::move(output), std::move(imports), image.SourcePath, std::move(neededLibraries), unloweredVex});
         progress.Report({Domain::ProgressStage::Modules, Io::Utf8Path(image.SourcePath), artifacts.size(), order.size()});
     }
     return artifacts;

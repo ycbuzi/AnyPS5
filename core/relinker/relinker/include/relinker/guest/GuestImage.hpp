@@ -78,6 +78,7 @@ struct GuestArtifact {
     std::vector<Domain::CallRegistryEntry> Imports;
     std::filesystem::path SourcePath;
     std::vector<std::string> NeededLibraries;
+    std::size_t UnloweredVex = 0;
 };
 
 struct GuestModuleInput {

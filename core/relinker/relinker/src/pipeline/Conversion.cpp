@@ -73,6 +73,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
         }
     }
     std::vector<Codegen::TrampolineSite> trampolines;
+    std::size_t unloweredVex = 0;
     if (options.ToIntel) {
         const auto segments = Relinker::ElfReader(sourceBytes).ReadProgramHeaders();
         std::optional<Codegen::UpperShadowContext> shadow;
@@ -115,6 +116,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             inputProgress.Message(message.str());
         }
         { std::ostringstream message; message << "Intel conversion: " << maskOperations << " AVX-512 mask instructions kept (not on PS5 hardware)\n"; inputProgress.Message(message.str()); }
+        unloweredVex = unlowered + maskOperations;
         { std::ostringstream message; message << "Intel conversion: " << converted.ReplacedCount << " in place, " << trampolines.size() << " stubs, " << converted.KeptCount << " kept, " << unlowered << " VEX instructions not lowered\n"; inputProgress.Message(message.str()); }
     }
 
@@ -222,7 +224,10 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
                 throw Domain::RelinkerException("SSE conversion does not yet support an executable whose PT_TLS has initialised data");
             tls->MemorySize += Codegen::UpperShadowReservation(tls->Alignment);
         }
-        if (const auto lowered = Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse)); lowered != 0 && !windows && !macos)
+        for (const auto& artifact : guestArtifacts) unloweredVex += artifact.UnloweredVex;
+        if (options.ToSse && unloweredVex != 0)
+            { std::ostringstream message; message << "SSE conversion: " << unloweredVex << " VEX instructions remain, so the executable still needs AVX, AVX2, FMA and F16C\n"; inputProgress.Message(message.str()); }
+        if (const auto lowered = Codegen::LoweredHostCpuFeatures(Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse), unloweredVex == 0); lowered != 0 && !windows && !macos)
             headers.push_back(Domain::ProgramHeader{Elfpatcher::PT_ANYPS5_LOWERED_CPU, lowered, 0, 0, 0, 0, 0, 1});
         executableBytes = patcher->Patch(std::move(sourceBytes), headers, result.DynamicSection, result.OriginalPltGotVaddr, options.RunPath, options.LazyBinding, options.WindowsDiagnostics, trampolines);
     } catch (Domain::RelinkerException& error) {
