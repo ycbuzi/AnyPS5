@@ -233,11 +233,15 @@ bool SystemImage(const GuestImage& image) {
     return !std::string_view(symbol.dli_fname).ends_with(GuestModuleSuffix);
 }
 #elif !defined(_WIN32)
+constexpr std::size_t UnloadsEnd = offsetof(dl_phdr_info, dlpi_subs) + sizeof(dl_phdr_info::dlpi_subs);
+constexpr std::size_t TlsModuleEnd = offsetof(dl_phdr_info, dlpi_tls_modid) + sizeof(dl_phdr_info::dlpi_tls_modid);
+
 template<typename TInfo>
 struct ImageSearch {
     std::uintptr_t address;
     TInfo* info;
     bool found;
+    bool tlsModuleMissing;
 };
 
 bool Contains(const dl_phdr_info& image, std::uintptr_t begin, std::uint64_t size) {
@@ -256,7 +260,9 @@ struct FrameTableCache {
     std::unordered_map<std::uintptr_t, EhFrame::Tables> tables;
 };
 
-EhFrame::Tables FrameTables(const dl_phdr_info& image, std::uintptr_t header) {
+EhFrame::Tables FrameTables(const dl_phdr_info& image, std::size_t size, std::uintptr_t header) {
+    const auto contains = [&](std::uintptr_t begin, std::uint64_t length) { return Contains(image, begin, length); };
+    if (size < UnloadsEnd) return EhFrame::ReadTables(contains, header, Caller);
     static auto& cache = *new FrameTableCache();
     std::lock_guard lock(cache.mutex);
     if (cache.unloads != image.dlpi_subs) {
@@ -264,7 +270,6 @@ EhFrame::Tables FrameTables(const dl_phdr_info& image, std::uintptr_t header) {
         cache.unloads = image.dlpi_subs;
     }
     if (const auto found = cache.tables.find(header); found != cache.tables.end()) return found->second;
-    const auto contains = [&](std::uintptr_t begin, std::uint64_t size) { return Contains(image, begin, size); };
     return cache.tables.emplace(header, EhFrame::ReadTables(contains, header, Caller)).first->second;
 }
 
@@ -279,10 +284,25 @@ std::string ImageName(const dl_phdr_info& image) {
     return ModuleName(path.substr(path.find_last_of('/') + 1));
 }
 
+bool HasTls(const dl_phdr_info& image) {
+    for (std::uint16_t i = 0; i < image.dlpi_phnum; ++i)
+        if (image.dlpi_phdr[i].p_type == PT_TLS && image.dlpi_phdr[i].p_memsz != 0) return true;
+    return false;
+}
+
+std::uint32_t LoaderTlsModule(const void* native) {
+#ifdef RTLD_DI_TLS_MODID
+    std::size_t module = 0;
+    if (native && ::dlinfo(const_cast<void*>(native), RTLD_DI_TLS_MODID, &module) == 0) return ToU32(module, "TLS module index");
+#endif
+    return 0;
+}
+
 template<typename TInfo>
-void Fill(const dl_phdr_info& image, TInfo& info) {
+void Fill(const dl_phdr_info& image, std::size_t size, TInfo& info) {
     SetName(info, ImageName(image));
-    if constexpr (Extended<TInfo>) info.tls_index = ToU32(image.dlpi_tls_modid, "TLS module index");
+    if constexpr (Extended<TInfo>)
+        if (size >= TlsModuleEnd) info.tls_index = ToU32(image.dlpi_tls_modid, "TLS module index");
     for (std::uint16_t i = 0; i < image.dlpi_phnum; ++i) {
         const auto& header = image.dlpi_phdr[i];
         const std::uintptr_t address = image.dlpi_addr + header.p_vaddr;
@@ -298,7 +318,7 @@ void Fill(const dl_phdr_info& image, TInfo& info) {
                 info.tls_size = ToU32(header.p_memsz, "TLS size");
                 info.tls_align = ToU32(header.p_align, "TLS alignment");
             } else if (header.p_type == PT_GNU_EH_FRAME) {
-                const auto tables = FrameTables(image, address);
+                const auto tables = FrameTables(image, size, address);
                 info.eh_frame_hdr_addr = address;
                 info.eh_frame_hdr_size = ToU32(header.p_memsz, "eh_frame_hdr size");
                 info.eh_frame_addr = tables.frames;
@@ -315,11 +335,12 @@ void Fill(const dl_phdr_info& image, TInfo& info) {
 }
 
 template<typename TInfo>
-int FindImage(dl_phdr_info* image, std::size_t, void* data) {
+int FindImage(dl_phdr_info* image, std::size_t size, void* data) {
     auto& search = *static_cast<ImageSearch<TInfo>*>(data);
     if (!Contains(*image, search.address, 1)) return 0;
-    Fill(*image, *search.info);
+    Fill(*image, size, *search.info);
     search.found = true;
+    search.tlsModuleMissing = Extended<TInfo> && size < TlsModuleEnd && HasTls(*image);
     return 1;
 }
 
@@ -531,10 +552,13 @@ int FillModuleInfo(KernelModule handle, TInfo* info, bool titleOnly) {
 #if defined(_WIN32) || defined(__APPLE__)
         if (!Fill(image.address, result)) return SCE_KERNEL_ERROR_ESRCH;
 #else
-        ImageSearch<TInfo> search{image.address, &result, false};
+        ImageSearch<TInfo> search{image.address, &result, false, false};
         dl_iterate_phdr(FindImage<TInfo>, &search);
         if (!search.found) return SCE_KERNEL_ERROR_ESRCH;
-        if constexpr (std::is_same_v<TInfo, ModuleInfoEx>) result.id = handle;
+        if constexpr (std::is_same_v<TInfo, ModuleInfoEx>) {
+            result.id = handle;
+            if (search.tlsModuleMissing) result.tls_index = LoaderTlsModule(image.native);
+        }
 #endif
         if (!GuestCopyOut_nid_no_patch(info, &result, sizeof(result))) return SCE_KERNEL_ERROR_EFAULT;
         return 0;
@@ -584,11 +608,12 @@ int APS5_VABI sceKernelGetModuleInfoFromAddr(std::uint64_t address, int flags, M
 #else
     Dl_info symbol{};
     link_map* native = nullptr;
-    ImageSearch<ModuleInfoEx> search{static_cast<std::uintptr_t>(address), &result, false};
+    ImageSearch<ModuleInfoEx> search{static_cast<std::uintptr_t>(address), &result, false, false};
     if (dladdr1(reinterpret_cast<const void*>(address), &symbol, reinterpret_cast<void**>(&native), RTLD_DL_LINKMAP) && native)
         dl_iterate_phdr(FindImage<ModuleInfoEx>, &search);
     const bool found = search.found;
     if (found) result.id = ModuleIdForImage_nid_no_patch(native);
+    if (search.tlsModuleMissing) result.tls_index = LoaderTlsModule(native);
     const GuestImage image{native, 0};
 #endif
     if (!found || (flags == 2 && SystemImage(image))) {
@@ -634,7 +659,7 @@ std::int32_t APS5_VABI sceKernelGetLibkernelTextLocation_nid_postfix(void** addr
 #if defined(_WIN32) || defined(__APPLE__)
     const bool found = Fill(images.front().address, info);
 #else
-    ImageSearch<ModuleInfo> search{images.front().address, &info, false};
+    ImageSearch<ModuleInfo> search{images.front().address, &info, false, false};
     dl_iterate_phdr(FindImage<ModuleInfo>, &search);
     const bool found = search.found;
 #endif

@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -258,9 +259,14 @@ void SnapshotModules() {
 #else
 void SnapshotModules() {
     unsigned long long changes = 0;
-    dl_iterate_phdr([](dl_phdr_info* info, std::size_t, void* data) {
-        *static_cast<unsigned long long*>(data) = info->dlpi_adds + info->dlpi_subs;
-        return 1;
+    dl_iterate_phdr([](dl_phdr_info* info, std::size_t size, void* data) {
+        auto& key = *static_cast<unsigned long long*>(data);
+        if (size >= offsetof(dl_phdr_info, dlpi_subs) + sizeof(info->dlpi_subs)) {
+            key = info->dlpi_adds + info->dlpi_subs;
+            return 1;
+        }
+        key = key * 31 + info->dlpi_addr + 1;
+        return 0;
     }, &changes);
     if (changes == g_moduleChanges) return;
     g_moduleChanges = changes;
