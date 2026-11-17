@@ -98,12 +98,29 @@ bool MergedHullStage(const RecompileRequest& request) {
     return (stage == ShaderStage::Local || stage == ShaderStage::TessellationControl) && request.graphics && request.graphics->tessellation && request.graphics->tessellation->mergedHull;
 }
 
+bool HostStageSubgroups(const RecompileRequest& request) {
+    switch (request.shader.stage) {
+    case ShaderStage::Vertex:
+    case ShaderStage::Local:
+        return request.target.vertexSubgroups;
+    case ShaderStage::TessellationControl:
+        return request.target.tessellationControlSubgroups;
+    case ShaderStage::TessellationEvaluation:
+        return request.target.tessellationEvaluationSubgroups || (request.graphics && request.graphics->mesh);
+    case ShaderStage::Fragment:
+        return request.target.fragmentSubgroups;
+    case ShaderStage::Compute:
+    case ShaderStage::Mesh:
+    case ShaderStage::Geometry:
+        break;
+    }
+    return true;
+}
+
 // The host subgroup width wave64 programs are laid out for. Debug aid: APS5_SINGLE_LANE=<hex code
 // addresses, comma separated, or "all"> keeps the listed programs at one guest lane per invocation.
 std::uint32_t HostSubgroupSize(const RecompileRequest& request) {
-    const bool vertexStage = request.shader.stage == ShaderStage::Vertex || request.shader.stage == ShaderStage::Local;
-    if (vertexStage && !request.target.vertexSubgroups) return 1u;
-    if (request.shader.stage == ShaderStage::TessellationEvaluation && !request.target.tessellationEvaluationSubgroups && !(request.graphics && request.graphics->mesh)) return 1u;
+    if (!HostStageSubgroups(request)) return 1u;
     if (request.shader.stage == ShaderStage::TessellationControl && MergedHullStage(request)) return 1u;
     static const std::string list = [] { const char* text = std::getenv("APS5_SINGLE_LANE"); return text ? std::string(text) : std::string(); }();
     if (!list.empty()) {
@@ -843,7 +860,7 @@ CompiledVariant emitVariant(const RecompileRequest& request, IrProgram& program)
     targetOptions.fusedExactArithmetic = request.target.fusedExactArithmetic;
     targetOptions.largePixelFunctionLdsBuffer = request.target.largePixelFunctionLdsBuffer;
     targetOptions.pixelFunctionStorageDwords = request.target.pixelFunctionStorageDwords;
-    targetOptions.meshBarycentricPixel = request.shader.stage == ShaderStage::Fragment && request.graphics && request.graphics->mesh;
+    targetOptions.meshBarycentricPixel = request.shader.stage == ShaderStage::Fragment && request.graphics && request.graphics->mesh && !request.target.meshAsCompute;
     if (request.shader.stage == ShaderStage::Mesh && request.graphics && request.graphics->meshBarycentrics) {
         const auto& paired = *request.graphics->meshBarycentrics;
         const auto emulated = DescribeEmulatedInterface(paired.parameters, paired.emulation, true);
@@ -883,6 +900,8 @@ CompiledVariant emitVariant(const RecompileRequest& request, IrProgram& program)
     targetOptions.float16WidenNans = request.target.float16WidenNans;
     targetOptions.float16NarrowNans = request.target.float16NarrowNans;
     targetOptions.meshInlineFunctions = request.target.meshInlineFunctions;
+    targetOptions.meshAsCompute = request.target.meshAsCompute;
+    if (targetOptions.meshAsCompute && request.shader.stage == ShaderStage::Mesh && request.graphics && request.graphics->mesh && request.graphics->mesh->outputPrimitiveSize == 1u) throw std::runtime_error("mesh-path points in a mesh program run as compute are not implemented");
 
     constexpr SpirvEmitter spirvEmitter;
     CompiledShaderArtifact result;
@@ -931,9 +950,16 @@ CompiledVariant emitVariant(const RecompileRequest& request, IrProgram& program)
     result.instanceOffsetShared = program.Info().instanceOffsetShared;
     result.vertexOffsetConflict = program.Info().vertexOffsetConflict;
     result.instanceOffsetConflict = program.Info().instanceOffsetConflict;
+    std::uint32_t clipDistances = 0;
+    std::uint32_t cullDistances = 0;
+    bool layer = false;
     for (const auto& output : program.Info().outputs) {
         if (output.kind == StageOutputKind::Parameter) result.parameterExports.push_back(output.location);
+        if (output.kind == StageOutputKind::ClipDistance) clipDistances = std::max(clipDistances, output.index + 1u);
+        if (output.kind == StageOutputKind::CullDistance) cullDistances = std::max(cullDistances, output.index + 1u);
+        layer = layer || output.kind == StageOutputKind::Layer;
     }
+    if (targetOptions.meshAsCompute && request.shader.stage == ShaderStage::Mesh) result.meshRecordLayout = MeshRecordLayout(clipDistances, cullDistances, layer, inputInfo.vertex->mesh.provokingVertex, inputInfo.vertex->mesh.outputPrimitiveSize);
     if (request.shader.stage == ShaderStage::Fragment) {
         result.fragmentParameters = DescribeFragmentParameters(program, inputInfo);
         const auto& inputs = program.Info().inputs;
@@ -1402,6 +1428,7 @@ RecompileResult materializeResult(const CompiledVariant& variant, const Recompil
         .bdaWrites = artifact.bdaWrites,
         .layerReplaySafe = artifact.layerReplaySafe,
         .stencilReferenceDword = artifact.stencilReferenceDword,
+        .meshRecordLayout = artifact.meshRecordLayout,
         .variantId = artifact.variantId
     };
     for (const auto reg : variant.bindings.layout.userDataRegisters) {

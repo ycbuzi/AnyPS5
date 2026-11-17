@@ -3,6 +3,7 @@
 #include "prx/libc/include/HostRegionIndex.hpp"
 #include "prx/libc/include/WindowsMappings.hpp"
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <exception>
@@ -93,7 +94,9 @@ public:
         RequireAllocatable(alignment);
         std::lock_guard lock(_lock);
         if (hint >= _end) throw std::runtime_error("mapping address hint is above the guest address space arena");
-        return Claim(FindAtOrAbove(hint, bytes, alignment), bytes);
+        const auto candidate = FindAtOrAbove(hint, bytes, alignment);
+        if (candidate == 0) ThrowExhausted(hint, bytes, alignment);
+        return Claim(candidate, bytes);
     }
 
     void* AllocateFromHint(std::uintptr_t hint, std::size_t bytes, std::size_t alignment) {
@@ -101,6 +104,7 @@ public:
         std::lock_guard lock(_lock);
         auto candidate = hint < _end ? FindAtOrAbove(hint, bytes, alignment) : 0;
         if (candidate == 0 && hint > _base) candidate = FindAtOrAbove(hint < DefaultAllocationStart ? _base : DefaultAllocationStart, bytes, alignment);
+        if (candidate == 0) ThrowExhausted(hint, bytes, alignment);
         return Claim(candidate, bytes);
     }
 
@@ -287,6 +291,9 @@ private:
         _used.emplace(SystemReservedStart, SystemReservedEnd);
         _hostRegions.emplace_back(SystemReservedStart, SystemReservedEnd);
         ReserveFreeRanges();
+#if defined(__linux__)
+        ReserveFixedWindows();
+#endif
         _base = ArenaStart;
         _end = ApplicationAreaEnd;
     }
@@ -310,6 +317,22 @@ private:
             occupied.emplace_back(cursor, end);
         }
     }
+
+#if defined(__linux__)
+    // Console addresses inside the system reserved range that AnyPS5 maps at those exact addresses later: the AGC
+    // driver memory, whose FS table titles' shaders address as a constant (0xfe0040000). The arena leaves the system
+    // reserved range to the host, so where the host's mmap area reaches it something else can take it first: box64 on
+    // a 39-bit Android kernel (Quest 2) places glibc's per-thread malloc heaps at 0xfc0000000 and up, and TERRIFIER then
+    // aborted with "map the AGC driver memory: File exists". Hold these from the first guest library load, before any
+    // host worker thread exists; the owner takes the reservation over with GuestArenaTakeFixedWindow_nid_no_patch.
+    static constexpr std::array<std::pair<std::uintptr_t, std::size_t>, 1> FixedWindows{{{0x0000000FE0000000ull + GuestArenaOffset, std::size_t{2} << 20}}};
+
+    void ReserveFixedWindows() {
+        for (const auto& window : FixedWindows) {
+            if (ReserveNoReplace(window.first, window.second) == 0) _fixedWindows.push_back(window);
+        }
+    }
+#endif
 
     void ReserveFreeRanges() {
         std::vector<std::pair<std::uintptr_t, std::uintptr_t>> occupied;
@@ -394,6 +417,20 @@ private:
         return candidate;
     }
 
+    [[noreturn]] void ThrowExhausted(std::uintptr_t hint, std::size_t bytes, std::size_t alignment) const {
+        std::uintptr_t largest = 0, largestAt = 0, cursor = _base;
+        for (const auto& [start, end] : _used) {
+            if (start > cursor && start - cursor > largest) { largest = start - cursor; largestAt = cursor; }
+            cursor = std::max(cursor, end);
+            if (cursor >= _end) break;
+        }
+        if (cursor < _end && _end - cursor > largest) { largest = _end - cursor; largestAt = cursor; }
+        char text[256];
+        std::snprintf(text, sizeof(text), "guest address space arena exhausted: 0x%zx bytes (align 0x%zx, hint 0x%zx) requested; arena 0x%zx-0x%zx, largest free 0x%zx at 0x%zx",
+                      bytes, alignment, static_cast<std::size_t>(hint), static_cast<std::size_t>(_base), static_cast<std::size_t>(_end), static_cast<std::size_t>(largest), static_cast<std::size_t>(largestAt));
+        throw std::runtime_error(text);
+    }
+
     void* Claim(std::uintptr_t candidate, std::size_t bytes) {
         if (candidate == 0) throw std::runtime_error("guest address space arena exhausted");
         _used.emplace(candidate, candidate + bytes);
@@ -405,8 +442,18 @@ private:
     std::uintptr_t _occupiedPrefixEnd = ArenaStart;
     std::uintptr_t _occupiedDefaultPrefixEnd = DefaultAllocationStart;
     bool _writeWatched = false;
+    std::vector<std::pair<std::uintptr_t, std::size_t>> _fixedWindows;
 
 public:
+    // True once for a window the arena reserved at startup: the caller then maps over it with MAP_FIXED.
+    bool TakeFixedWindow(std::uintptr_t address, std::size_t bytes) {
+        std::lock_guard lock(_lock);
+        const auto found = std::find(_fixedWindows.begin(), _fixedWindows.end(), std::pair<std::uintptr_t, std::size_t>{address, bytes});
+        if (found == _fixedWindows.end()) return false;
+        _fixedWindows.erase(found);
+        return true;
+    }
+
     std::uintptr_t Base() const { return _base; }
     std::size_t Size() const { return _end - _base; }
     bool WriteWatched() const { return _writeWatched; }
@@ -475,6 +522,10 @@ bool GuestArenaNextUsed_nid_no_patch(std::uintptr_t address, std::uintptr_t* sta
 
 void GuestArenaMarkUsed_nid_postfix(const void* pointer, std::size_t bytes) {
     Arena::Get().MarkUsed(pointer, bytes);
+}
+
+bool GuestArenaTakeFixedWindow_nid_no_patch(std::uintptr_t address, std::size_t bytes) {
+    return Arena::Get().TakeFixedWindow(address, bytes);
 }
 
 void GuestArenaRelease_nid_postfix(const void* pointer, std::size_t bytes) {
@@ -904,7 +955,7 @@ void* PlaceAt(void* pointer, std::size_t bytes, std::uint32_t protection) {
 #if defined(__linux__) || defined(__APPLE__)
 void GuestArenaSetProtection_nid_postfix(std::uintptr_t address, std::size_t bytes, std::uint32_t protection) {
     if (!Arena::Get().Contains(reinterpret_cast<void*>(address), bytes)) throw OutsideArena("set protection", reinterpret_cast<void*>(address), bytes);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     if (const int error = GuestWriteWatch::GuestWriteWatchProtect_nid_postfix(reinterpret_cast<void*>(address), bytes, PosixProtection(protection)); error != 0)
         throw std::system_error(error, std::generic_category(), "guest arena protection failed");
 #else

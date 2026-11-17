@@ -174,10 +174,6 @@ void EmitBaseHeader(SpirvModule& module, const IrProgram& program, bool atomicLo
         module.EmitCapability(spv::CapabilityPhysicalStorageBufferAddresses);
         module.EmitExtension("SPV_KHR_physical_storage_buffer");
     }
-    if (program.Info().usesDma) {
-        module.EmitCapability(spv::CapabilityStorageBuffer8BitAccess);
-        module.EmitExtension("SPV_KHR_8bit_storage");
-    }
     module.AddMemoryModel(physical ? spv::AddressingModelPhysicalStorageBuffer64 : spv::AddressingModelLogical, spv::MemoryModelGLSL450);
 }
 
@@ -231,7 +227,7 @@ void DefineInputs(SpirvEmitterState& state) {
     })) {
         state.inputs.push_back(SpirvInputBinding {{StageInputKind::LocalInvocationIndex, 0u, 1u, "gl_LocalInvocationIndex", false}});
     }
-    if (LdsInDeviceMemory(state) || ScratchPoolActive(state)) {
+    if (LdsInDeviceMemory(state) || ScratchPoolActive(state) || state.meshAsCompute) {
         if (std::none_of(state.inputs.begin(), state.inputs.end(), [](const SpirvInputBinding& input) {
             return input.kind == StageInputKind::WorkgroupId;
         })) {

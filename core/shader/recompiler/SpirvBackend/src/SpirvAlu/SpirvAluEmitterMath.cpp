@@ -160,6 +160,23 @@ std::uint32_t ExactSub(SpirvEmitterState& state, std::uint32_t lhs, std::uint32_
     return Exact(state, Binary(state, spv::OpFSub, TypeF32(state), lhs, rhs));
 }
 
+bool OneLanePixelWave(const SpirvEmitterState& state) {
+    return state.program.Resources().stage == IrShaderStage::Pixel && state.laneCount == 1u && HostSubgroupSingleLane(state);
+}
+
+[[noreturn]] void FailQuadPlacement(const SpirvValueEmitContext& ctx, const IrValue& inst, const std::string& access) {
+    ctx.Fail(inst, (access + " depends on the pixel's lane in its quad, which a fragment stage without subgroup operations does not keep when it runs this wave" + std::to_string(ctx.state.program.WaveSize()) + " program at one lane per invocation").c_str());
+}
+
+bool DppReadsOwnLane(std::uint32_t control) {
+    return control == 0xe4u || control == (DppMoveFlags::Lanes8 | 0xfac688u);
+}
+
+bool DppMasksSplitWave(const SpirvEmitterState& state, const DppMoveFlags& flags) {
+    const auto partial = [](std::uint32_t mask, std::uint32_t every) { return (mask & every) != 0u && (mask & every) != every; };
+    return partial(flags.rowMask, (1u << (state.program.WaveSize() / 16u)) - 1u) || partial(flags.bankMask, 0xfu);
+}
+
 }
 
 std::uint32_t EmitDppWriteCondition(SpirvValueEmitContext& ctx, const IrValue& inst) {
@@ -189,6 +206,8 @@ std::uint32_t EmitDppWriteCondition(SpirvValueEmitContext& ctx, const IrValue& i
     state.module.AddFunction(spv::OpINotEqual, TypeBool(state), rowOk, rowHit, ConstantU32(state, 0u));
     state.module.AddFunction(spv::OpLogicalAnd, TypeBool(state), masksOk, bankOk, rowOk);
     auto writable = masksOk;
+    if (OneLanePixelWave(state) && !DppReadsOwnLane(flags.control)) FailQuadPlacement(ctx, inst, "DPP control " + std::to_string(flags.control));
+    if (OneLanePixelWave(state) && DppMasksSplitWave(state, flags)) FailQuadPlacement(ctx, inst, "DPP row mask " + std::to_string(flags.rowMask) + " with bank mask " + std::to_string(flags.bankMask));
     if (!flags.boundControl) {
         const auto target = EmitDppTargetLane(state, flags.control);
         const auto bounded = state.module.AllocateId();
@@ -1704,6 +1723,7 @@ std::uint32_t EmitDppMoveU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
         if (flags.fetchInactive) return read;
         return EmitNative<spv::OpSelect, IrType::U32>(state, EmitDppQuadRead(state, TypeBool(state), ctx.Arg(inst, 1), flags.control), read, ConstantU32(state, 0u));
     }
+    if (OneLanePixelWave(state) && !DppReadsOwnLane(flags.control)) FailQuadPlacement(ctx, inst, "DPP control " + std::to_string(flags.control));
     const auto target = EmitDppTargetLane(state, flags.control);
     if (const auto lane = DppFirstLaneSource(flags.control); OneLaneWave(state) && lane.value_or(0u) != 0u) FailOutsideHostSubgroup(ctx, inst, "DPP read of lane " + std::to_string(*lane));
     const auto shuffled = ctx.ShuffleInHalf(inst, 0, target.lane);
@@ -1722,7 +1742,42 @@ std::uint32_t EmitDppUpdateU32(SpirvValueEmitContext& ctx, const IrValue& inst) 
     return EmitNative<spv::OpSelect, IrType::U32>(ctx.state, write, ctx.Arg(inst, 0), ctx.Arg(inst, 1));
 }
 
-std::uint32_t EmitWqmU64(SpirvEmitterState& state, std::uint32_t value) {
+bool RunsAllStartingLanes(const IrProgram& program, const IrBlock* target) {
+    if (program.BlockOrder().empty()) return false;
+    const IrBlock* block = program.BlockOrder().front();
+    for (std::size_t steps = 0; block != nullptr && steps < program.BlockOrder().size(); ++steps) {
+        if (block == target) return true;
+        if (block->Successors().size() != 1u) return false;
+        block = block->Successors().front();
+        if (block->Predecessors().size() != 1u) return false;
+    }
+    return false;
+}
+
+bool HoldsStartingLanes(const IrProgram& program, const IrValue* word, std::uint32_t index, std::uint32_t depth = 0u) {
+    word = Resolved(word);
+    if (word == nullptr || depth > 16u) return false;
+    if (Is(word, IrOpcode::BitwiseAnd32)) return HoldsStartingLanes(program, word->Argument(0), index, depth + 1u) && HoldsStartingLanes(program, word->Argument(1), index, depth + 1u);
+    if (Is(word, IrOpcode::BitwiseOr32)) return HoldsStartingLanes(program, word->Argument(0), index, depth + 1u) || HoldsStartingLanes(program, word->Argument(1), index, depth + 1u);
+    if (!Is(word, IrOpcode::CompositeExtractU32x4) || !IsU32(word->Argument(1), index)) return false;
+    const auto* ballot = Resolved(word->Argument(0));
+    if (!Is(ballot, IrOpcode::Ballot) || !RunsAllStartingLanes(program, ballot->Parent())) return false;
+    const auto* condition = Resolved(ballot->Argument(0));
+    return condition != nullptr && (HelperTest(condition) || (condition->HasImmediate() && condition->Type() == IrType::Bool && condition->ImmediateBool()));
+}
+
+bool StartingLanes(const IrProgram& program, const IrValue* mask) {
+    mask = Resolved(mask);
+    return Is(mask, IrOpcode::CompositeConstructU64) && HoldsStartingLanes(program, mask->Argument(0), 0u) && (program.WaveSize() == 32u ? IsU32(mask->Argument(1), 0u) : HoldsStartingLanes(program, mask->Argument(1), 1u));
+}
+
+std::uint32_t EmitWqmU64(SpirvValueEmitContext& ctx, const IrValue& inst) {
+    auto& state = ctx.state;
+    if (OneLanePixelWave(state)) {
+        if (!StartingLanes(state.program, inst.Argument(0))) FailQuadPlacement(ctx, inst, "s_wqm of a lane mask other than the pixel's starting lanes");
+        return ConstantU64(state, 0xfull);
+    }
+    const auto value = ctx.Arg(inst, 0);
     const auto shiftedOne = state.module.AllocateId();
     const auto mergedOne = state.module.AllocateId();
     const auto shiftedTwo = state.module.AllocateId();
@@ -1775,6 +1830,7 @@ std::uint32_t EmitReadLane(SpirvValueEmitContext& ctx, const IrValue& inst) {
             if (index >= 32u && UpperLaneWalk{state.program.Resources().stage}.ZeroValue(inst.Argument(0))) return ConstantU32(state, 0u);
             FailOutsideHostSubgroup(ctx, inst, "v_readlane_b32 of lane " + std::to_string(index));
         }
+        if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, "v_readlane_b32 of lane " + std::to_string(index));
     } else if (HostSubgroupNarrowerThanWave(state) && HostSubgroupSingleLane(state) && !OwnLaneSelectorWalk{state.program}.Selector(selector, inst.Parent())) {
         FailOutsideHostSubgroup(ctx, inst, "v_readlane_b32 of a register-selected lane");
     }
@@ -1784,6 +1840,7 @@ std::uint32_t EmitReadLane(SpirvValueEmitContext& ctx, const IrValue& inst) {
 
 std::uint32_t EmitWriteLane(SpirvValueEmitContext& ctx, const IrValue& inst) {
     auto& state = ctx.state;
+    if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, "v_writelane_b32");
     const auto lane = Binary(state, spv::OpBitwiseAnd, TypeU32(state), ctx.Arg(inst, 1), ConstantU32(state, state.program.WaveSize() - 1u));
     const auto hit = state.module.AllocateId();
     state.module.AddFunction(spv::OpIEqual, TypeBool(state), hit, EmitSubgroupLocalInvocationId(state), lane);
@@ -1793,6 +1850,7 @@ std::uint32_t EmitWriteLane(SpirvValueEmitContext& ctx, const IrValue& inst) {
 std::uint32_t EmitPermlane16U32(SpirvValueEmitContext& ctx, const IrValue& inst) {
     auto& state = ctx.state;
     const auto flags = inst.Flags<PermlaneFlags>();
+    if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, flags.x16 ? "v_permlanex16_b32" : "v_permlane16_b32");
     if (flags.x16 && state.hostSubgroupSize <= 16u && HostSubgroupNarrowerThanWave(state)) {
         if (HostSubgroupSingleLane(state) && CrossesElectedMaxScan(inst, state.program)) return ctx.Arg(inst, 0);
         FailOutsideHostSubgroup(ctx, inst, "v_permlanex16_b32 from lanes 16-31");
@@ -1839,6 +1897,7 @@ std::uint32_t EmitPermlane16U32(SpirvValueEmitContext& ctx, const IrValue& inst)
 
 std::uint32_t EmitBpermuteU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
     auto& state = ctx.state;
+    if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, "ds_bpermute_b32");
     if (OneLaneWave(state)) {
         const auto* address = Resolved(inst.Argument(1));
         if (address != nullptr && address->HasImmediate()) {
@@ -1857,6 +1916,7 @@ std::uint32_t EmitBpermuteU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
 
 std::uint32_t EmitPermuteU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
     auto& state = ctx.state;
+    if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, "ds_permute_b32");
     const auto lane = EmitSubgroupLocalInvocationId(state);
     const auto base = Binary(state, spv::OpBitwiseAnd, TypeU32(state), lane, ConstantU32(state, ~31u));
     const auto own = Binary(state, spv::OpBitwiseAnd, TypeU32(state), lane, ConstantU32(state, 31u));
@@ -1887,6 +1947,7 @@ std::uint32_t EmitSwizzleU32(SpirvValueEmitContext& ctx, const IrValue& inst) {
     const auto source = EmitNative<spv::OpLoad, IrType::U32>(state, ctx.scratchU32Variable);
     const IrValue* control = inst.Argument(1);
     const auto pattern = control->HasImmediate() ? control->ImmediateU32() : 0u;
+    if (OneLanePixelWave(state)) FailQuadPlacement(ctx, inst, "ds_swizzle_b32 with pattern " + std::to_string(pattern));
     if (const auto lane = DsSwizzleFirstLaneSource(pattern); OneLaneWave(state) && lane != 0u) FailOutsideHostSubgroup(ctx, inst, "ds_swizzle_b32 of lane " + std::to_string(lane));
     const auto target = EmitDsSwizzleTargetLane(state, EmitSubgroupLocalInvocationId(state), pattern);
     return EmitDsMaskedLaneRead(state, source, target, ctx.Arg(inst, 2));

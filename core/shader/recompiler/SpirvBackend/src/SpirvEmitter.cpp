@@ -77,7 +77,7 @@ std::uint32_t WaveLdsScope(const IrProgram& program, const ShaderWorkgroupInputI
 
 }
 
-SpirvEmitterState::SpirvEmitterState(const IrProgram& program, const ShaderStageInputInfo& inputInfo) : module(program.Resources().stage == IrShaderStage::Mesh ? 0x00010400u : 0x00010300u), program(program), inputInfo(inputInfo), requirements(AnalyzeProgramRequirements(program)) {
+SpirvEmitterState::SpirvEmitterState(const IrProgram& program, const ShaderStageInputInfo& inputInfo, bool meshAsCompute) : module(program.Resources().stage == IrShaderStage::Mesh && !meshAsCompute ? 0x00010400u : 0x00010300u), program(program), inputInfo(inputInfo), requirements(AnalyzeProgramRequirements(program)) {
 }
 
 SpirvValueEmitContext::SpirvValueEmitContext(SpirvEmitterState& state) : state(state) {
@@ -257,7 +257,7 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Sh
     }
     ValidateProgram(program, true);
     ValidateBdaTarget(program, target);
-    SpirvEmitterState state(program, inputInfo);
+    SpirvEmitterState state(program, inputInfo, target.meshAsCompute);
     state.module.RequireVersion(target.spirvVersion);
     state.spirvVersion = target.spirvVersion;
     state.supportedCapabilities = target.supportedCapabilities;
@@ -287,8 +287,10 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Sh
     state.ldsLockFences = target.ldsLockFences;
     state.float16WidenNans = target.float16WidenNans;
     state.float16NarrowNans = target.float16NarrowNans;
+    state.meshAsCompute = target.meshAsCompute && program.Resources().stage == IrShaderStage::Mesh;
     state.hostSubgroupSize = target.subgroupSize;
     if (target.largePixelFunctionLdsBuffer && program.Resources().stage == IrShaderStage::Pixel && state.requirements.functionLds && state.requirements.functionLdsDwords > target.pixelFunctionStorageDwords) {
+        if (HostSubgroupSingleLane(state)) FailEmit("a pixel program whose " + std::to_string(state.requirements.functionLdsDwords) + " LDS dwords exceed the device's " + std::to_string(target.pixelFunctionStorageDwords) + " private dwords needs subgroup operations in the fragment stage to place them in the LDS buffer");
         state.pixelFunctionLdsBuffer = true;
         state.requirements.subgroupLocalInvocationId = true;
         state.requirements.subgroupBallot = true;
@@ -340,7 +342,7 @@ std::vector<std::uint32_t> SpirvEmitter::Emit(const IrProgram& program, const Sh
     if (target.meshInlineFunctions && program.Resources().stage == IrShaderStage::Mesh) state.module.InlineFunctions();
     EmitModuleHeader(state, bindings);
     EmitProgram(state);
-    state.module.EmitEntryPoint(ExecutionModelForStage(state.program.Resources().stage), state.mainFunc, "main", state.interfaceVariables);
+    state.module.EmitEntryPoint(state.meshAsCompute ? spv::ExecutionModelGLCompute : ExecutionModelForStage(state.program.Resources().stage), state.mainFunc, "main", state.interfaceVariables);
     auto words = state.module.Finalize();
     if (state.spannedWave) {
         if (auto reason = SpannedBarrierInDivergentFlow(words)) throw SpannedWaveUnsupported(*reason);

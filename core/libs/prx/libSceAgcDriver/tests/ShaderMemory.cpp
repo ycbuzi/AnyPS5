@@ -8391,6 +8391,118 @@ void verifySingleLaneDomainWave() {
     require(withoutKey != withKey, "single-lane domain wave: tessellation evaluation subgroup support did not change the cache key");
 }
 
+void verifySingleLanePixelWave() {
+    using namespace ShaderRecompiler;
+    static constexpr std::array<std::uint32_t, 6> capabilities{spv::CapabilityGroupNonUniform, spv::CapabilityGroupNonUniformBallot, spv::CapabilityGroupNonUniformShuffle, spv::CapabilityGroupNonUniformArithmetic, spv::CapabilityGroupNonUniformQuad, spv::CapabilityClipDistance};
+    const auto pixel = [](std::span<const std::uint32_t> code, std::uint32_t subgroupSize, bool fragmentSubgroups) {
+        ShaderPixelStageInfo info{};
+        info.inputAddr = PixelInputBit(PixelInput::PerspectiveCenter);
+        info.hasPerspectiveCenterVgpr = true;
+        info.targetOutputMode[0] = 9u;
+        info.targetExportMapping.fill(0xe4u);
+        RecompileRequest request{};
+        request.shader = {ShaderStage::Fragment, 0x5c000u, code, 0, {}};
+        request.context.waveSize = 64;
+        request.context.pixel = info;
+        request.target.vulkanVersion = 0x00401000u;
+        request.target.spirvVersion = 0x00010300u;
+        request.target.subgroupSize = subgroupSize;
+        request.target.supportedCapabilities = capabilities;
+        request.target.fragmentSubgroups = fragmentSubgroups;
+        request.layout.pushConstantSizeBytes = 128;
+        request.useCache = false;
+        return request;
+    };
+    const auto compiled = [&pixel](std::span<const std::uint32_t> code, std::uint32_t subgroupSize, bool fragmentSubgroups) {
+        return Recompile(pixel(code, subgroupSize, fragmentSubgroups)).spirv;
+    };
+    const auto usesSubgroups = [](std::span<const std::uint32_t> spirv) {
+        for (std::size_t cursor = 5; cursor < spirv.size() && (spirv[cursor] >> 16u) != 0u; cursor += spirv[cursor] >> 16u) {
+            const auto op = spirv[cursor] & 0xffffu;
+            if (op == spv::OpCapability && spirv[cursor + 1u] >= spv::CapabilityGroupNonUniform && spirv[cursor + 1u] <= spv::CapabilityGroupNonUniformQuad) return true;
+            if (op >= spv::OpGroupNonUniformElect && op <= spv::OpGroupNonUniformQuadSwap) return true;
+            if (op == spv::OpDecorate && spirv[cursor + 2u] == spv::DecorationBuiltIn && (spirv[cursor + 3u] == spv::BuiltInSubgroupLocalInvocationId || spirv[cursor + 3u] == spv::BuiltInSubgroupSize)) return true;
+        }
+        return false;
+    };
+    const auto exported = [](std::initializer_list<std::uint32_t> words) {
+        std::vector<std::uint32_t> code(words);
+        code.insert(code.end(), {0xf800180fu, 0x01010101u, 0xbf810000u});
+        return code;
+    };
+    const std::array<std::pair<const char*, std::vector<std::uint32_t>>, 4> accepted{{
+        {"v_mbcnt and v_readfirstlane_b32", exported({0xd7650015u, 0x000100c1u, 0xd7660015u, 0x00022ac1u, 0x7e0c0500u, 0x4a022a06u})},
+        {"s_wqm_b64 of the starting EXEC and a branch on the whole-quad mask", exported({0xbefe0a7eu, 0xbf880001u, 0x7e000280u, 0x7e02027eu})},
+        {"a DPP quad_perm:[0,1,2,3]", exported({0x7e0202fau, 0xff00e400u})},
+        {"a DPP8 dpp8:[0,1,2,3,4,5,6,7]", exported({0x7e0202e9u, 0xfac68800u})},
+    }};
+    for (const auto& [name, code] : accepted) {
+        const auto withoutSubgroups = compiled(code, 32u, false);
+        require(!withoutSubgroups.empty() && !usesSubgroups(withoutSubgroups), (std::string("single-lane pixel wave: ") + name + " in a fragment program without fragment subgroups declared a subgroup capability, built-in or instruction").c_str());
+        require(withoutSubgroups == compiled(code, 4u, false), (std::string("single-lane pixel wave: ") + name + " without fragment subgroups depended on the device subgroup size").c_str());
+    }
+    const auto quadWord = [](std::span<const std::uint32_t> spirv) {
+        std::map<std::uint32_t, std::uint32_t> words;
+        for (std::size_t cursor = 5; cursor < spirv.size() && (spirv[cursor] >> 16u) != 0u; cursor += spirv[cursor] >> 16u) {
+            const auto op = spirv[cursor] & 0xffffu;
+            if (op == spv::OpConstant && (spirv[cursor] >> 16u) == 4u) words[spirv[cursor + 2u]] = spirv[cursor + 3u];
+            if (op == spv::OpConstantComposite && (spirv[cursor] >> 16u) == 5u && words.contains(spirv[cursor + 3u]) && words.contains(spirv[cursor + 4u]) && words[spirv[cursor + 3u]] == 0xfu && words[spirv[cursor + 4u]] == 0u) return true;
+        }
+        return false;
+    };
+    require(quadWord(compiled(accepted[1].second, 32u, false)), "single-lane pixel wave: s_wqm_b64 of the starting EXEC was not the whole quad of a pixel that may be a helper");
+    for (std::size_t index = 0; index < 2u; ++index) {
+        require(usesSubgroups(compiled(accepted[index].second, 32u, true)), (std::string("single-lane pixel wave: ") + accepted[index].first + " did not use subgroup operations with fragment subgroups").c_str());
+        auto vertexOnly = pixel(accepted[index].second, 32u, true);
+        vertexOnly.target.vertexSubgroups = false;
+        vertexOnly.target.tessellationEvaluationSubgroups = false;
+        vertexOnly.target.tessellationControlSubgroups = false;
+        require(usesSubgroups(Recompile(vertexOnly).spirv), (std::string("single-lane pixel wave: ") + accepted[index].first + " stopped using subgroups when only other stages lack them").c_str());
+    }
+    const std::array<std::pair<const char*, std::vector<std::uint32_t>>, 2> helperMasks{{
+        {"an s_ff1_i32_b64 waterfall over EXEC, which a helper pixel enters with no lane", exported({0xbe80047eu, 0xbe821400u, 0xd7600003u, 0x00000500u, 0xbe801c02u, 0xbf138000u, 0xbf85fffau, 0x7e020203u})},
+        {"v_readlane_b32 of the lane s_ff1_i32_b32 took from EXEC, which is empty for a helper pixel", exported({0xbe82137eu, 0xd7600003u, 0x00000500u, 0x7e020203u})},
+    }};
+    for (const auto& [name, code] : helperMasks) {
+        expectFailure([&] { static_cast<void>(compiled(code, 32u, false)); }, "v_readlane_b32 of a register-selected lane is outside the 1-lane host subgroup", (std::string("single-lane pixel wave: ") + name + " built in a fragment program without fragment subgroups").c_str());
+        require(!compiled(code, 32u, true).empty(), (std::string("single-lane pixel wave: ") + name + " did not build with fragment subgroups").c_str());
+    }
+    const std::array<std::tuple<const char*, std::vector<std::uint32_t>, const char*>, 13> quadReads{{
+        {"a DPP quad_perm:[0,1,2,3] row_mask:0x1", exported({0x7e0202fau, 0x1f00e400u}), "DPP row mask 1 with bank mask 15 "},
+        {"a DPP8 dpp8:[1,0,3,2,5,4,7,6]", exported({0x7e0202e9u, 0xde54c100u}), "DPP control 31347905 "},
+        {"ds_permute_b32 to address 0", exported({0x7e040280u, 0xdac80000u, 0x01000002u}), "ds_permute_b32 "},
+        {"v_permlanex16_b32 with lane selects 0x76543210", exported({0xbe8003ffu, 0x76543210u, 0xd7780001u, 0x00040100u}), "v_permlanex16_b32 "},
+        {"v_writelane_b32 of lane 0", exported({0xd7610001u, 0x00010081u}), "v_writelane_b32 "},
+        {"s_wqm_b64 of a compare result", exported({0x7d880084u, 0xbefe0a6au, 0x7e020280u}), "s_wqm of a lane mask other than the pixel's starting lanes "},
+        {"a DPP quad_perm:[1,0,3,2]", exported({0x7e0202fau, 0xff00b100u}), "DPP control 177 "},
+        {"a DPP quad_perm:[0,0,2,2]", exported({0x7e0202fau, 0xff00a000u}), "DPP control 160 "},
+        {"a DPP row_shr:1", exported({0x7e0202fau, 0xff011100u}), "DPP control 273 "},
+        {"ds_swizzle_b32 swizzle(BROADCAST,4,0)", exported({0xd8d4001cu, 0x01000000u}), "ds_swizzle_b32 with pattern 28 "},
+        {"ds_bpermute_b32 of address 0", exported({0x7e040280u, 0xdacc0000u, 0x01000002u}), "ds_bpermute_b32 "},
+        {"v_permlane16_b32 with lane selects 0x76543210", exported({0xbe8003ffu, 0x76543210u, 0xd7770001u, 0x00040100u}), "v_permlane16_b32 "},
+        {"v_readlane_b32 of lane 0", exported({0xd7600006u, 0x00010100u, 0x7e020206u}), "v_readlane_b32 of lane 0 "},
+    }};
+    for (const auto& [name, code, access] : quadReads) {
+        expectFailure([&] { static_cast<void>(compiled(code, 32u, false)); }, (std::string(access) + "depends on the pixel's lane in its quad, which a fragment stage without subgroup operations does not keep").c_str(), (std::string("single-lane pixel wave: ") + name + " built in a fragment program without fragment subgroups").c_str());
+        require(!compiled(code, 32u, true).empty(), (std::string("single-lane pixel wave: ") + name + " did not build with fragment subgroups").c_str());
+    }
+
+    auto request = pixel(accepted[0].second, 32u, false);
+    const auto replay = RequestSerializer{}.Deserialize(RequestSerializer{}.Serialize(request));
+    require(!replay.request.target.fragmentSubgroups && replay.request.target.vertexSubgroups && replay.request.target.tessellationControlSubgroups, "single-lane pixel wave: missing fragment subgroups were lost in serialization");
+    require(Recompile(replay.request).spirv == compiled(accepted[0].second, 32u, false), "single-lane pixel wave: the replayed request built another program");
+    std::vector<std::uint64_t> withoutKey;
+    std::vector<std::uint64_t> withKey;
+    RecompileCacheKey::Build(request, withoutKey);
+    request.target.fragmentSubgroups = true;
+    RecompileCacheKey::Build(request, withKey);
+    require(withoutKey != withKey, "single-lane pixel wave: fragment subgroup support did not change the cache key");
+    std::vector<std::uint64_t> controlKey;
+    request.target.tessellationControlSubgroups = false;
+    RecompileCacheKey::Build(request, controlKey);
+    require(controlKey != withKey, "single-lane pixel wave: tessellation control subgroup support did not change the cache key");
+}
+
 void verifyMeshConfiguration() {
     using namespace ShaderRecompiler;
     ShaderMeshInputInfo list;
@@ -8915,7 +9027,7 @@ void verifyPixelRequestSerialization() {
     minimal.context.pixel->layerExported = true;
     minimal.context.pixel->ditheredAlphaToCoverage = true;
     const auto encoded = serializer.Serialize(minimal);
-    require(requestPrefix(encoded, 8u) == "NVNQQT4AAAA=", "new requests did not use serialization version 62");
+    require(requestPrefix(encoded, 8u) == "NVNQQUAAAAA=", "new requests did not use serialization version 64");
     auto withBarycentric = minimal;
     withBarycentric.target.fragmentBarycentricBuiltins = true;
     require(serializer.Deserialize(serializer.Serialize(withBarycentric)).request.target.fragmentBarycentricBuiltins && !serializer.Deserialize(encoded).request.target.fragmentBarycentricBuiltins, "barycentric built-ins were lost in serialization");
@@ -9036,7 +9148,7 @@ void verifyPixelRequestSerialization() {
     for (std::size_t bytes = 0; bytes < 45u; ++bytes) {
         expectFailure([&] { static_cast<void>(serializer.Deserialize(requestPrefix(encoded, mappingOffset + bytes))); }, "truncated data", "a truncated pixel mapping, packing, dual-source, alpha-to-coverage, stencil reference export flag, primitive class, layer export, dither or front-face flag, quad pixel mask or quad sample mask was accepted");
     }
-    for (const auto unsupported : {"NVNQQQAAAAA=", "NVNQQTIAAAA=", "NVNQQToAAAA=", "NVNQQT0AAAA=", "NVNQQT8AAAA="}) {
+    for (const auto unsupported : {"NVNQQQAAAAA=", "NVNQQTIAAAA=", "NVNQQToAAAA=", "NVNQQT0AAAA=", "NVNQQUEAAAA="}) {
         expectFailure([&] { static_cast<void>(serializer.Deserialize(unsupported)); }, "serialization version", "an unsupported request version was accepted");
     }
     static constexpr std::string_view version18Request{
@@ -9094,8 +9206,8 @@ std::vector<std::uint8_t> decodeBase64(std::string_view text) {
 }
 
 std::vector<std::uint8_t> version56Bytes(std::vector<std::uint8_t> bytes) {
-    require(bytes.size() > 14u && bytes[4] == 62u, "a legacy fixture did not start from serialization version 62");
-    bytes.resize(bytes.size() - 6u);
+    require(bytes.size() > 16u && bytes[4] == 64u, "a legacy fixture did not start from serialization version 64");
+    bytes.resize(bytes.size() - 9u);
     bytes[4] = 56u;
     return bytes;
 }
@@ -9362,7 +9474,7 @@ void verifyVertexInfoVersion19() {
     require(mergingBytes.size() == plainPixel.size() && std::equal(plainPixel.begin(), plainPixel.begin() + mergeOffset, mergingBytes.begin()) && mergingBytes[mergeOffset] == 3u && mergingBytes[mergeOffset + 1] == 0x0fu && mergingBytes[mergeOffset + 2] == 0xf0u && mergingBytes[mergeOffset + 5] == 2u && mergingBytes[mergeOffset + 6] == 1u && mergingBytes[mergeOffset + 34] == 0xefu && mergingBytes[mergeOffset + 37] == 0x89u && mergingBytes[mergeOffset + 38] == 1u && mergingBytes[mergeOffset + 39] == 1u && mergingBytes[mergeOffset + 40] == 0u && mergingBytes[mergeOffset + 41] == static_cast<std::uint8_t>(ColorExportPacking::Float11_11_10) && mergingBytes[mergeOffset + 42] == 0x01u && mergingBytes[mergeOffset + 45] == 0x20u && mergingBytes[mergeOffset + 46] == 1u && mergingBytes[mergeOffset + 47] == 2u && mergingBytes[mergeOffset + 51] == 0x05u && mergingBytes[mergeOffset + 52] == 0x01u && std::equal(plainPixel.begin() + mergeOffset + static_cast<std::ptrdiff_t>(mergeBytes), plainPixel.end(), mergingBytes.begin() + mergeOffset + static_cast<std::ptrdiff_t>(mergeBytes)), "the color target merge is not the 55 bytes the version 54 pixel info adds after the sample order");
     require(serializer.Deserialize(serializer.Serialize(merging)).request.context.pixel->targetMerges == merging.context.pixel->targetMerges, "a serialized request lost its color target merge");
     auto version54 = mergingBytes;
-    version54.resize(version54.size() - 6u);
+    version54.resize(version54.size() - 9u);
     version54.erase(version54.begin() + mergeOffset + 40, version54.begin() + mergeOffset + static_cast<std::ptrdiff_t>(mergeBytes));
     version54[4] = 54u;
     auto version53 = version54;
@@ -9399,7 +9511,7 @@ void verifyVertexInfoVersion19() {
         at[3] = flags;
     };
     auto blendVersion49 = blendMergingBytes;
-    blendVersion49.resize(blendVersion49.size() - 6u);
+    blendVersion49.resize(blendVersion49.size() - 9u);
     blendRecordToVersion49(blendVersion49, mergeOffset);
     blendVersion49.resize(blendVersion49.size() - 5u);
     blendVersion49[4] = 49u;
@@ -9411,7 +9523,7 @@ void verifyVertexInfoVersion19() {
     require(twoMergingBytes.size() == blendMergingBytes.size() + mergeBytes + blendPayloadBytes && twoMergingBytes[static_cast<std::size_t>(twoMergingFlags)] == 0x03u && std::equal(blendMergingBytes.begin() + mergeOffset, blendMergingBytes.begin() + twoMergingFlags, twoMergingBytes.begin() + mergeOffset) && std::equal(blendMergingBytes.begin() + twoMergingFlags + 1, blendMergingBytes.begin() + mergeOffset + static_cast<std::ptrdiff_t>(mergeBytes + blendPayloadBytes), twoMergingBytes.begin() + twoMergingFlags + 1), "a second color target merge did not follow the first, counted in the first merge's flags");
     require(serializer.Deserialize(serializer.Serialize(twoMerging)).request.context.pixel->targetMerges == twoMerging.context.pixel->targetMerges, "a serialized request lost its second color target merge");
     auto twoVersion49 = twoMergingBytes;
-    twoVersion49.resize(twoVersion49.size() - 6u);
+    twoVersion49.resize(twoVersion49.size() - 9u);
     blendRecordToVersion49(twoVersion49, mergeOffset + static_cast<std::ptrdiff_t>(mergeBytes + blendPayloadBytes));
     blendRecordToVersion49(twoVersion49, mergeOffset);
     twoVersion49.resize(twoVersion49.size() - 5u);
@@ -13362,6 +13474,7 @@ int main(int argc, char** argv) {
         verifySingleLaneVertexWave();
         verifySingleLaneElectedAtomicMax();
         verifySingleLaneDomainWave();
+        verifySingleLanePixelWave();
         verifyMeshConfiguration();
         verifyPixelInputs();
         verifyCanonicalVersion20And21Requests();

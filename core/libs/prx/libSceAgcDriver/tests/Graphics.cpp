@@ -3091,6 +3091,42 @@ void htileDepthClearTests() {
     other[6] ^= 1u;
     Require(address(other, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a different kernel was taken for RADV's HTILE update");
     Require(address(std::span(kernel).first(16), {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, wave) == 0, "a truncated kernel was taken for RADV's HTILE update");
+
+    ShaderRecompiler::ShaderComputeStageInfo compute{};
+    compute.numThreads = {64u, 1u, 1u};
+    compute.groupIdEnable = {true, false, false};
+    compute.threadIdComponentCount = 1u;
+    const std::array<std::uint32_t, 5> packet{0u, 640u, 1u, 1u, 0x1u};
+    const auto update = [&](std::span<const std::uint32_t> code, std::array<std::uint32_t, 6> userData, std::span<const std::uint32_t> dispatch, std::uint64_t indirect) {
+        return AgcDriver::Graphics::MatchHtileMaskUpdate(code, userData, compute, dispatch, indirect);
+    };
+    const auto stencil = update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0);
+    Require(stencil.has_value() && stencil->address == 0x4002850000ull && stencil->bytes == 640u * 64u * 16u && stencil->mask == 0xfffffc0fu && stencil->value == 0x000003f0u, "a stencil-bit HTILE update was not recognized with its exact range, mask and value");
+    const auto depth = update(kernel, {0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u}, packet, 0);
+    Require(depth.has_value() && depth->address == 0x400dc50000ull && depth->bytes == 0xa0000u && depth->mask == 0x00000ff0u && depth->value == 0u, "a depth HTILE clear was not recognized as a mask update with its range");
+    const std::array<std::uint32_t, 6> depthUserData{0, 0, 0x0dc50000u, 0x40u, 0u, 0x00000ff0u};
+    const auto depthBytes = AgcDriver::Graphics::HtileDepthClearBytes_nid_no_patch(kernel, depthUserData, compute, packet, 0);
+    Require(depthBytes == depth->bytes && depthBytes == std::size_t{640u} * compute.numThreads[0] * 16u, "the depth fast clear stored on the CPU does not cover the records the dispatch writes");
+    const AgcDriver::Graphics::HtileMaskClear depthStore{address(kernel, depthUserData, wave), depthBytes, depthUserData[5], depthUserData[4]};
+    Require(depthStore.address == depth->address && depthStore.mask == depth->mask && depthStore.value == depth->value, "the depth fast clear stored on the CPU differs from the HTILE mask update of the same dispatch");
+    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0x1000u).has_value(), "an indirect HTILE mask dispatch was recognized");
+    auto partial = packet;
+    partial[4] = 0x3u;
+    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, partial, 0).has_value(), "a partial-group HTILE mask dispatch was recognized");
+    auto threads = packet;
+    threads[4] = 0x21u;
+    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, threads, 0).has_value(), "a thread-count HTILE mask dispatch was recognized");
+    auto rows = packet;
+    rows[2] = 2u;
+    Require(!update(kernel, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, rows, 0).has_value(), "a two-dimensional HTILE mask dispatch was recognized");
+    Require(!update(kernel, {0, 0, 0x02850008u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0).has_value(), "an HTILE mask update at a misaligned address was recognized");
+    Require(!update(other, {0, 0, 0x02850000u, 0x40u, 0x000003f0u, 0xfffffc0fu}, packet, 0).has_value(), "a different kernel was taken for the HTILE mask update");
+    std::array<std::uint32_t, 4> words{0xffffffffu, 0u, 0x12345678u, 0x00000c0fu};
+    AgcDriver::Graphics::ApplyHtileMask(words, 0xfffffc0fu, 0x000003f0u);
+    Require(words == std::array<std::uint32_t, 4>{0xffffffffu, 0x000003f0u, 0x123457f8u, 0x00000fffu}, "the stencil-bit HTILE update did not apply (word & mask) | value");
+    words = {0xffffffffu, 0x0000000fu, 0x12345678u, 0x00000ff5u};
+    AgcDriver::Graphics::ApplyHtileMask(words, 0x00000ff0u, 0u);
+    Require(words == std::array<std::uint32_t, 4>{0x00000ff0u, 0u, 0x00000670u, 0x00000ff0u}, "the depth HTILE clear did not keep only the masked bits");
 }
 
 void memoryValueFillTests() {
@@ -13265,6 +13301,7 @@ void meshArgumentTests() {
     using AgcDriver::Graphics::MeshArguments;
     using AgcDriver::Graphics::ResolveMeshArguments;
     AgcDriver::Graphics::Context context{};
+    context.meshShader = true;
     context.meshLimits.maxMeshWorkGroupCount[0] = 1000;
     context.meshLimits.maxMeshWorkGroupCount[1] = 600;
     context.meshLimits.maxMeshWorkGroupTotalCount = 4000;
@@ -13292,6 +13329,42 @@ void meshArgumentTests() {
     Require(same(ResolveMeshArguments(record(96 * 6, 600, 0), rules(triangles, 96 * 6)), {6, 600, 1, 96 * 6, 0}), "groups times instances at the device limit");
     Require(same(ResolveMeshArguments(record(0xffffffffu, 1, 0xfffffff0u), rules(points, 0xffffffffu)), {15, 1, 1, 15, 0xfffffff0u}), "first index near the end of a huge index buffer");
     Require(same(ResolveMeshArguments(record(0xffffffffu, 1, 0), rules(points, 0xffffffffu)), {0, 0, 0, 0xffffffffu, 0}), "groups over the device limit draw nothing");
+    using AgcDriver::Graphics::MeshDrawRunsAsCompute;
+    AgcDriver::Graphics::State layered{};
+    Require(!MeshDrawRunsAsCompute(false, 0, layered), "a draw without a mesh stage ran as a mesh compute pass");
+    layered.stages.mesh = triangles;
+    layered.colors.resize(1);
+    Require(MeshDrawRunsAsCompute(false, 0, layered), "a mesh-path draw on a device without mesh shaders did not run as compute");
+    Require(!MeshDrawRunsAsCompute(true, 8, layered), "a one-layer mesh-path draw left the mesh stage");
+    layered.colors.front().layers = 8;
+    Require(!MeshDrawRunsAsCompute(true, 8, layered), "a mesh-path draw at the device's layer limit left the mesh stage");
+    layered.colors.front().layers = 1;
+    layered.colors.front().depth = 32;
+    Require(!MeshDrawRunsAsCompute(true, 8, layered), "a mesh-path draw into a 32-slice volume left the mesh stage on a device with 8 mesh output layers (Draw splits it into layer windows)");
+    Require(!MeshDrawRunsAsCompute(true, 2048, layered), "a mesh-path draw within the device's layer limit ran as compute");
+    layered.colors.front().depth = 1;
+    layered.depth = AgcDriver::Graphics::DepthTarget{};
+    layered.depth->firstSlice = 2;
+    layered.depth->lastSlice = 17;
+    Require(AgcDriver::Graphics::MeshDrawLayers(layered) == 16 && !MeshDrawRunsAsCompute(true, 8, layered) && MeshDrawRunsAsCompute(false, 0, layered), "a mesh-path draw into 16 depth slices ran as compute on a device with mesh shaders, or stayed on the mesh stage without them");
+    AgcDriver::Graphics::Context narrow{};
+    narrow.subgroup.subgroupSize = 8;
+    ShaderRecompiler::RecompileResult program{};
+    program.variantId = 1;
+    program.meshRecordLayout = 1u << 11u;
+    program.hostSubgroupSize = 8;
+    const ShaderRecompiler::RecompileResult fragment{};
+    const std::array<AgcDriver::Graphics::CompiledShader, 2> shaders{{{ShaderRecompiler::ShaderStage::Mesh, &program, 0}, {ShaderRecompiler::ShaderStage::Fragment, &fragment, 0}}};
+    AgcDriver::Graphics::State waved{};
+    waved.stages.mesh = triangles;
+    waved.stages.vertexWaveSize = 32;
+    std::string refusal;
+    try {
+        static_cast<void>(AgcDriver::Graphics::MeshComputeStages(narrow, waved, shaders));
+    } catch (const std::exception& error) {
+        refusal = error.what();
+    }
+    Require(refusal.find("compute subgroups at least as wide as its wave") != std::string::npos, "a wave-32 mesh program ran as compute on 8-lane subgroups: " + refusal);
     context.meshLimits.maxMeshWorkGroupCount[2] = 3;
     const auto grid = [&](std::uint32_t groups, std::uint32_t instances, std::array<std::uint32_t, 4> expected) {
         const auto value = AgcDriver::Graphics::MeshGridFor(context, groups, instances);

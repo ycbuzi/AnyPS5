@@ -184,7 +184,9 @@ void Run(AgcDriver::VulkanDevice& device, const AgcDriver::Graphics::ColorTarget
     if (mesh) geometry.graphics = ShaderRecompiler::GraphicsCompileContext{0, {}, Subgroup, std::nullopt, {draw.indexAddress, draw.indexCount, draw.indexSize, draw.instanceCount}};
     geometry.useCache = false;
     auto geometryResult = ShaderRecompiler::Recompile(geometry);
-    if (mesh) {
+    // Layer windows (MeshLayerBase/MeshLayerCount) split a draw only on the native mesh stage: a mesh program run as
+    // compute (no VK_EXT_mesh_shader) writes its layer into the vertex record and has no window to specialize.
+    if (mesh && !target.meshAsCompute) {
         for (const auto required : {ShaderRecompiler::PipelineSpecialization::MeshLayerBase, ShaderRecompiler::PipelineSpecialization::MeshLayerCount}) {
             bool found = false;
             for (std::size_t at = 5; at < geometryResult.spirv.size();) {
@@ -238,7 +240,7 @@ void Run(AgcDriver::VulkanDevice& device, const AgcDriver::Graphics::ColorTarget
     state.blend.colorWriteMask = 15;
     state.blends = {state.blend};
     state.blendConstants = {};
-    if (mesh) {
+    if (mesh && !target.meshAsCompute) {
         Require(DeclaresLayer(geometryResult.spirv), "the mesh program declares no Layer output");
         if (!executeMesh) return;
     }
@@ -463,6 +465,12 @@ int main(int argc, char** argv) {
         Run(*device, thickColor, false, PixelCode, false);
         Check(thickVolume.Data(), thickColor, "thick SW_4KB_S_X vertex draw and writeback", WhiteBands);
         if (vertexOnly) std::puts("layered volume vertex draw tests passed");
+        else if (target.meshAsCompute) {
+            const GuestVolume meshVolume((VolumeTarget(nullptr).bytes + 65535u) & ~std::size_t{65535u});
+            const auto meshColor = VolumeTarget(meshVolume.Data());
+            Run(*device, meshColor, true, PixelCode, false);
+            Check(meshVolume.Data(), meshColor, "mesh draw run as compute", WhiteBands);
+        }
         else if (meshExecution) {
             const GuestVolume meshVolume((VolumeTarget(nullptr).bytes + 65535u) & ~std::size_t{65535u});
             const auto meshColor = VolumeTarget(meshVolume.Data());
