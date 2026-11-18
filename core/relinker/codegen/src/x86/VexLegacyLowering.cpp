@@ -454,8 +454,8 @@ Special SpecialOf(const Parsed& h, const std::uint8_t* data, const std::size_t l
     if (h.Map == 2 && (h.Op == 0x45 || h.Op == 0x47 || (h.Op == 0x46 && !h.W))) return Special::VariableShift;
     if (h.Map == 3 && !h.W && h.Vvvv == 0 && (h.Op == 0x04 || h.Op == 0x05)) return Special::PermuteImm;
     if (h.W) return Special::None;
-    if (h.Map == 2 && h.Op == 0x13 && !h.L && h.Vvvv == 0 && !h.Memory) return Special::HalfToSingle;
-    if (h.Map == 3 && h.Op == 0x1D && !h.L && h.Vvvv == 0 && !h.Memory && (data[length - 1] & 4) == 0 && (data[length - 1] & 3) % 3 == 0) return Special::SingleToHalf;
+    if (h.Map == 2 && h.Op == 0x13 && !h.L && h.Vvvv == 0) return Special::HalfToSingle;
+    if (h.Map == 3 && h.Op == 0x1D && !h.L && h.Vvvv == 0 && (data[length - 1] & 4) == 0 && (data[length - 1] & 3) % 3 == 0) return Special::SingleToHalf;
     if (h.Map == 3 && (h.Op == 0x4A || h.Op == 0x4B || h.Op == 0x4C)) return Special::BlendV;
     if (h.Map == 3 && h.L && (h.Op == 0x18 || h.Op == 0x38)) return Special::Insert;
     if (h.Map == 3 && h.L && (h.Op == 0x19 || h.Op == 0x39)) return Special::Extract;
@@ -560,12 +560,13 @@ void EmitBlendV(StubBodyBuilder& body, const std::uint8_t* data, const std::size
     if (!h.L && shadow) ClearUpper(body, *shadow, dst);
 }
 
-void EmitHalfToSingle(StubBodyBuilder& body, const Parsed& h, const std::optional<std::int32_t> shadow) {
+void EmitHalfToSingle(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
     const auto dst = h.Reg;
     const auto scratch = Scratches<5>({dst, h.Rm});
     const auto [words, magnitude, normal, small, out] = scratch;
     for (const auto reg : scratch) body.Spill(reg);
-    body.Sse(0x66, {0x0F, 0x38, 0x33}, words, h.Rm);
+    if (h.Memory) body.MemoryOp(0x66, {0x0F, 0x38, 0x33}, words, Operand(data, length, h));
+    else body.Sse(0x66, {0x0F, 0x38, 0x33}, words, h.Rm);
     body.Raw(Movaps(magnitude, words));
     body.RipOperand({0x0F, 0xDB}, magnitude, Splat(0x7FFF));
     body.Raw(Movaps(normal, magnitude));
@@ -594,7 +595,7 @@ void EmitHalfToSingle(StubBodyBuilder& body, const Parsed& h, const std::optiona
     if (shadow) ClearUpper(body, *shadow, dst);
 }
 
-void EmitSingleToHalf(StubBodyBuilder& body, const Parsed& h, const std::uint8_t imm, const std::optional<std::int32_t> shadow) {
+void EmitSingleToHalf(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::uint8_t imm, const std::optional<std::int32_t> shadow) {
     const auto dst = h.Rm;
     const bool truncate = (imm & 3) == 3;
     const auto scratch = Scratches<6>({dst, h.Reg});
@@ -648,9 +649,10 @@ void EmitSingleToHalf(StubBodyBuilder& body, const Parsed& h, const std::uint8_t
     body.Sse(0x66, {0x0F, 0xEB}, select, sign);
     body.Raw(Xorps(magnitude));
     body.Sse(0x66, {0x0F, 0x38, 0x2B}, select, magnitude);
-    body.Raw(Movaps(dst, select));
+    if (h.Memory) body.MemoryOp(0x66, {0x0F, 0xD6}, select, Operand(data, length, h));
+    else body.Raw(Movaps(dst, select));
     for (auto reg = scratch.rbegin(); reg != scratch.rend(); ++reg) body.Restore(*reg);
-    if (shadow) ClearUpper(body, *shadow, dst);
+    if (shadow && !h.Memory) ClearUpper(body, *shadow, dst);
 }
 
 void EmitVariableShift(StubBodyBuilder& body, const std::uint8_t* data, const std::size_t length, const Parsed& h, const std::optional<std::int32_t> shadow) {
@@ -1202,10 +1204,10 @@ void EmitSpecial(StubBodyBuilder& body, const std::uint8_t* data, const std::siz
         EmitVariableShift(body, data, length, h, shadow);
         return;
     case Special::HalfToSingle:
-        EmitHalfToSingle(body, h, shadow);
+        EmitHalfToSingle(body, data, length, h, shadow);
         return;
     case Special::SingleToHalf:
-        EmitSingleToHalf(body, h, data[length - 1], shadow);
+        EmitSingleToHalf(body, data, length, h, data[length - 1], shadow);
         return;
     case Special::Extend: {
         constexpr std::uint8_t kHighOffset[] = {8, 4, 2, 8, 4, 8};

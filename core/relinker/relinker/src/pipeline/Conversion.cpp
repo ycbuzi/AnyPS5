@@ -79,7 +79,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
         std::optional<Codegen::UpperShadowContext> shadow;
         if (options.ToSse && !windows && !macos) {
             const auto tls = std::find_if(segments.begin(), segments.end(), [](const Domain::ProgramHeader& header) { return header.Type == Elfpatcher::PT_TLS; });
-            if (tls != segments.end() && tls->FileSize == 0) {
+            if (tls != segments.end()) {
                 Codegen::UpperShadowContext context{static_cast<std::int32_t>(Codegen::UpperShadowOffset(tls->MemorySize, tls->Alignment)), {}};
                 for (const auto& region : Relinker::UnusedNidFilter::ReadExceptionFunctions(sourceBytes, segments, {}, {})) context.Functions.emplace_back(region.Begin, region.End);
                 shadow = std::move(context);
@@ -220,9 +220,30 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             const auto tls = std::find_if(headers.begin(), headers.end(), [](const Domain::ProgramHeader& header) { return header.Type == Elfpatcher::PT_TLS; });
             if (tls == headers.end())
                 throw Domain::RelinkerException("SSE conversion needs a PT_TLS segment in the executable to hold the YMM upper shadow");
-            if (tls->FileSize != 0)
-                throw Domain::RelinkerException("SSE conversion does not yet support an executable whose PT_TLS has initialised data");
-            tls->MemorySize += Codegen::UpperShadowReservation(tls->Alignment);
+            const auto reservation = Codegen::UpperShadowReservation(tls->Alignment);
+            if (tls->FileSize != 0) {
+                if (tls->Offset > sourceBytes.size() || tls->FileSize > sourceBytes.size() - tls->Offset)
+                    throw Domain::RelinkerException("PT_TLS initialization image is outside the file", tls->Offset);
+                std::uint64_t loadEnd = 0;
+                for (const auto& header : headers)
+                    if (header.Type == Elfpatcher::PT_LOAD) loadEnd = std::max(loadEnd, header.MappedAddress + header.MemorySize);
+                const auto pageMask = Elfpatcher::kDefaultLoadAlignment - 1;
+                const std::uint64_t imageVaddr = (loadEnd + pageMask) & ~pageMask;
+                sourceBytes.resize((sourceBytes.size() + pageMask) & ~pageMask, 0);
+                const std::uint64_t imageOffset = sourceBytes.size();
+                const std::uint64_t imageSize = reservation + tls->FileSize;
+                sourceBytes.resize(imageOffset + reservation, 0);
+                const std::vector<std::uint8_t> image(sourceBytes.begin() + static_cast<std::ptrdiff_t>(tls->Offset), sourceBytes.begin() + static_cast<std::ptrdiff_t>(tls->Offset + tls->FileSize));
+                sourceBytes.insert(sourceBytes.end(), image.begin(), image.end());
+                tls->Offset = imageOffset;
+                tls->MappedAddress = imageVaddr;
+                tls->PhysicalAddress = imageVaddr;
+                tls->FileSize = imageSize;
+                tls->MemorySize += reservation;
+                headers.push_back(Domain::ProgramHeader{Elfpatcher::PT_LOAD, Elfpatcher::PF_R, imageOffset, imageVaddr, imageVaddr, imageSize, imageSize, Elfpatcher::kDefaultLoadAlignment});
+            } else {
+                tls->MemorySize += reservation;
+            }
         }
         for (const auto& artifact : guestArtifacts) unloweredVex += artifact.UnloweredVex;
         if (options.ToSse && unloweredVex != 0)
