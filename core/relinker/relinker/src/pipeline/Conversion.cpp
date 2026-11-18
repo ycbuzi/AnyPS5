@@ -74,6 +74,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
     }
     std::vector<Codegen::TrampolineSite> trampolines;
     std::size_t unloweredVex = 0;
+    std::optional<std::int32_t> upperShadowOffset;
     if (options.ToIntel) {
         const auto segments = Relinker::ElfReader(sourceBytes).ReadProgramHeaders();
         std::optional<Codegen::UpperShadowContext> shadow;
@@ -81,6 +82,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
             const auto tls = std::find_if(segments.begin(), segments.end(), [](const Domain::ProgramHeader& header) { return header.Type == Elfpatcher::PT_TLS; });
             if (tls != segments.end()) {
                 Codegen::UpperShadowContext context{static_cast<std::int32_t>(Codegen::UpperShadowOffset(tls->MemorySize, tls->Alignment)), {}};
+                upperShadowOffset = context.Offset;
                 for (const auto& region : Relinker::UnusedNidFilter::ReadExceptionFunctions(sourceBytes, segments, {}, {})) context.Functions.emplace_back(region.Begin, region.End);
                 shadow = std::move(context);
             }
@@ -178,7 +180,7 @@ ConversionOutput Conversion::Convert(ConversionInput input, const ConversionOpti
 
     std::vector<Relinker::GuestArtifact> guestArtifacts;
     if (!input.Modules.empty()) {
-        guestArtifacts = Relinker::GuestModuleBuilder().Build(input.InputPath, input.OutputPath, result.DynamicSection, windows, macos, options.ToIntel, Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse), *syscallScanner, options.LazyBinding, options.OmitUnavailableDependencies, options.RunPath, options.ExcludedModules, input.ModuleRoot, input.RuntimeDirectories, std::move(input.Modules), inputProgress, options.FunctionSymbolRoots);
+        guestArtifacts = Relinker::GuestModuleBuilder().Build(input.InputPath, input.OutputPath, result.DynamicSection, windows, macos, options.ToIntel, Codegen::Amd64OnlyTargetFor(options.ToRosetta, options.ToAvx, options.ToSse), *syscallScanner, options.LazyBinding, options.OmitUnavailableDependencies, options.RunPath, options.ExcludedModules, input.ModuleRoot, input.RuntimeDirectories, std::move(input.Modules), inputProgress, options.FunctionSymbolRoots, upperShadowOffset);
     }
 
     auto byteWriter = std::make_shared<Io::ByteWriter>();
