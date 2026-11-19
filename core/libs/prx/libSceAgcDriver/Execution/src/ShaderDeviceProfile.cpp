@@ -83,7 +83,7 @@ ShaderDeviceProfile::ShaderDeviceProfile(const ShaderRecompiler::SpirvTarget& ta
     std::ranges::sort(extensions);
     extensions.erase(std::unique(extensions.begin(), extensions.end()), extensions.end());
     for (const auto& extension : extensions) extensionViews.emplace_back(extension);
-    Require(std::ranges::find(extensionViews, "SPV_KHR_physical_storage_buffer") != extensionViews.end(), "shader device profile is missing runtime extensions");
+    Require(!hasCapability(spv::CapabilityPhysicalStorageBufferAddresses) || std::ranges::find(extensionViews, "SPV_KHR_physical_storage_buffer") != extensionViews.end(), "shader device profile is missing runtime extensions");
     Require(!hasCapability(spv::CapabilityStorageBuffer8BitAccess) || std::ranges::find(extensionViews, "SPV_KHR_8bit_storage") != extensionViews.end(), "shader device profile is missing runtime extensions");
     Require(std::ranges::find(extensionViews, "SPV_KHR_terminate_invocation") == extensionViews.end() || (terminate != nullptr && terminate->shaderTerminateInvocation == VK_TRUE), "shader device profile advertises a disabled feature: shaderTerminateInvocation");
     this->target.supportedCapabilities = capabilities;
