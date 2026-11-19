@@ -1866,9 +1866,13 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
         state->capabilities.push_back(4448);
         state->spirvExtensions.push_back("SPV_KHR_8bit_storage");
     }
-    state->capabilities.push_back(11);
-    state->capabilities.push_back(5347);
-    state->spirvExtensions.push_back("SPV_KHR_physical_storage_buffer");
+    VkPhysicalDeviceFeatures pointerFeatures{};
+    state->InstanceFunction<PFN_vkGetPhysicalDeviceFeatures>("vkGetPhysicalDeviceFeatures")(selected, &pointerFeatures);
+    if (pointerFeatures.shaderInt64 == VK_TRUE) {
+        state->capabilities.push_back(11);
+        state->capabilities.push_back(5347);
+        state->spirvExtensions.push_back("SPV_KHR_physical_storage_buffer");
+    }
     state->depthRangeUnrestricted = hasExtension(VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME);
     if (state->depthRangeUnrestricted) deviceExtensions.push_back(VK_EXT_DEPTH_RANGE_UNRESTRICTED_EXTENSION_NAME);
     if (hasExtension(VK_EXT_SAMPLE_LOCATIONS_EXTENSION_NAME)) {
@@ -2135,7 +2139,7 @@ VulkanDevice::VulkanDevice(const PresentationWindow* window, bool compileOnly) :
     state->InstanceFunction<PFN_vkGetPhysicalDeviceFeatures>("vkGetPhysicalDeviceFeatures")(selected, &available);
     require(available.vertexPipelineStoresAndAtomics && available.fragmentStoresAndAtomics, "graphics shader buffer writes and atomics are unavailable");
     VkPhysicalDeviceFeatures enabled{};
-    enabled.shaderInt64 = VK_TRUE;
+    enabled.shaderInt64 = available.shaderInt64;
     enabled.shaderInt16 = available.shaderInt16;
     if (enabled.shaderInt16) state->capabilities.push_back(spv::CapabilityInt16);
     enabled.shaderFloat64 = available.shaderFloat64 && floatControls.shaderSignedZeroInfNanPreserveFloat64;

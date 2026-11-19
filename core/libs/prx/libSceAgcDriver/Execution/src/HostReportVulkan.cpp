@@ -97,7 +97,7 @@ HostGpuFacts CollectHostGpuFacts(const HostGpuQuery& query) {
     required(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME, "extension", hasAddress);
     required(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME, "extension", hasFloatControls);
     required("bufferDeviceAddress", "feature", hasAddress && address.bufferDeviceAddress == VK_TRUE);
-    required("shaderInt64", "feature", core.shaderInt64 == VK_TRUE);
+    gpu.requirements.push_back({"shaderInt64", "feature", false, core.shaderInt64 == VK_TRUE});
     required("shaderSignedZeroInfNanPreserveFloat32", "feature", hasFloatControls && floatControls.shaderSignedZeroInfNanPreserveFloat32 == VK_TRUE);
     required("vertexPipelineStoresAndAtomics", "feature", core.vertexPipelineStoresAndAtomics == VK_TRUE);
     required("fragmentStoresAndAtomics", "feature", core.fragmentStoresAndAtomics == VK_TRUE);
