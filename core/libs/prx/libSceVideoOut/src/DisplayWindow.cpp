@@ -186,6 +186,7 @@ void DisplayWindow::installSubclass() {
     SDL_VERSION(&info.version);
     require(SDL_GetWindowWMInfo(window, &info) == SDL_TRUE, SDL_GetError());
     require(info.subsystem == SDL_SYSWM_WINDOWS, "unsupported window subsystem");
+    if (info.info.win.window == nullptr) return;
     const auto attached = SetWindowSubclass(info.info.win.window, reinterpret_cast<SUBCLASSPROC>(&DisplayWindow::windowProc), DisplayWindowSubclassId, reinterpret_cast<DWORD_PTR>(this));
     require(attached != FALSE, "SetWindowSubclass failed");
 #endif
