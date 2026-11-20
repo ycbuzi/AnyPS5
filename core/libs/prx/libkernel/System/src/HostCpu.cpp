@@ -3,6 +3,9 @@
 #if defined(__x86_64__) || defined(__i386__)
 #include <cpuid.h>
 #endif
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -167,10 +170,38 @@ std::vector<HostCpuFeature> HostCpuFeatures(const HostCpuRegisters& registers) {
     return features;
 }
 
+namespace {
+
+constexpr const char* kLoweredFeatureNames[] = {"LZCNT", "BMI1", "BMI2", "MOVBE", "AVX", "AVX2", "FMA", "F16C", "OS AVX state (XCR0)"};
+
+std::uint32_t LoweredHostCpuFeatures() {
+    std::uint32_t lowered = 0;
+#if defined(_WIN32)
+    const auto* base = reinterpret_cast<const unsigned char*>(GetModuleHandleW(nullptr));
+    if (base == nullptr) return 0;
+    const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+    const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+    const auto* section = IMAGE_FIRST_SECTION(nt);
+    for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section)
+        if (std::memcmp(section->Name, ".aps5cpu", 8) == 0 && section->Misc.VirtualSize >= 4)
+            std::memcpy(&lowered, base + section->VirtualAddress, 4);
+#endif
+    return lowered;
+}
+
+bool Lowered(const std::string& name, const std::uint32_t lowered) {
+    for (std::size_t bit = 0; bit < std::size(kLoweredFeatureNames); ++bit)
+        if ((lowered >> bit & 1) != 0 && name == kLoweredFeatureNames[bit]) return true;
+    return false;
+}
+
+}
+
 std::vector<std::string> MissingHostCpuFeatures(const HostCpuRegisters& registers) {
+    const auto lowered = LoweredHostCpuFeatures();
     std::vector<std::string> missing;
     for (const auto& feature : HostCpuFeatures(registers))
-        if (feature.Required && !feature.Present) missing.emplace_back(feature.Name);
+        if (feature.Required && !feature.Present && !Lowered(feature.Name, lowered)) missing.emplace_back(feature.Name);
     return missing;
 }
 
