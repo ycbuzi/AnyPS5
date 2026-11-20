@@ -1,0 +1,32 @@
+#!/bin/bash
+. /usr/lib/anyps5/boot-lib.sh
+TIMEOUT=90
+[ -f /etc/anyps5/boot-ok.conf ] && . /etc/anyps5/boot-ok.conf
+CUR=$(aos_current_slot)
+ENTRY=$(aos_boot_count_path)
+MARKER=/run/user/$(id -u anyps5)/anyps5-session-started
+
+log() {
+  local line
+  line="$(date -Is) slot=${CUR:-?} entry=$(basename "${ENTRY:-none}") $*"
+  echo "$line"
+  if mountpoint -q /data; then install -d /data/anyps5; echo "$line" >> /data/anyps5/boot-history.log; fi
+}
+
+aos_mount_efi
+aos_layout >/dev/null 2>&1 || true
+end=$((SECONDS + TIMEOUT))
+while [ "$SECONDS" -lt "$end" ]; do
+  if [ -e "$MARKER" ]; then
+    log "ok: console session started ${SECONDS}s after this check began"
+    [ -n "$CUR" ] && aos_retitle "$CUR"
+    exit 0
+  fi
+  sleep 1
+done
+log "failed: console session did not start within ${TIMEOUT}s"
+if aos_should_reboot "$ENTRY"; then
+  log "rebooting so the boot loader can retry or fall back"
+  systemctl --no-block reboot
+fi
+exit 1

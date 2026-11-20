@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+SEED=/usr/share/anyps5/seed
+H=/data/home/anyps5
+install -d -m 755 /data/home /data/anyps5
+if [ ! -d "$H" ] && [ -d "$SEED/home" ]; then
+  cp -a "$SEED/home/." /data/home/
+  echo "$(date -Is) home seeded from $(cat /etc/anyps5/v2 2>/dev/null)" >> /data/anyps5/boot-history.log
+fi
+ver=$(cat "$SEED/console-version" 2>/dev/null || true)
+if [ -n "$ver" ] && [ -d "$H" ] && [ -d "$SEED/home/anyps5/console" ] && [ "$(cat "$H/.anyps5-console-version" 2>/dev/null || true)" != "$ver" ]; then
+  keep=/data/anyps5/.console-data-keep
+  rm -rf "$keep"
+  [ -d "$H/console/os-host/data" ] && mv "$H/console/os-host/data" "$keep"
+  rm -rf "$H/console"
+  cp -a "$SEED/home/anyps5/console" "$H/console"
+  if [ -d "$keep" ]; then rm -rf "$H/console/os-host/data"; mv "$keep" "$H/console/os-host/data"; fi
+  for f in .bash_profile .hushlogin; do [ -e "$SEED/home/anyps5/$f" ] && cp -a "$SEED/home/anyps5/$f" "$H/$f"; done
+  echo "$ver" > "$H/.anyps5-console-version"
+  chown "$(stat -c %u:%g "$SEED/home/anyps5")" "$H/.anyps5-console-version"
+  echo "$(date -Is) console refreshed to $ver" >> /data/anyps5/boot-history.log
+fi

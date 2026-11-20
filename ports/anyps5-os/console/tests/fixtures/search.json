@@ -1,0 +1,147 @@
+{
+ "now": "2026-11-16T21:04:00",
+ "state": {
+  "host": true,
+  "platform": "linux",
+  "paused": false,
+  "pads": [],
+  "build": "fixture",
+  "program": "AnyPS5 OS",
+  "root": "/home/anyps5/games",
+  "playing": null,
+  "settings": {
+   "profiles": [
+    {
+     "name": "Blu",
+     "color": 0,
+     "pinHash": "",
+     "uid": "u1blu0001",
+     "searches": [
+      "astro",
+      "Café Ünicode",
+      "bendy"
+     ]
+    },
+    {
+     "name": "Guest",
+     "color": 3,
+     "pinHash": "",
+     "uid": "u2guest002"
+    },
+    {
+     "name": "Kai",
+     "color": 2,
+     "pinHash": "66218b04f72d651f8ea16ee1d2a4b5399e1a0422000b6fd46e9bc4022453e2db",
+     "uid": "u3kai0003"
+    }
+   ],
+   "sounds": true,
+   "volume": 2,
+   "psAction": "cc",
+   "showNoArt": false,
+   "safe": false,
+   "libSort": "recent",
+   "testUid": ""
+  }
+ },
+ "library": [
+  {
+   "id": "PPSA22520",
+   "title": "Animal Well",
+   "icon": "art/PPSA22520/icon.jpg",
+   "bg": "art/PPSA22520/bg.jpg",
+   "shot": "art/PPSA22520/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 02:12",
+   "folder": "/home/anyps5/games/Animal Well (PPSA22520)",
+   "exe": "/home/anyps5/games/Animal Well (PPSA22520)/Animal Well.exe",
+   "saves": 1
+  },
+  {
+   "id": "PPSA01325",
+   "title": "Astro's Playroom",
+   "icon": "art/PPSA01325/icon.jpg",
+   "bg": "art/PPSA01325/bg.jpg",
+   "shot": "art/PPSA01325/shot.jpg",
+   "status": "Plays",
+   "fps": 25,
+   "lastRun": "2026-11-16 07:03",
+   "folder": "/home/anyps5/games/Astro's Playroom (PPSA01325)",
+   "exe": "/home/anyps5/games/Astro's Playroom (PPSA01325)/Astro's Playroom.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA18391",
+   "title": "Afterdream",
+   "icon": "art/PPSA18391/icon.jpg",
+   "bg": "art/PPSA18391/bg.jpg",
+   "shot": "art/PPSA18391/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 01:24",
+   "folder": "/home/anyps5/games/Afterdream (PPSA18391)",
+   "exe": "/home/anyps5/games/Afterdream (PPSA18391)/Afterdream.exe",
+   "saves": 3
+  },
+  {
+   "id": "PPSA07057",
+   "title": "Coffee Talk",
+   "icon": "art/PPSA07057/icon.jpg",
+   "bg": "art/PPSA07057/bg.jpg",
+   "shot": "art/PPSA07057/shot.jpg",
+   "status": "Plays",
+   "lastRun": "2026-11-15 08:37",
+   "folder": "/home/anyps5/games/Coffee Talk (PPSA07057)",
+   "exe": "/home/anyps5/games/Coffee Talk (PPSA07057)/Coffee Talk.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA27624",
+   "title": "Bendy and the Dark Revival",
+   "icon": "art/PPSA27624/icon.jpg",
+   "bg": "art/PPSA27624/bg.jpg",
+   "shot": "art/PPSA27624/shot.jpg",
+   "status": "Stops early",
+   "fps": 6,
+   "lastRun": "2026-11-15 08:36",
+   "folder": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)",
+   "exe": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)/Bendy and the Dark Revival.exe",
+   "saves": 5
+  }
+ ],
+ "media": {
+  "items": [
+   {
+    "src": "art/PPSA22520/shot.jpg",
+    "thumb": "art/PPSA22520/shot.jpg",
+    "game": "Animal Well",
+    "id": "m0",
+    "sub": "Screenshot"
+   },
+   {
+    "src": "art/PPSA01325/shot.jpg",
+    "thumb": "art/PPSA01325/shot.jpg",
+    "game": "Astro's Playroom",
+    "id": "m1",
+    "sub": "Screenshot"
+   },
+   {
+    "src": "art/PPSA18391/shot.jpg",
+    "thumb": "art/PPSA18391/shot.jpg",
+    "game": "Afterdream",
+    "id": "m2",
+    "sub": "Screenshot"
+   }
+  ]
+ },
+ "sys": {
+  "datetime.get": {
+   "ok": true,
+   "data": {
+    "timezone": "UTC"
+   }
+  }
+ },
+ "events": []
+}

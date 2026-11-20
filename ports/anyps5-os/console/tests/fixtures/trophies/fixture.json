@@ -1,0 +1,208 @@
+{
+ "now": "2026-11-16T21:04:00",
+ "state": {
+  "host": true,
+  "platform": "linux",
+  "paused": false,
+  "pads": [],
+  "build": "fixture",
+  "program": "AnyPS5 OS",
+  "root": "/home/anyps5/games",
+  "playing": null,
+  "settings": {
+   "profiles": [
+    {
+     "name": "Blu",
+     "color": 0,
+     "pinHash": "",
+     "uid": "u1blu0001",
+     "favMedia": [
+      "m3",
+      "m1"
+     ]
+    },
+    {
+     "name": "Guest",
+     "color": 3,
+     "pinHash": "",
+     "uid": "u2guest002"
+    }
+   ],
+   "sounds": true,
+   "volume": 2,
+   "psAction": "cc",
+   "showNoArt": false,
+   "safe": false,
+   "libSort": "recent",
+   "testUid": ""
+  }
+ },
+ "library": [
+  {
+   "id": "PPSA22520",
+   "title": "Animal Well",
+   "icon": "../art/PPSA22520/icon.jpg",
+   "bg": "../art/PPSA22520/bg.jpg",
+   "shot": "../art/PPSA22520/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 02:12",
+   "folder": "/home/anyps5/games/Animal Well (PPSA22520)",
+   "exe": "/home/anyps5/games/Animal Well (PPSA22520)/Animal Well.exe",
+   "saves": 1
+  },
+  {
+   "id": "PPSA01325",
+   "title": "Astro's Playroom",
+   "icon": "../art/PPSA01325/icon.jpg",
+   "bg": "../art/PPSA01325/bg.jpg",
+   "shot": "../art/PPSA01325/shot.jpg",
+   "status": "Plays",
+   "fps": 25,
+   "lastRun": "2026-11-16 07:03",
+   "folder": "/home/anyps5/games/Astro's Playroom (PPSA01325)",
+   "exe": "/home/anyps5/games/Astro's Playroom (PPSA01325)/Astro's Playroom.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA18391",
+   "title": "Afterdream",
+   "icon": "../art/PPSA18391/icon.jpg",
+   "bg": "../art/PPSA18391/bg.jpg",
+   "shot": "../art/PPSA18391/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 01:24",
+   "folder": "/home/anyps5/games/Afterdream (PPSA18391)",
+   "exe": "/home/anyps5/games/Afterdream (PPSA18391)/Afterdream.exe",
+   "saves": 3
+  },
+  {
+   "id": "PPSA07057",
+   "title": "Coffee Talk",
+   "icon": "../art/PPSA07057/icon.jpg",
+   "bg": "../art/PPSA07057/bg.jpg",
+   "shot": "../art/PPSA07057/shot.jpg",
+   "status": "Plays",
+   "lastRun": "2026-11-15 08:37",
+   "folder": "/home/anyps5/games/Coffee Talk (PPSA07057)",
+   "exe": "/home/anyps5/games/Coffee Talk (PPSA07057)/Coffee Talk.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA27624",
+   "title": "Bendy and the Dark Revival",
+   "icon": "../art/PPSA27624/icon.jpg",
+   "bg": "../art/PPSA27624/bg.jpg",
+   "shot": "../art/PPSA27624/shot.jpg",
+   "status": "Stops early",
+   "fps": 6,
+   "lastRun": "2026-11-15 08:36",
+   "folder": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)",
+   "exe": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)/Bendy and the Dark Revival.exe",
+   "saves": 5
+  }
+ ],
+ "sys": {
+  "datetime.get": {
+   "ok": true,
+   "data": {
+    "timezone": "UTC"
+   }
+  }
+ },
+ "events": [],
+ "media": {
+  "items": [
+   {
+    "id": "m0",
+    "game": "Animal Well",
+    "gameId": "PPSA22520",
+    "src": "../art/PPSA22520/shot.jpg",
+    "thumb": "../art/PPSA22520/shot.jpg",
+    "at": 1794600000000,
+    "source": "In game"
+   },
+   {
+    "id": "m1",
+    "game": "Astro's Playroom",
+    "gameId": "PPSA01325",
+    "src": "../art/PPSA01325/bg.jpg",
+    "thumb": "../art/PPSA01325/bg.jpg",
+    "at": 1794594600000,
+    "source": "In game"
+   },
+   {
+    "id": "m2",
+    "game": "Afterdream",
+    "gameId": "PPSA18391",
+    "src": "../art/PPSA18391/shot.jpg",
+    "thumb": "../art/PPSA18391/shot.jpg",
+    "at": 1794589200000,
+    "source": "Trophy",
+    "trophy": {
+     "grade": "gold",
+     "name": "Trophy number 2"
+    }
+   },
+   {
+    "id": "m3",
+    "game": "Coffee Talk",
+    "gameId": "PPSA07057",
+    "src": "../art/PPSA07057/bg.jpg",
+    "thumb": "../art/PPSA07057/bg.jpg",
+    "at": 1794583800000,
+    "source": "In game"
+   },
+   {
+    "id": "m4",
+    "game": "Bendy and the Dark Revival",
+    "gameId": "PPSA27624",
+    "src": "../art/PPSA27624/shot.jpg",
+    "thumb": "../art/PPSA27624/shot.jpg",
+    "at": 1794578400000,
+    "source": "In game"
+   },
+   {
+    "id": "m5",
+    "game": "Animal Well",
+    "gameId": "PPSA22520",
+    "src": "../art/PPSA22520/bg.jpg",
+    "thumb": "../art/PPSA22520/bg.jpg",
+    "at": 1794573000000,
+    "source": "Trophy",
+    "trophy": {
+     "grade": "bronze",
+     "name": "Trophy number 5"
+    }
+   },
+   {
+    "id": "m6",
+    "game": "Astro's Playroom",
+    "gameId": "PPSA01325",
+    "src": "../art/PPSA01325/shot.jpg",
+    "thumb": "../art/PPSA01325/shot.jpg",
+    "at": 1794567600000,
+    "source": "In game"
+   },
+   {
+    "id": "m7",
+    "game": "Afterdream",
+    "gameId": "PPSA18391",
+    "src": "../art/PPSA18391/bg.jpg",
+    "thumb": "../art/PPSA18391/bg.jpg",
+    "at": 1794562200000,
+    "source": "In game"
+   },
+   {
+    "id": "m8",
+    "game": "Coffee Talk",
+    "gameId": "PPSA07057",
+    "src": "../art/PPSA07057/shot.jpg",
+    "thumb": "../art/PPSA07057/shot.jpg",
+    "at": 1794556800000,
+    "source": "In game"
+   }
+  ]
+ }
+}

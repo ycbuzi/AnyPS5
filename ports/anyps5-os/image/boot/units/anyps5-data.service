@@ -1,0 +1,11 @@
+[Unit]
+Description=Prepare the AnyPS5 data partition
+DefaultDependencies=no
+Requires=data.mount
+After=data.mount
+Before=home.mount local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/anyps5-data-prep

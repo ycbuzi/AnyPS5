@@ -1,0 +1,14 @@
+[Unit]
+Description=Mark this AnyPS5 OS slot good once the console session starts
+After=getty@tty1.service systemd-user-sessions.service anyps5-data.service
+Before=boot-complete.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=0
+ExecStart=/usr/local/bin/anyps5-boot-ok
+
+[Install]
+RequiredBy=boot-complete.target
+WantedBy=multi-user.target

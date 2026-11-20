@@ -1,0 +1,34 @@
+#!/bin/bash
+# Wait for a collection install on this device to finish, then (with "play <seconds>") start the game and report its first run.
+# anyps5-install-watch <title id> [play <seconds>]
+ID="$1"; PLAY="${2:-}"; SECS="${3:-180}"
+q() {
+    curl -s -m 25 -H "Content-Type: application/json" -d '{"area":"collection","action":"list","args":{}}' http://127.0.0.1:8790/sys | python3 -c '
+import sys, json
+want = sys.argv[1]
+for g in json.load(sys.stdin)["data"]["games"]:
+    if g["titleId"] == want:
+        print(g.get("state"), g.get("phase"), g.get("percent"), (g.get("message") or "")[:200], "|", g.get("folder") or "")
+' "$ID" 2>/dev/null
+}
+last=""
+for i in $(seq 1 720); do
+    s=$(q); p=$(echo "$s" | cut -d" " -f1-2)
+    [ "$p" != "$last" ] && { echo "$(date +%H:%M) $s"; last="$p"; }
+    case "$s" in installing*|"") ;; *) break ;; esac
+    sleep 30
+done
+s=$(q); echo "final $(date +%H:%M): $s"
+case "$s" in installed*) ;; *) exit 1 ;; esac
+[ "$PLAY" = play ] || exit 0
+G="${s##*| }"
+python3 - "$G" <<'EOF'
+import json, sys, urllib.request
+r = urllib.request.Request("http://127.0.0.1:8790/msg", json.dumps({"play": sys.argv[1]}).encode(), {"Content-Type": "application/json"})
+print(urllib.request.urlopen(r, timeout=10).read()[:200])
+EOF
+sleep "$SECS"
+pgrep -x game >/dev/null && echo "GAME STILL RUNNING after $SECS s" || echo "game exited"
+echo "log lines: $(wc -l < "$G/last-run.log")"
+tail -15 "$G/last-run.log" | cut -c1-260
+free -m | sed -n 2p

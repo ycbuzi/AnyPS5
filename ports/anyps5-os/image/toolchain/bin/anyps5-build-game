@@ -1,0 +1,285 @@
+#!/usr/bin/env python3
+import datetime
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+USAGE = """usage: anyps5-build-game [--force] [--name NAME] [--copy] [--unwrap-modules] <dump or app0 dir> <out dir> [-- relinker options]
+Relinks a PS5 game for this device with the bundled AnyPS5 toolchain.
+  <dump or app0 dir>  folder with eboot.bin (plain ELF, or an unencrypted SELF) and sce_sys/param.json, or a folder holding app0/
+  <out dir>           the installed game: <out>/<NAME> (default "game"), <out>/libs, <out>/app0, <out>/anyps5-build.json.
+                      Only those are replaced (after the whole build succeeded); saves and everything else in <out> stay.
+  --force             relink even when this CPU lacks what the games need (the game will not start here)
+  --name NAME         executable name (default game)
+  --copy              copy app0 and libs instead of hard-linking them when they are on the same file system
+  --unwrap-modules    also unwrap SELF modules in sce_module/ and convert them (by default they are left out and the
+                      game uses AnyPS5's library of that name, as homebrew that bundles its own libc.prx needs)
+  -- options          passed to the relinker (for example --skip-sce-module or --module-dir DIR)
+Run it from the game's folder: ./game (it finds libs/ and app0/ next to itself).
+exit codes: 0 built, 1 usage, 2 the relinker failed, 3 this CPU lacks what the games need (see anyps5-compat),
+4 the input is not a usable game, 5 the output folder cannot be written or is too small, 6 the toolchain is broken"""
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, os.path.join(ROOT, "bin"))
+
+
+def load_compat():
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader("anyps5_compat", os.path.join(ROOT, "bin", "anyps5-compat"))
+    spec = importlib.util.spec_from_loader("anyps5_compat", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+class Fail(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def say(text):
+    print(text, flush=True)
+
+
+def link_tree(src, dst, copy):
+    if not copy:
+        try:
+            shutil.copytree(src, dst, symlinks=True, copy_function=os.link)
+            return "linked"
+        except OSError:
+            shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(src, dst, symlinks=True)
+    return "copied"
+
+
+def tree_size(path):
+    total = 0
+    for base, _, files in os.walk(path):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(base, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def same_fs(a, b):
+    try:
+        return os.stat(a).st_dev == os.stat(b).st_dev
+    except OSError:
+        return False
+
+
+def build(args):
+    compat = load_compat()
+    force, name, copy, extra, rest, unwrap_modules = False, "game", False, [], [], False
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--":
+            extra = args[i + 1:]
+            break
+        if a == "--force":
+            force = True
+        elif a == "--unwrap-modules":
+            unwrap_modules = True
+        elif a == "--copy":
+            copy = True
+        elif a == "--name" and i + 1 < len(args):
+            i += 1
+            name = args[i]
+        elif a in ("-h", "--help"):
+            say(USAGE)
+            return 0
+        elif a.startswith("-"):
+            raise Fail(1, f"unknown option {a}\n{USAGE}")
+        else:
+            rest.append(a)
+        i += 1
+    if len(rest) != 2 or not name or "/" in name or name in ("libs", "app0"):
+        raise Fail(1, USAGE)
+    source, out = os.path.abspath(rest[0]), os.path.abspath(rest[1])
+    try:
+        info, features, relinker = compat.toolchain()
+    except (OSError, ValueError) as e:
+        raise Fail(6, f"the AnyPS5 toolchain in {ROOT} is incomplete: {e}")
+    libs = os.path.join(ROOT, "libs")
+    model, vendor, flags = compat.cpu("/proc/cpuinfo")
+    lowered = compat.lowered_features(info, flags)
+    to_sse = compat.uses_sse(info, flags)
+    missing = [n for n, req, flag in features if req and flag != "?" and flag not in flags and n not in lowered]
+    if missing and not force:
+        raise Fail(3, f"this CPU ({model}) lacks {', '.join(missing)}, which PS5 games use directly, and this AnyPS5 build "
+                      f"cannot lower them; nothing was built (--force relinks anyway)")
+    app0 = compat.find_app0(source)
+    if app0 is None:
+        raise Fail(4, f"no eboot.bin in {source} or {os.path.join(source, 'app0')}")
+    eboot, kind = compat.find_eboot(app0)
+    if eboot is None:
+        raise Fail(4, "eboot.bin is neither a plain ELF nor an unencrypted SELF (the game needs a decrypted dump)")
+    try:
+        meta = compat.param(app0)
+    except (OSError, ValueError) as e:
+        raise Fail(4, f"sce_sys/param.json cannot be read: {e}")
+    if not meta or not meta.get("titleId"):
+        raise Fail(4, "the game has no sce_sys/param.json with a titleId")
+    if os.path.commonpath([out, app0]) in (out, app0):
+        raise Fail(5, "the output folder must not contain the game's source folder or be inside it")
+    try:
+        os.makedirs(out, exist_ok=True)
+    except OSError as e:
+        raise Fail(5, f"cannot create {out}: {e}")
+    if not os.access(out, os.W_OK):
+        raise Fail(5, f"{out} is not writable")
+    need = 64 << 20
+    if copy or not same_fs(app0, out):
+        need += tree_size(app0)
+    if copy or not same_fs(libs, out):
+        need += tree_size(libs)
+    free = shutil.disk_usage(out).free
+    if free < need:
+        raise Fail(5, f"not enough space in {out}: {need >> 20} MB needed, {free >> 20} MB free")
+    say(f"== {meta.get('titleName') or meta['titleId']} ({meta['titleId']} {meta.get('contentVersion', '')}) from {app0}")
+    stage = tempfile.mkdtemp(prefix=".anyps5-build-", dir=out)
+    try:
+        say("== game files")
+        how = link_tree(app0, os.path.join(stage, "app0"), copy)
+        say(f"   app0 {how}")
+        how = link_tree(libs, os.path.join(stage, "libs"), copy)
+        say(f"   libs {how} ({len(os.listdir(libs))} files)")
+        stage_app0 = os.path.join(stage, "app0")
+        src = os.path.join(stage_app0, os.path.relpath(eboot, app0))
+        if kind == "self":
+            say("== unwrap eboot.bin (SELF)")
+            src, err = compat.unwrap(eboot, stage)
+            if src is None:
+                raise Fail(4, "eboot.bin could not be unwrapped: " + err[0])
+        self_modules = []
+        for d in ("sce_module", "sce_modules", "prx"):
+            folder = os.path.join(stage_app0, d)
+            if os.path.isdir(folder):
+                self_modules += [os.path.join(folder, f) for f in sorted(os.listdir(folder)) if compat.magic(os.path.join(folder, f)) in compat.SELF_MAGICS]
+        unwrapped, skipped = [], []
+        for module in self_modules:
+            rel = os.path.relpath(module, stage_app0)
+            if not unwrap_modules:
+                skipped.append(rel)
+                continue
+            with tempfile.TemporaryDirectory(dir=stage) as tmp:
+                elf, err = compat.unwrap(module, tmp)
+                if elf is None:
+                    raise Fail(4, f"{rel} could not be unwrapped: {err[0]}")
+                os.replace(elf, module)
+            unwrapped.append(rel)
+        if unwrapped:
+            say("   unwrapped SELF modules: " + " ".join(unwrapped))
+        if skipped:
+            say("   SELF modules left unconverted (the game uses AnyPS5's libraries of those names; --unwrap-modules converts them): " + " ".join(skipped))
+        if to_sse:
+            say(f"   this CPU has no AVX2: relinking with --to-sse ({info.get('sse_lowers', '')} lowered to SSE4.2)")
+        module_dirs = []
+        while True:
+            cmd = [relinker, *compat.relinker_args(vendor, info, flags), "--sce-module-path", stage_app0, *extra,
+                   *[a for d in module_dirs for a in ("--module-dir", d)], src, os.path.join(stage, name)]
+            say("== relink: " + " ".join(cmd))
+            asked = []
+            with open(os.path.join(stage, "relinker-output.txt"), "w", encoding="utf-8") as log:
+                p = subprocess.Popen(cmd, cwd=os.path.join(stage, "app0"), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+                tail = []
+                for line in p.stdout:
+                    log.write(line)
+                    tail = (tail + [line.rstrip()])[-8:]
+                    hint = re.search(r"Needed module not converted: .*; add --module-dir (.+)$", line.rstrip())
+                    if hint and hint.group(1) not in module_dirs + asked:
+                        asked.append(hint.group(1))
+                code = p.wait()
+            if code != 0 or not asked:
+                break
+            for d in asked:
+                folder = os.path.join(stage_app0, d)
+                for f in sorted(os.listdir(folder)) if unwrap_modules and os.path.isdir(folder) else []:
+                    module = os.path.join(folder, f)
+                    if compat.magic(module) in compat.SELF_MAGICS:
+                        with tempfile.TemporaryDirectory(dir=stage) as tmp:
+                            elf, err = compat.unwrap(module, tmp)
+                            if elf is None:
+                                raise Fail(4, f"{os.path.relpath(module, stage_app0)} could not be unwrapped: {err[0]}")
+                            os.replace(elf, module)
+                        unwrapped.append(os.path.relpath(module, stage_app0))
+            say("   the game loads modules from " + ", ".join(asked) + "; relinking with --module-dir")
+            module_dirs += asked
+        if code != 0:
+            for line in tail:
+                say("   " + line)
+            raise Fail(2, f"the relinker failed (exit {code}); full output in {os.path.join(out, 'relinker-output.txt')}")
+        os.chmod(os.path.join(stage, name), 0o755)
+        in_binary, mask = compat.lowered_in_binary(os.path.join(stage, name), info)
+        still = [n for n, req, flag in features if req and flag != "?" and flag not in flags and n not in set(info.get("lowers", "").split()) | in_binary]
+        if to_sse and still and not missing:
+            with open(os.path.join(stage, "relinker-output.txt"), encoding="utf-8", errors="replace") as log:
+                remain = [line.strip() for line in log if compat.SSE_REMAIN in line]
+            if not force:
+                raise Fail(3, f"the relinked game still needs {', '.join(still)}, which this CPU ({model}) lacks"
+                              f"{': ' + remain[-1] if remain else ''}; nothing was installed (--force installs it anyway)")
+            missing = still
+        stamp = {"titleId": meta["titleId"], "titleName": meta.get("titleName", ""),
+                 "contentVersion": meta.get("contentVersion", ""), "masterVersion": meta.get("masterVersion", ""),
+                 "source": app0, "executable": name, "built": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                 "relinkerArgs": [a.replace(stage, out) for a in cmd[1:-2]], "unwrappedModules": unwrapped, "skippedSelfModules": skipped,
+                 "forced": bool(missing), "cpu": model, "cpuMissing": missing,
+                 "toSse": to_sse, "loweredCpu": f"0x{mask:x}", "loweredCpuFeatures": sorted(in_binary),
+                 "toolchain": {k: info.get(k, "") for k in ("commit", "commit_date", "built", "cpu_baseline", "avx_lowering", "lowers", "to_sse", "to_sse_commit", "sse_lowers")}}
+        with open(os.path.join(stage, "anyps5-build.json"), "w", encoding="utf-8") as f:
+            json.dump(stamp, f, indent=2)
+        desktop = os.path.join(stage, name + ".desktop")
+        if os.path.isfile(desktop):
+            with open(desktop, encoding="utf-8", errors="replace") as f:
+                text = f.read().replace(stage, out)
+            with open(desktop, "w", encoding="utf-8") as f:
+                f.write(text)
+        items = [name, "libs", "app0", "anyps5-build.json", "relinker-output.txt"]
+        items += [x for x in (name + ".png", name + ".desktop") if os.path.isfile(os.path.join(stage, x))]
+        say("== install")
+        old = tempfile.mkdtemp(prefix=".anyps5-old-", dir=out)
+        moved = []
+        try:
+            for item in items + [x for x in (name + ".png", name + ".desktop") if x not in items]:
+                if os.path.lexists(os.path.join(out, item)):
+                    os.rename(os.path.join(out, item), os.path.join(old, item))
+                    moved.append(item)
+            for item in items:
+                os.rename(os.path.join(stage, item), os.path.join(out, item))
+        except OSError as e:
+            for item in items:
+                if os.path.lexists(os.path.join(out, item)) and not os.path.lexists(os.path.join(stage, item)):
+                    os.rename(os.path.join(out, item), os.path.join(stage, item))
+            for item in moved:
+                os.rename(os.path.join(old, item), os.path.join(out, item))
+            raise Fail(5, f"replacing the installed game failed: {e}")
+        shutil.rmtree(old, ignore_errors=True)
+        say(f"OK {os.path.join(out, name)}")
+        if missing:
+            say(f"warning: built with --force; this CPU lacks {', '.join(missing)}, so the game stops at start-up here")
+        return 0
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def main():
+    try:
+        return build(sys.argv[1:])
+    except Fail as e:
+        print(("ERROR: " if e.code != 1 else "") + str(e), file=sys.stderr)
+        return e.code
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,29 @@
+#!/bin/bash
+# Start a game through the console host and drive it with the virtual keyboard, saving frames on the way.
+# anyps5-game-drive "<game folder>" step [step...]     steps: wait:<s>  key:<name>[xN]  shot  env  (shot = the game's F12 frame, env = its AnyPS5 settings)
+# Game keys: enter = Cross, esc = Options, arrows = D-pad. Leaves the game running. Never run it while someone is playing.
+G="$1"; shift
+START=$(date +%s)
+python3 - "$G" <<'EOF'
+import json, sys, urllib.request
+r = urllib.request.Request("http://127.0.0.1:8790/msg", json.dumps({"play": sys.argv[1]}).encode(), {"Content-Type": "application/json"})
+print(urllib.request.urlopen(r, timeout=10).read()[:160].decode("utf-8", "replace"))
+EOF
+for step in "$@"; do
+    pgrep -x game >/dev/null || [ $(( $(date +%s) - START )) -lt 25 ] || { echo "game exited after $(( $(date +%s) - START )) s (before step $step)"; break; }
+    case "$step" in
+        wait:*) sleep "${step#wait:}" ;;
+        shot) anyps5-tour /tmp/tour key:f12 wait:5 >/dev/null 2>&1; echo "$(( $(date +%s) - START )) s: $(ls -t "$G/anyps5-screenshots/" 2>/dev/null | head -1)" ;;
+        env) tr '\0' '\n' < "/proc/$(pgrep -x game | head -1)/environ" 2>/dev/null | grep -E "^(APS5|ANYPS5)_" | tr '\n' ' '; echo ;;
+        key:*) anyps5-tour /tmp/tour "$step" wait:1 >/dev/null 2>&1 ;;
+        *) echo "unknown step $step"; exit 1 ;;
+    esac
+done
+P=$(pgrep -x game | head -1)
+if [ -n "$P" ]; then
+    echo "game running after $(( $(date +%s) - START )) s: rss $(( $(ps -o rss= -p "$P") / 1024 )) MiB, cpu $(ps -o pcpu= -p "$P")"
+    tr '\0' '\n' < "/proc/$P/environ" | grep -E "^(APS5|ANYPS5)_" | tr '\n' ' '; echo
+fi
+grep -E "presented at|heap 0 [0-9]+/[0-9]+ MiB|what\(\)" "$G/last-run.log" | tail -4 | cut -c1-260
+grep -oE "uses [0-9]+ MiB" "$G/last-run.log" | tail -1
+free -m | sed -n 2p

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Start a game through the console host, save a frame with the game's F12 key every <interval> seconds for <total> seconds,
+# then close the game. Prints the saved frames. Never run it while someone is using the console.
+# anyps5-game-shots "<game folder>" [total seconds] [interval seconds]
+G="$1"; TOTAL="${2:-300}"; EVERY="${3:-60}"
+msg() {
+    python3 - "$1" <<'EOF'
+import json, sys, urllib.request
+r = urllib.request.Request("http://127.0.0.1:8790/msg", sys.argv[1].encode(), {"Content-Type": "application/json"})
+print(urllib.request.urlopen(r, timeout=10).read()[:160].decode("utf-8", "replace"))
+EOF
+}
+START=$(date +%s)
+msg "$(python3 -c 'import json,sys; print(json.dumps({"play": sys.argv[1]}))' "$G")"
+sleep 20
+while [ $(( $(date +%s) - START )) -lt "$TOTAL" ]; do
+    pgrep -x game >/dev/null || { echo "game exited after $(( $(date +%s) - START )) s"; break; }
+    sleep "$EVERY"
+    anyps5-tour /tmp/tour key:f12 wait:6 >/dev/null 2>&1
+done
+pgrep -x game >/dev/null && echo "game still running at the end ($(ps -o rss=,pcpu= -C game | head -1))"
+msg '{"closegame": true}'
+find "$G/anyps5-screenshots" -name "*.png" -newermt "@$START" -printf "%s %p\n" 2>/dev/null | sort -k2
+grep -iE "Physical device candidate|unhandled|what\(\)" "$G/last-run.log" | tail -4 | cut -c1-240

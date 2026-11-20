@@ -1,0 +1,749 @@
+{
+ "now": "2026-11-16T21:04:00",
+ "state": {
+  "host": true,
+  "platform": "linux",
+  "paused": false,
+  "pads": [],
+  "build": "fixture",
+  "program": "AnyPS5 OS",
+  "root": "/home/anyps5/games",
+  "playing": null,
+  "settings": {
+   "profiles": [
+    {
+     "name": "Blu",
+     "color": 0,
+     "pinHash": "",
+     "uid": "u1blu0001"
+    },
+    {
+     "name": "Guest",
+     "color": 3,
+     "pinHash": "",
+     "uid": "u2guest002"
+    }
+   ],
+   "sounds": true,
+   "volume": 2,
+   "psAction": "cc",
+   "showNoArt": false,
+   "safe": false,
+   "libSort": "recent",
+   "testUid": ""
+  }
+ },
+ "library": [
+  {
+   "id": "PPSA22520",
+   "title": "Animal Well",
+   "icon": "art/PPSA22520/icon.jpg",
+   "bg": "art/PPSA22520/bg.jpg",
+   "shot": "art/PPSA22520/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 02:12",
+   "folder": "/home/anyps5/games/Animal Well (PPSA22520)",
+   "exe": "/home/anyps5/games/Animal Well (PPSA22520)/Animal Well.exe",
+   "saves": 1
+  },
+  {
+   "id": "PPSA01325",
+   "title": "Astro's Playroom",
+   "icon": "art/PPSA01325/icon.jpg",
+   "bg": "art/PPSA01325/bg.jpg",
+   "shot": "art/PPSA01325/shot.jpg",
+   "status": "Plays",
+   "fps": 25,
+   "lastRun": "2026-11-16 07:03",
+   "folder": "/home/anyps5/games/Astro's Playroom (PPSA01325)",
+   "exe": "/home/anyps5/games/Astro's Playroom (PPSA01325)/Astro's Playroom.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA18391",
+   "title": "Afterdream",
+   "icon": "art/PPSA18391/icon.jpg",
+   "bg": "art/PPSA18391/bg.jpg",
+   "shot": "art/PPSA18391/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 01:24",
+   "folder": "/home/anyps5/games/Afterdream (PPSA18391)",
+   "exe": "/home/anyps5/games/Afterdream (PPSA18391)/Afterdream.exe",
+   "saves": 3
+  },
+  {
+   "id": "PPSA07057",
+   "title": "Coffee Talk",
+   "icon": "art/PPSA07057/icon.jpg",
+   "bg": "art/PPSA07057/bg.jpg",
+   "shot": "art/PPSA07057/shot.jpg",
+   "status": "Plays",
+   "lastRun": "2026-11-15 08:37",
+   "folder": "/home/anyps5/games/Coffee Talk (PPSA07057)",
+   "exe": "/home/anyps5/games/Coffee Talk (PPSA07057)/Coffee Talk.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA27624",
+   "title": "Bendy and the Dark Revival",
+   "icon": "art/PPSA27624/icon.jpg",
+   "bg": "art/PPSA27624/bg.jpg",
+   "shot": "art/PPSA27624/shot.jpg",
+   "status": "Stops early",
+   "fps": 6,
+   "lastRun": "2026-11-15 08:36",
+   "folder": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)",
+   "exe": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)/Bendy and the Dark Revival.exe",
+   "saves": 5
+  }
+ ],
+ "media": {
+  "items": []
+ },
+ "sys": {
+  "datetime.get": {
+   "ok": true,
+   "data": {
+    "timezone": "UTC"
+   }
+  },
+  "collection.list": {
+   "ok": true,
+   "data": {
+    "server": "http://192.0.2.10:8791",
+    "error": null,
+    "root": "/home/anyps5/games",
+    "media": [
+     "/run/media/anyps5/SANDISK"
+    ],
+    "device": {
+     "os": "linux",
+     "arch": "x86_64",
+     "cpu": {
+      "model": "Intel Pentium Silver N6000",
+      "flags": {
+       "avx": false,
+       "avx2": false,
+       "fma": false,
+       "bmi2": false
+      },
+      "level": "x86-64-v2"
+     },
+     "toolchain": {
+      "path": "/opt/anyps5",
+      "present": true,
+      "wrapper": true,
+      "hasVersion": true,
+      "commit": "f08b36bc0792d272e5818f4b4003ea120a3090ff",
+      "date": "2026-11-17T04:33:50+13:00",
+      "cpuBaseline": "x86-64-v2",
+      "avxLowering": "no",
+      "maxSystemVersion": "",
+      "os": "linux",
+      "arch": "x86_64"
+     }
+    },
+    "games": [
+     {
+      "titleId": "PPSA18391",
+      "id": "PPSA18391",
+      "title": "Afterdream",
+      "version": "01.003",
+      "size": 3650722201,
+      "icon": "art/PPSA18391/icon.jpg",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.003",
+        "size": 3650722201
+       }
+      ],
+      "source": "server",
+      "kind": "dump",
+      "remote": true,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "failed",
+      "phase": null,
+      "percent": null,
+      "message": "Failed (the relinker stopped: see the build log)",
+      "action": {
+       "id": "retry",
+       "label": "Failed (the relinker stopped: see the build log)",
+       "enabled": true,
+       "retry": true,
+       "cancel": false,
+       "reason": "the relinker stopped: see the build log"
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA22520",
+      "id": "PPSA22520",
+      "title": "Animal Well",
+      "version": "01.002",
+      "size": 450971566,
+      "icon": "art/PPSA22520/icon.jpg",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "media",
+        "kind": "dump",
+        "version": "01.002",
+        "size": 450971566,
+        "label": "SANDISK"
+       },
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.002",
+        "size": 450971566
+       }
+      ],
+      "source": "media",
+      "kind": "dump",
+      "remote": true,
+      "folder": "/home/anyps5/games/Animal Well (PPSA22520)",
+      "installed": true,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": {
+       "toolchain": "f08b36bc0792d272e5818f4b4003ea120a3090ff",
+       "toolchainDate": "2026-11-17T04:33:50+13:00",
+       "gameVersion": "01.002",
+       "builtFor": {
+        "os": "linux",
+        "arch": "x86_64"
+       },
+       "prebuilt": false,
+       "installed": "2026-11-16T20:00:00",
+       "source": "media"
+      },
+      "update": false,
+      "updateReason": null,
+      "state": "installed",
+      "phase": null,
+      "percent": null,
+      "message": "Reinstall",
+      "action": {
+       "id": "reinstall",
+       "label": "Reinstall",
+       "enabled": true,
+       "retry": false,
+       "cancel": false,
+       "reason": null
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA01325",
+      "id": "PPSA01325",
+      "title": "Astro's Playroom",
+      "version": "01.010",
+      "size": 10522669875,
+      "icon": "art/PPSA01325/icon.jpg",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.010",
+        "size": 10522669875
+       }
+      ],
+      "source": "server",
+      "kind": "dump",
+      "remote": true,
+      "folder": "/home/anyps5/games/Astro's Playroom (PPSA01325)",
+      "installed": true,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": {
+       "toolchain": "c70974fefbc",
+       "toolchainDate": "2026-11-17T04:33:50+13:00",
+       "gameVersion": "01.004",
+       "builtFor": {
+        "os": "linux",
+        "arch": "x86_64"
+       },
+       "prebuilt": false,
+       "installed": "2026-11-16T20:00:00",
+       "source": "media"
+      },
+      "update": true,
+      "updateReason": "Game version 01.010 is newer than installed 01.004",
+      "state": "installed",
+      "phase": null,
+      "percent": null,
+      "message": "Update",
+      "action": {
+       "id": "update",
+       "label": "Update",
+       "enabled": true,
+       "retry": false,
+       "cancel": false,
+       "reason": "Game version 01.010 is newer than installed 01.004"
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA27624",
+      "id": "PPSA27624",
+      "title": "Bendy and the Dark Revival",
+      "version": "01.001",
+      "size": 15247133900,
+      "icon": "art/PPSA27624/icon.jpg",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "device",
+        "kind": "dump",
+        "version": "01.001",
+        "size": 15247133900
+       }
+      ],
+      "source": "device",
+      "kind": "dump",
+      "remote": false,
+      "folder": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)",
+      "installed": true,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": {
+       "toolchain": "f08b36bc0792d272e5818f4b4003ea120a3090ff",
+       "toolchainDate": "2026-11-17T04:33:50+13:00",
+       "gameVersion": "01.001",
+       "builtFor": {
+        "os": "linux",
+        "arch": "x86_64"
+       },
+       "prebuilt": false,
+       "installed": "2026-11-16T20:00:00",
+       "source": "media"
+      },
+      "update": false,
+      "updateReason": null,
+      "state": "installed",
+      "phase": null,
+      "percent": null,
+      "message": "Reinstall",
+      "action": {
+       "id": "reinstall",
+       "label": "Reinstall",
+       "enabled": true,
+       "retry": false,
+       "cancel": false,
+       "reason": null
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA05123",
+      "id": "PPSA05123",
+      "title": "Celeste Classic",
+      "version": "01.000",
+      "size": 32212254,
+      "icon": "",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "media",
+        "kind": "dump",
+        "version": "01.000",
+        "size": 32212254,
+        "label": "SANDISK"
+       }
+      ],
+      "source": "media",
+      "kind": "dump",
+      "remote": false,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "notinstalled",
+      "phase": null,
+      "percent": null,
+      "message": "Install",
+      "action": {
+       "id": "install",
+       "label": "Install",
+       "enabled": true,
+       "retry": false,
+       "cancel": false,
+       "reason": null
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA07057",
+      "id": "PPSA07057",
+      "title": "Coffee Talk",
+      "version": "01.000",
+      "size": 1181116006,
+      "icon": "art/PPSA07057/icon.jpg",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.000",
+        "size": 1181116006
+       }
+      ],
+      "source": "server",
+      "kind": "dump",
+      "remote": true,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "installing",
+      "phase": "copying",
+      "percent": 42,
+      "message": "Copying 42%",
+      "action": {
+       "id": "cancel",
+       "label": "Copying 42%",
+       "enabled": true,
+       "retry": false,
+       "cancel": true,
+       "reason": null
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA02343",
+      "id": "PPSA02343",
+      "title": "Hollow Knight",
+      "version": "",
+      "size": null,
+      "icon": "",
+      "iconFile": "",
+      "sources": [],
+      "source": null,
+      "kind": "dump",
+      "remote": false,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "nosource",
+       "reason": "No drive, folder or PC library has this game's data",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "notinstalled",
+      "phase": null,
+      "percent": null,
+      "message": "No game data",
+      "action": {
+       "id": "none",
+       "label": "No game data",
+       "enabled": false,
+       "retry": false,
+       "cancel": false,
+       "reason": "No drive, folder or PC library has this game's data"
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA01411",
+      "id": "PPSA01411",
+      "title": "Ratchet & Clank: Rift Apart",
+      "version": "01.004",
+      "size": 36399847833,
+      "icon": "",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.004",
+        "size": 36399847833
+       }
+      ],
+      "source": "server",
+      "kind": "dump",
+      "remote": true,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "needs-newer",
+       "reason": "the game needs PS5 system software 9.00, this AnyPS5 supports up to 7.00",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "unsupported",
+      "phase": null,
+      "percent": null,
+      "message": "Needs a newer AnyPS5 (the game needs PS5 system software 9.00, this AnyPS5 supports up to 7.00)",
+      "action": {
+       "id": "none",
+       "label": "Needs a newer AnyPS5 (the game needs PS5 system software 9.00, this AnyPS5 supports up to 7.00)",
+       "enabled": false,
+       "retry": false,
+       "cancel": false,
+       "reason": "the game needs PS5 system software 9.00, this AnyPS5 supports up to 7.00"
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA01284",
+      "id": "PPSA01284",
+      "title": "Returnal",
+      "version": "01.006",
+      "size": 50143743180,
+      "icon": "",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "media",
+        "kind": "dump",
+        "version": "01.006",
+        "size": 50143743180,
+        "label": "SANDISK"
+       },
+       {
+        "type": "server",
+        "kind": "dump",
+        "version": "01.006",
+        "size": 50143743180
+       }
+      ],
+      "source": "media",
+      "kind": "dump",
+      "remote": true,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "unsupported",
+       "reason": "the game needs AVX2 and this CPU has none",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "unsupported",
+      "phase": null,
+      "percent": null,
+      "message": "Not supported (the game needs AVX2 and this CPU has none)",
+      "action": {
+       "id": "none",
+       "label": "Not supported (the game needs AVX2 and this CPU has none)",
+       "enabled": false,
+       "retry": false,
+       "cancel": false,
+       "reason": "the game needs AVX2 and this CPU has none"
+      },
+      "job": null
+     },
+     {
+      "titleId": "PPSA03016",
+      "id": "PPSA03016",
+      "title": "Sackboy: A Big Adventure",
+      "version": "01.012",
+      "size": 30601641984,
+      "icon": "",
+      "iconFile": "",
+      "sources": [
+       {
+        "type": "device",
+        "kind": "dump",
+        "version": "01.012",
+        "size": 30601641984
+       }
+      ],
+      "source": "device",
+      "kind": "dump",
+      "remote": false,
+      "folder": null,
+      "installed": false,
+      "compat": {
+       "status": "installable",
+       "reason": "",
+       "prebuilt": false
+      },
+      "build": null,
+      "update": false,
+      "updateReason": null,
+      "state": "installing",
+      "phase": "building",
+      "percent": 67,
+      "message": "Building 67%",
+      "action": {
+       "id": "cancel",
+       "label": "Building 67%",
+       "enabled": true,
+       "retry": false,
+       "cancel": true,
+       "reason": null
+      },
+      "job": null
+     }
+    ]
+   }
+  },
+  "collection.status": {
+   "ok": true,
+   "data": {
+    "jobs": [
+     {
+      "titleId": "PPSA07057",
+      "id": "PPSA07057",
+      "title": "Coffee Talk",
+      "state": "installing",
+      "phase": "copying",
+      "percent": 42,
+      "message": "Copying 42%",
+      "running": true
+     },
+     {
+      "titleId": "PPSA03016",
+      "id": "PPSA03016",
+      "title": "Sackboy: A Big Adventure",
+      "state": "installing",
+      "phase": "building",
+      "percent": 67,
+      "message": "Building 67%",
+      "running": true
+     }
+    ]
+   }
+  },
+  "collection.install": {
+   "ok": true,
+   "data": {
+    "titleId": "PPSA05123",
+    "id": "PPSA05123",
+    "state": "installing",
+    "phase": "copying",
+    "percent": 0,
+    "message": "Waiting to build",
+    "running": true
+   }
+  },
+  "collection.delete": {
+   "ok": true,
+   "data": {}
+  },
+  "collection.reinstall": {
+   "ok": true,
+   "data": {
+    "titleId": "PPSA05123",
+    "id": "PPSA05123",
+    "state": "installing",
+    "phase": "copying",
+    "percent": 0,
+    "message": "Waiting to build",
+    "running": true
+   }
+  },
+  "collection.update": {
+   "ok": true,
+   "data": {
+    "titleId": "PPSA05123",
+    "id": "PPSA05123",
+    "state": "installing",
+    "phase": "copying",
+    "percent": 0,
+    "message": "Waiting to build",
+    "running": true
+   }
+  },
+  "collection.retry": {
+   "ok": true,
+   "data": {
+    "titleId": "PPSA05123",
+    "id": "PPSA05123",
+    "state": "installing",
+    "phase": "copying",
+    "percent": 0,
+    "message": "Waiting to build",
+    "running": true
+   }
+  },
+  "collection.cancel": {
+   "ok": true,
+   "data": {
+    "titleId": "PPSA07057",
+    "id": "PPSA07057",
+    "state": "cancelled",
+    "running": false
+   }
+  },
+  "collection.server": {
+   "ok": true,
+   "data": {
+    "server": "http://192.0.2.10:8791"
+   }
+  },
+  "collection.device": {
+   "ok": true,
+   "data": {
+    "os": "linux",
+    "arch": "x86_64",
+    "cpu": {
+     "model": "Intel Pentium Silver N6000",
+     "flags": {
+      "avx": false,
+      "avx2": false,
+      "fma": false,
+      "bmi2": false
+     },
+     "level": "x86-64-v2"
+    },
+    "toolchain": {
+     "path": "/opt/anyps5",
+     "present": true,
+     "wrapper": true,
+     "hasVersion": true,
+     "commit": "f08b36bc0792d272e5818f4b4003ea120a3090ff",
+     "date": "2026-11-17T04:33:50+13:00",
+     "cpuBaseline": "x86-64-v2",
+     "avxLowering": "no",
+     "maxSystemVersion": "",
+     "os": "linux",
+     "arch": "x86_64"
+    }
+   }
+  }
+ },
+ "events": []
+}

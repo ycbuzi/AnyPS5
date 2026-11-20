@@ -1,0 +1,83 @@
+#!/usr/bin/env python3
+"""Drive the live console with a virtual keyboard and save screenshots of what is on screen.
+
+anyps5-tour <out dir> step [step...]
+  key:<name>[xN]   press a key N times (enter esc left right up down tab q c o h volup voldown mute)
+  wait:<seconds>   pause
+  open:<screen>    open a console screen by name (settings, cc, help, create, search)
+  shot:<name>      save <out dir>/<name>.png through the console's own screenshot command
+Run as root on the device. Never run it while someone is using the console.
+"""
+import fcntl, json, os, shutil, struct, sys, time, urllib.request
+
+EV_SYN, EV_KEY = 0, 1
+KEYS = {"enter": 28, "esc": 1, "left": 105, "right": 106, "up": 103, "down": 108, "tab": 15, "q": 16, "c": 46, "o": 24,
+        "h": 35, "volup": 115, "voldown": 114, "mute": 113, "pageup": 104, "pagedown": 109, "f12": 88}
+HOST = "http://127.0.0.1:8790/msg"
+
+
+class Keyboard:
+    def __init__(self):
+        self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+        fcntl.ioctl(self.fd, 0x40045564, EV_KEY)
+        for code in KEYS.values():
+            fcntl.ioctl(self.fd, 0x40045565, code)
+        fcntl.ioctl(self.fd, 0x405C5503, struct.pack("HHHH80sI", 0x06, 0x1209, 0x5006, 1, b"AnyPS5 tour keyboard", 0))
+        fcntl.ioctl(self.fd, 0x5501)
+        time.sleep(1.5)
+
+    def emit(self, typ, code, value):
+        os.write(self.fd, struct.pack("llHHi", 0, 0, typ, code, value))
+
+    def press(self, name):
+        for value in (1, 0):
+            self.emit(EV_KEY, KEYS[name], value)
+            self.emit(EV_SYN, 0, 0)
+            time.sleep(0.06)
+
+    def close(self):
+        fcntl.ioctl(self.fd, 0x5502)
+        os.close(self.fd)
+
+
+def shot(out, name):
+    req = urllib.request.Request(HOST, json.dumps({"shot": True}).encode(), {"Content-Type": "application/json"})
+    path = json.load(urllib.request.urlopen(req, timeout=5))["reply"]["screenshot"]
+    for _ in range(100):
+        if os.path.isfile(path) and os.path.getsize(path) > 12:
+            with open(path, "rb") as f:
+                f.seek(-8, os.SEEK_END)
+                done = f.read(4) == b"IEND"
+            if done:
+                shutil.move(path, os.path.join(out, name + ".png"))
+                return True
+        time.sleep(0.1)
+    return False
+
+
+def main():
+    out, steps = sys.argv[1], sys.argv[2:]
+    os.makedirs(out, exist_ok=True)
+    kb = Keyboard()
+    try:
+        for step in steps:
+            kind, _, arg = step.partition(":")
+            if kind == "key":
+                name, _, count = arg.partition("x")
+                for _ in range(int(count or 1)):
+                    kb.press(name)
+                    time.sleep(0.12)
+            elif kind == "wait":
+                time.sleep(float(arg))
+            elif kind == "open":
+                req = urllib.request.Request(HOST, json.dumps({"open": arg}).encode(), {"Content-Type": "application/json"})
+                urllib.request.urlopen(req, timeout=5).read()
+            elif kind == "shot":
+                print(arg, "ok" if shot(out, arg) else "MISSING", flush=True)
+            else:
+                sys.exit("unknown step " + step)
+    finally:
+        kb.close()
+
+
+main()

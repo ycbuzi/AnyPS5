@@ -1,0 +1,14 @@
+#!/bin/bash
+set -eu
+part=$(findmnt -no SOURCE /data)
+disk=/dev/$(lsblk -no PKNAME "$part" | head -1)
+num=$(cat "/sys/class/block/$(basename "$part")/partition")
+last=$(lsblk -lnpo NAME "$disk" | tail -1)
+if [ "$last" = "$part" ]; then
+  sfdisk --relocate gpt-bak-std "$disk" || true
+  echo ", +" | sfdisk -N "$num" --no-reread "$disk" || true
+  partx -u "$disk" || true
+  resize2fs "$part"
+fi
+touch /data/anyps5/grown
+echo "$(date -Is) data partition $part grown to $(lsblk -no SIZE "$part" | head -1)" >> /data/anyps5/boot-history.log

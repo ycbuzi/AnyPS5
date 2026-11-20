@@ -1,0 +1,151 @@
+#!/bin/bash
+. /usr/lib/anyps5/boot-lib.sh
+aos_mount_efi
+aos_layout || true
+
+pause() {
+  [ -t 0 ] && read -r -p "Press Enter to go back to the menu " _
+  return 0
+}
+
+show_net() {
+  local ips
+  ips=$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | tr '\n' ' ')
+  if [ -n "$ips" ]; then echo "Network: $ips(ssh root@<address>)"; else echo "Network: not connected (option 4 sets up Wi-Fi)"; fi
+}
+
+show_slots() {
+  local s f
+  for s in a b; do
+    f=$(aos_entry_file "$s")
+    if [ -n "$f" ]; then echo "Slot ${s^^}: $(sed -n 's/^title //p' "$f"), version $(aos_entry_version "$s"), entry $(basename "$f")"; else echo "Slot ${s^^}: empty"; fi
+  done
+}
+
+reinstall_usb() {
+  echo "USB disks:"
+  lsblk -dpno NAME,TRAN,SIZE,MODEL | awk '$2=="usb"' | sed 's/^/  /'
+  echo "Give a USB disk holding an AnyPS5 OS v2 image (written with write-image), or a path to a .img / .tar.zst file."
+  read -r -p "Disk or file (empty to cancel): " src
+  [ -n "$src" ] || return 0
+  anyps5-update "$src" && echo "Reinstalled. Choose Reboot to start it."
+  pause
+}
+
+reinstall_pc() {
+  local url
+  echo "On the PC, serve anyps5-os-rootfs.tar.zst over HTTP (the library server or 'python -m http.server')."
+  read -r -p "URL [${PC_URL:-none}]: " url
+  url=${url:-${PC_URL:-}}
+  [ -n "$url" ] || return 0
+  anyps5-update "$url" && echo "Reinstalled. Choose Reboot to start it."
+  pause
+}
+
+repair() {
+  local s f k w=/run/anyps5-repair
+  [ -n "${PART_A:-}" ] || { echo "no layout on the boot partition; cannot repair"; return 1; }
+  echo "== boot loader"
+  install -d "$AOS_EFI/EFI/BOOT" "$AOS_EFI/EFI/systemd"
+  cp -f /usr/lib/systemd/boot/efi/systemd-bootx64.efi "$AOS_EFI/EFI/BOOT/BOOTX64.EFI"
+  cp -f /usr/lib/systemd/boot/efi/systemd-bootx64.efi "$AOS_EFI/EFI/systemd/systemd-bootx64.efi"
+  aos_write_loader_conf
+  aos_write_recovery_entries
+  install -d "$w"
+  for s in a b; do
+    if ! mount -o ro "$(aos_dev "$s")" "$w" 2>/dev/null; then echo "slot $s: no file system"; continue; fi
+    if [ -f "$w/etc/anyps5/v2" ] && [ -f "$w/boot/vmlinuz-linux" ] && [ -f "$w/boot/initramfs-linux.img" ]; then
+      install -d "$AOS_EFI/anyps5/$s"
+      for k in vmlinuz-linux initramfs-linux.img; do
+        cmp -s "$w/boot/$k" "$AOS_EFI/anyps5/$s/$k" || { cp -f "$w/boot/$k" "$AOS_EFI/anyps5/$s/$k.new"; mv -f "$AOS_EFI/anyps5/$s/$k.new" "$AOS_EFI/anyps5/$s/$k"; echo "slot $s: restored $k"; }
+      done
+      f=$(aos_entry_file "$s")
+      if [ -z "$f" ]; then
+        aos_write_entry "$s" $(( $(aos_max_version) + 1 )) 3 "AnyPS5 OS"
+        echo "slot $s: entry recreated (3 tries)"
+      else
+        echo "slot $s: entry $(basename "$f") kept"
+      fi
+    else
+      rm -f "$AOS_EFI/loader/entries/anyps5-$s.conf" "$AOS_EFI/loader/entries/anyps5-$s+"*.conf
+      echo "slot $s: no AnyPS5 OS system, entry removed"
+    fi
+    umount "$w"
+  done
+  f=$(aos_entry_file "$(aos_newest_slot)")
+  [ -n "$f" ] && aos_retitle "$(aos_newest_slot)"
+  sync
+  echo "== entries"
+  ls "$AOS_EFI/loader/entries"
+}
+
+factory_reset() {
+  local ans dev s w=/run/anyps5-reset
+  [ -n "${PART_DATA:-}" ] || { echo "no layout on the boot partition; cannot reset"; return 1; }
+  echo
+  echo "FACTORY RESET"
+  echo "This erases every game, save, setting and file in the home folder on this device,"
+  echo "and forgets Wi-Fi networks and Bluetooth devices added after install."
+  echo "The system slots and this recovery stay. It cannot be undone."
+  read -r -p "Type ERASE to erase everything, anything else cancels: " ans
+  if [ "$ans" != ERASE ]; then echo "Cancelled, nothing was changed."; return 1; fi
+  dev=$(aos_dev data)
+  umount "$dev" 2>/dev/null || true
+  echo "== erasing data partition"
+  mkfs.ext4 -F -q -L "AOS-$ID-DATA" "$dev" || return 1
+  install -d "$w"
+  mount "$dev" "$w" && { install -d -m 755 "$w/home" "$w/anyps5"; touch "$w/anyps5/grown"; echo "$(date -Is) factory reset" > "$w/anyps5/boot-history.log"; umount "$w"; }
+  for s in a b; do
+    mount "$(aos_dev "$s")" "$w" 2>/dev/null || continue
+    if [ -f "$w/etc/anyps5/v2" ]; then
+      rm -rf "$w"/var/lib/bluetooth/*
+      find "$w/etc/NetworkManager/system-connections" -type f ! -name anyps5-wifi.nmconnection -delete 2>/dev/null
+      echo "slot $s: added Wi-Fi networks and Bluetooth pairings removed"
+    fi
+    umount "$w"
+  done
+  sync
+  echo "Factory reset done. The home folder is created fresh on the next start."
+}
+
+menu() {
+  local c
+  while true; do
+    clear
+    echo "AnyPS5 OS Recovery${ID:+ (install $ID)}"
+    echo
+    show_slots
+    show_net
+    echo
+    echo "  1) Reinstall the system from a USB stick or file"
+    echo "  2) Reinstall the system from the PC (HTTP)"
+    echo "  3) Repair boot entries"
+    echo "  4) Wi-Fi setup"
+    echo "  5) Factory reset (erases everything)"
+    echo "  6) Shell"
+    echo "  7) Reboot"
+    echo "  8) Power off"
+    echo
+    read -r -p "Choice: " c || exit 0
+    case $c in
+      1) reinstall_usb ;;
+      2) reinstall_pc ;;
+      3) repair; pause ;;
+      4) nmtui ;;
+      5) factory_reset; pause ;;
+      6) systemctl start sshd 2>/dev/null; echo "Type exit to return."; bash --noprofile -i ;;
+      7) systemctl reboot; sleep 5 ;;
+      8) systemctl poweroff; sleep 5 ;;
+    esac
+  done
+}
+
+mode=${1:-$(sed -n 's/.*anyps5\.recovery=\([a-z]*\).*/\1/p' /proc/cmdline)}
+case $mode in
+  repair) repair ;;
+  reset)
+    if [ -t 0 ] && [ -z "${1:-}" ]; then factory_reset; pause; menu; else factory_reset; fi
+    ;;
+  status) show_slots; show_net ;;
+  *) menu ;;
+esac

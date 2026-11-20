@@ -1,0 +1,23 @@
+Building the AnyPS5 OS toolchain (/opt/anyps5 on the device)
+
+1. Source (Windows PowerShell; no network unless -Fetch):
+     powershell -File "C:\AnyPS5 Games\_tools\anyps5-os-stick\toolchain\export-source.ps1" [-Worktree C:\AnyPS5-work\wt-cbint]
+   By default exports the committed HEAD of C:\AnyPS5-work\wt-cbint (local branch chromebook/integration-1116:
+   feat/relinker-lower-avx-to-sse-main, the AVX-to-SSE lowering on main, merged with quest/integration-1116, the
+   Quest fixes incl. the mesh-compute fallback and tessellation barycentrics; local only, never pushed;
+   -Worktree C:\AnyPS5-work\wt-sse exports the lowering alone) plus every submodule (from local clones only)
+   as tar files to C:\AnyPS5-work\ostoolchain-src. Commit first: uncommitted changes stop the export.
+   The old flow still works: -Worktree "" -Ref origin/main [-Merge <branch>] resets C:\AnyPS5-work\wt-ostoolchain.
+2. Build under the PC lock (about 12 minutes from scratch on the PC, less with ccache):
+     powershell -File "C:\AnyPS5 Games\_tools\anyps5-os-stick\toolchain\run-locked.ps1" [-Jobs 12]
+   Runs build-toolchain.sh in WSL Arch: unpacks to /root/aos-toolchain/src (ext4 is much faster than /mnt/c), builds the
+   relinker and libs with -march=x86-64-v2 into /root/aos-toolchain/build, installs /root/aos-toolchain/opt/anyps5.
+   FFmpeg comes from Arch's ffmpeg package (shared), because the project's FFmpeg prebuilt is a GitHub download; set
+   FFMPEG_PREBUILT_DIR to an unpacked ffmpeg-linux package to link it statically instead.
+   Log: C:\AnyPS5-work\ostoolchain-build.log
+3. Check (WSL): bash toolchain/test-relink.sh [app0 dir]   relinks Celeste Classic (also with --to-sse), scans for
+   AVX/BMI/LZCNT (isa-scan.py), ldd, compat cases, and runs the --to-sse game under qemu-x86_64 -cpu Snowridge
+   (pacman qemu-user; Tremont = the N6000's core) to catch illegal instructions without the device
+   Script-only changes: bash toolchain/sync-scripts.sh
+4. Ship: mkimage.sh copies /root/aos-toolchain/opt/anyps5 into the image (/opt/anyps5, links in /usr/local/bin);
+   a running device: bash deploy-toolchain.sh <device ip>

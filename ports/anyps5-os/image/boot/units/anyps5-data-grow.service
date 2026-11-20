@@ -1,0 +1,12 @@
+[Unit]
+Description=Grow the AnyPS5 data partition to the end of the drive
+Requires=anyps5-data.service
+After=anyps5-data.service local-fs.target
+ConditionPathExists=!/data/anyps5/grown
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/anyps5-data-grow
+
+[Install]
+WantedBy=multi-user.target

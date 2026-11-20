@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+USAGE = """usage: anyps5-compat [--json] [--cpuinfo FILE] [--game DIR [--dry-run]]
+Says whether this device can run games relinked by the bundled AnyPS5 toolchain, and optionally whether one game
+can be installed.
+  --json         one JSON object on stdout
+  --cpuinfo FILE read CPU flags from FILE instead of /proc/cpuinfo
+  --game DIR     a PS5 dump / app0 folder (eboot.bin + sce_sys/param.json), or a folder holding app0/
+  --dry-run      with --game: also run the relinker's conversion without writing anything
+On a CPU without AVX2 a toolchain built with to_sse=yes relinks with --to-sse, which lowers the features VERSION lists
+in sse_lowers (AVX, AVX2, FMA, F16C, BMI1, BMI2, LZCNT, MOVBE) to SSE4.2; a game that still has VEX instructions the
+lowering does not know cannot start on such a CPU (--dry-run finds that).
+exit codes: 0 installable, 2 the conversion fails (needs a newer AnyPS5), 3 this CPU lacks what the games need,
+4 the game folder is not usable, 6 the toolchain is broken, 7 undecidable (a feature this script cannot map), 1 usage"""
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+ELF = b"\x7fELF"
+SELF = b"\x4f\x15\x3d\x1d"
+LOWERED_CPU_HEADER = 0x61a50001
+SSE_REMAIN = "VEX instructions remain"
+SELF_MAGICS = (SELF, b"\x54\x14\xf5\xee")
+
+
+def read_kv(path):
+    values = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            key, sep, value = line.rstrip("\n").partition("=")
+            if sep:
+                values[key] = value
+    return values
+
+
+def toolchain():
+    version = os.path.join(ROOT, "VERSION")
+    requirements = os.path.join(ROOT, "share", "cpu-requirements.txt")
+    relinker = os.path.join(ROOT, "bin", "relinker")
+    libs = os.path.join(ROOT, "libs")
+    for path in (version, requirements, relinker):
+        if not os.path.isfile(path):
+            raise FileNotFoundError(path)
+    if not os.path.isfile(os.path.join(libs, "libkernel.prx")):
+        raise FileNotFoundError(os.path.join(libs, "libkernel.prx"))
+    info = read_kv(version)
+    features = []
+    with open(requirements, encoding="utf-8") as f:
+        for line in f:
+            if line.startswith("#") or not line.strip():
+                continue
+            name, kind, flag = line.split()
+            features.append((name, kind == "required", flag))
+    return info, features, relinker
+
+
+def cpu(path):
+    model, flags, vendor = "", set(), ""
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            key, _, value = line.partition(":")
+            key = key.strip()
+            if key == "model name" and not model:
+                model = value.strip()
+            elif key == "vendor_id" and not vendor:
+                vendor = value.strip()
+            elif key == "flags" and not flags:
+                flags = set(value.split())
+    return model, vendor, flags
+
+
+def magic(path):
+    try:
+        with open(path, "rb") as f:
+            return f.read(4)
+    except OSError:
+        return b""
+
+
+def find_app0(path):
+    path = os.path.abspath(path)
+    for candidate in (path, os.path.join(path, "app0")):
+        if os.path.isfile(os.path.join(candidate, "eboot.bin")) or os.path.isfile(os.path.join(candidate, "eboot.elf")):
+            return candidate
+    return None
+
+
+def find_eboot(app0):
+    for name in ("eboot.bin", "eboot.elf"):
+        p = os.path.join(app0, name)
+        if magic(p) == ELF:
+            return p, "elf"
+    p = os.path.join(app0, "eboot.bin")
+    if magic(p) in SELF_MAGICS:
+        return p, "self"
+    return None, None
+
+
+def param(app0):
+    p = os.path.join(app0, "sce_sys", "param.json")
+    if not os.path.isfile(p):
+        return None
+    with open(p, encoding="utf-8-sig") as f:
+        data = json.load(f)
+    loc = data.get("localizedParameters") or {}
+    lang = loc.get("defaultLanguage") or data.get("defaultLanguage") or "en-US"
+    entry = loc.get(lang) if isinstance(loc.get(lang), dict) else None
+    if entry is None:
+        entry = loc.get("en-US") if isinstance(loc.get("en-US"), dict) else next((v for v in loc.values() if isinstance(v, dict)), {})
+    return {"titleId": data.get("titleId", ""), "titleName": entry.get("titleName", ""),
+            "contentVersion": data.get("contentVersion", ""), "masterVersion": data.get("masterVersion", "")}
+
+
+def unwrap(eboot, workdir):
+    out = os.path.join(workdir, "eboot.elf")
+    r = subprocess.run([sys.executable, "-I", os.path.join(ROOT, "share", "unwrap_self.py"), eboot, out],
+                       capture_output=True, text=True)
+    if r.returncode != 0 or magic(out) != ELF:
+        return None, (r.stderr or r.stdout).strip().splitlines()[-1:] or ["unwrap failed"]
+    return out, None
+
+
+def uses_sse(info, flags):
+    return info.get("to_sse") == "yes" and "avx2" not in flags
+
+
+def lowered_features(info, flags):
+    lowered = set(info.get("lowers", "").split())
+    if uses_sse(info, flags):
+        lowered |= set(info.get("sse_lowers", "").split())
+    return lowered
+
+
+def relinker_args(vendor, info=None, flags=None):
+    if info is not None and flags is not None and uses_sse(info, flags):
+        return ["--to-sse"]
+    return ["--to-intel"] if vendor == "GenuineIntel" else []
+
+
+def lowered_in_binary(path, info):
+    import struct
+    with open(path, "rb") as f:
+        head = f.read(64)
+        if head[:4] != ELF or head[4] != 2 or head[5] != 1:
+            return set(), 0
+        phoff, = struct.unpack_from("<Q", head, 32)
+        phentsize, phnum = struct.unpack_from("<HH", head, 54)
+        f.seek(phoff)
+        table = f.read(phentsize * phnum)
+    mask = 0
+    for i in range(phnum):
+        p_type, p_flags = struct.unpack_from("<II", table, i * phentsize)
+        if p_type == LOWERED_CPU_HEADER:
+            mask = p_flags
+    names = info.get("sse_lowers", "").split()
+    return {name for bit, name in enumerate(names) if mask >> bit & 1}, mask
+
+
+def main(argv):
+    as_json, cpuinfo, game, dry = False, "/proc/cpuinfo", None, False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--json":
+            as_json = True
+        elif a == "--cpuinfo" and i + 1 < len(argv):
+            i += 1
+            cpuinfo = argv[i]
+        elif a == "--game" and i + 1 < len(argv):
+            i += 1
+            game = argv[i]
+        elif a == "--dry-run":
+            dry = True
+        elif a in ("-h", "--help"):
+            print(USAGE)
+            return 0
+        else:
+            print(USAGE, file=sys.stderr)
+            return 1
+        i += 1
+    result = {"status": "installable", "reason": "", "code": 0}
+
+    def finish(status, code, reason):
+        result.update(status=status, code=code, reason=reason)
+
+    try:
+        info, features, relinker = toolchain()
+    except (OSError, ValueError) as e:
+        finish("toolchain-broken", 6, f"the AnyPS5 toolchain in {ROOT} is incomplete: {e}")
+        info, features, relinker = {}, [], None
+    result["toolchain"] = {k: info.get(k, "") for k in ("commit", "commit_date", "built", "cpu_baseline", "avx_lowering", "lowers", "to_sse", "to_sse_commit", "sse_lowers")}
+    model, vendor, flags = cpu(cpuinfo)
+    lowered = lowered_features(info, flags)
+    result["toSse"] = uses_sse(info, flags)
+    result["relinkerArgs"] = relinker_args(vendor, info, flags)
+    missing = [n for n, req, flag in features if req and flag != "?" and flag not in flags and n not in lowered]
+    unknown = [n for n, req, flag in features if req and flag == "?" and n not in lowered]
+    result["cpu"] = {"model": model, "vendor": vendor, "missing": missing, "unknown": unknown}
+    if result["code"] == 0 and missing:
+        lowering = "" if lowered else " and this AnyPS5 build cannot lower them for older CPUs"
+        finish("unsupported-cpu", 3, f"this CPU ({model or 'unknown'}) lacks {', '.join(missing)}, which PS5 games use directly{lowering}")
+    elif result["code"] == 0 and unknown:
+        finish("unknown", 7, f"cannot check {', '.join(unknown)} on this CPU")
+    if game is not None and result["code"] in (0, 3, 7):
+        cpu_result = (result["status"], result["code"], result["reason"])
+        app0 = find_app0(game)
+        g = result["game"] = {"path": os.path.abspath(game), "app0": app0}
+        if app0 is None:
+            finish("invalid-game", 4, f"no eboot.bin in {game} or {os.path.join(game, 'app0')}")
+        else:
+            try:
+                g["param"] = param(app0)
+            except (OSError, ValueError) as e:
+                g["param"] = None
+                g["paramError"] = str(e)
+            eboot, kind = find_eboot(app0)
+            g["eboot"], g["ebootKind"] = eboot, kind
+            if eboot is None:
+                finish("invalid-game", 4, "the game's eboot.bin is neither a plain ELF nor an unencrypted SELF (it needs a decrypted dump)")
+            elif not g["param"] or not g["param"].get("titleId"):
+                finish("invalid-game", 4, "the game has no sce_sys/param.json with a titleId")
+            elif dry and relinker:
+                with tempfile.TemporaryDirectory(prefix="anyps5-compat-") as tmp:
+                    src, err = (eboot, None) if kind == "elf" else unwrap(eboot, tmp)
+                    if src is None:
+                        finish("invalid-game", 4, "the eboot.bin SELF could not be unwrapped: " + err[0])
+                    else:
+                        cmd = [relinker, "--dry-run", *relinker_args(vendor, info, flags), "--sce-module-path", app0, src, os.path.join(tmp, "game")]
+                        r = subprocess.run(cmd, capture_output=True, text=True, cwd=app0)
+                        g["dryRun"] = {"exit": r.returncode, "tail": (r.stderr or r.stdout).strip().splitlines()[-3:]}
+                        remain = [line for line in (r.stdout + r.stderr).splitlines() if SSE_REMAIN in line]
+                        if remain:
+                            g["dryRun"]["sseRemain"] = remain[-1]
+                        if r.returncode == 0 and remain and result["toSse"]:
+                            finish("unsupported-cpu", 3, "the game keeps VEX instructions --to-sse cannot lower yet (" + remain[-1].split(": ", 1)[-1] + "), so it cannot start on this CPU")
+                        elif r.returncode != 0:
+                            last = g["dryRun"]["tail"][-1] if g["dryRun"]["tail"] else f"exit {r.returncode}"
+                            finish("needs-newer-anyps5", 2, "this AnyPS5 build cannot convert the game: " + last)
+            if result["code"] == 0 and cpu_result[1] != 0:
+                finish(*cpu_result)
+    if as_json:
+        print(json.dumps(result))
+    else:
+        print(f"{result['status']}: {result['reason'] or 'games relinked by this toolchain can run here'}")
+        tc = result["toolchain"]
+        print(f"toolchain {tc.get('commit', '')[:12]} ({tc.get('commit_date', '')}), baseline {tc.get('cpu_baseline', '')}, lowering {tc.get('avx_lowering', '') or 'no'}, to-sse {tc.get('to_sse', '') or 'no'}")
+        if result["toSse"]:
+            print(f"relink mode --to-sse: this CPU has no AVX2, so {tc.get('sse_lowers', '')} are lowered to SSE4.2")
+        print(f"cpu {model} ({vendor})")
+        if "game" in result and result["game"].get("param"):
+            p = result["game"]["param"]
+            print(f"game {p.get('titleName', '')} {p.get('titleId', '')} {p.get('contentVersion', '')}")
+    return result["code"]
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

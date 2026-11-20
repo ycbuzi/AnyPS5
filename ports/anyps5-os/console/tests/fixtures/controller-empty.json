@@ -1,0 +1,473 @@
+{
+ "now": "2026-11-16T21:04:00",
+ "state": {
+  "host": true,
+  "platform": "linux",
+  "paused": false,
+  "pads": [
+   "DualSense Wireless Controller"
+  ],
+  "build": "fixture",
+  "program": "AnyPS5 OS",
+  "root": "/home/anyps5/games",
+  "playing": null,
+  "settings": {
+   "profiles": [
+    {
+     "name": "Blu",
+     "color": 0,
+     "pinHash": "",
+     "uid": "u1blu0001"
+    },
+    {
+     "name": "Guest",
+     "color": 3,
+     "pinHash": "",
+     "uid": "u2guest002"
+    },
+    {
+     "name": "Kid",
+     "color": 2,
+     "pinHash": "",
+     "uid": "u3kid0003",
+     "family": {
+      "limited": true,
+      "dailyMin": 90,
+      "from": "08:00",
+      "to": "20:30",
+      "allowAll": false,
+      "games": [
+       "PPSA22520"
+      ],
+      "whenUp": "notify"
+     }
+    }
+   ],
+   "sounds": true,
+   "volume": 2,
+   "psAction": "cc",
+   "showNoArt": false,
+   "safe": false,
+   "libSort": "recent",
+   "testUid": "",
+   "familyManager": "u1blu0001"
+  },
+  "drives": [
+   {
+    "name": "/",
+    "label": "",
+    "free": 61000000000.0,
+    "total": 118000000000.0
+   },
+   {
+    "name": "/media/games",
+    "label": "Games",
+    "free": 1210000000000.0,
+    "total": 2000000000000.0
+   }
+  ]
+ },
+ "library": [
+  {
+   "id": "PPSA22520",
+   "title": "Animal Well",
+   "icon": "art/PPSA22520/icon.jpg",
+   "bg": "art/PPSA22520/bg.jpg",
+   "shot": "art/PPSA22520/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 02:12",
+   "folder": "/home/anyps5/games/Animal Well (PPSA22520)",
+   "exe": "/home/anyps5/games/Animal Well (PPSA22520)/Animal Well.exe",
+   "saves": 1
+  },
+  {
+   "id": "PPSA01325",
+   "title": "Astro's Playroom",
+   "icon": "art/PPSA01325/icon.jpg",
+   "bg": "art/PPSA01325/bg.jpg",
+   "shot": "art/PPSA01325/shot.jpg",
+   "status": "Plays",
+   "fps": 25,
+   "lastRun": "2026-11-16 07:03",
+   "folder": "/home/anyps5/games/Astro's Playroom (PPSA01325)",
+   "exe": "/home/anyps5/games/Astro's Playroom (PPSA01325)/Astro's Playroom.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA18391",
+   "title": "Afterdream",
+   "icon": "art/PPSA18391/icon.jpg",
+   "bg": "art/PPSA18391/bg.jpg",
+   "shot": "art/PPSA18391/shot.jpg",
+   "status": "Plays",
+   "fps": 60,
+   "lastRun": "2026-11-16 01:24",
+   "folder": "/home/anyps5/games/Afterdream (PPSA18391)",
+   "exe": "/home/anyps5/games/Afterdream (PPSA18391)/Afterdream.exe",
+   "saves": 3
+  },
+  {
+   "id": "PPSA07057",
+   "title": "Coffee Talk",
+   "icon": "art/PPSA07057/icon.jpg",
+   "bg": "art/PPSA07057/bg.jpg",
+   "shot": "art/PPSA07057/shot.jpg",
+   "status": "Plays",
+   "lastRun": "2026-11-15 08:37",
+   "folder": "/home/anyps5/games/Coffee Talk (PPSA07057)",
+   "exe": "/home/anyps5/games/Coffee Talk (PPSA07057)/Coffee Talk.exe",
+   "saves": 0
+  },
+  {
+   "id": "PPSA27624",
+   "title": "Bendy and the Dark Revival",
+   "icon": "art/PPSA27624/icon.jpg",
+   "bg": "art/PPSA27624/bg.jpg",
+   "shot": "art/PPSA27624/shot.jpg",
+   "status": "Stops early",
+   "fps": 6,
+   "lastRun": "2026-11-15 08:36",
+   "folder": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)",
+   "exe": "/home/anyps5/games/Bendy and the Dark Revival (PPSA27624)/Bendy and the Dark Revival.exe",
+   "saves": 5
+  }
+ ],
+ "media": {
+  "items": []
+ },
+ "sys": {
+  "platform.info": {
+   "ok": true,
+   "data": {
+    "platform": "linux",
+    "os": "Arch Linux",
+    "machine": "anyps5-chromebook",
+    "kernel": "6.17.8-arch1-1",
+    "testMode": false
+   }
+  },
+  "network.status": {
+   "ok": true,
+   "data": {
+    "control": true,
+    "networking": true,
+    "connected": true,
+    "internet": true,
+    "method": "Wi-Fi",
+    "ssid": "HomeNet",
+    "signal": 72,
+    "band": "5 GHz",
+    "security": "WPA2-Personal",
+    "ip": "192.0.2.10",
+    "mask": "255.255.255.0",
+    "gateway": "192.0.2.10",
+    "dns": [
+     "192.0.2.10",
+     "1.1.1.1"
+    ],
+    "mac": "aa:bb:cc:dd:ee:ff",
+    "wifiHw": true,
+    "wifiRadio": true,
+    "lan": {
+     "present": false
+    }
+   }
+  },
+  "network.wifi_list": {
+   "ok": true,
+   "data": {
+    "present": true,
+    "radio": true,
+    "networks": [
+     {
+      "ssid": "HomeNet",
+      "signal": 72,
+      "secured": true,
+      "inUse": true
+     },
+     {
+      "ssid": "Neighbour 5G",
+      "signal": 40,
+      "secured": true
+     },
+     {
+      "ssid": "Cafe Free",
+      "signal": 18,
+      "secured": false
+     }
+    ]
+   }
+  },
+  "network.test_ip": {
+   "ok": true,
+   "data": {
+    "ok": true
+   }
+  },
+  "network.test_internet": {
+   "ok": true,
+   "data": {
+    "ok": true
+   }
+  },
+  "network.test_download": {
+   "ok": true,
+   "data": {
+    "mbps": 84.3
+   }
+  },
+  "network.test_upload": {
+   "ok": true,
+   "data": {
+    "mbps": 11.9
+   }
+  },
+  "language.status": {
+   "ok": true,
+   "data": {
+    "platform": "linux",
+    "language": {
+     "tag": "en-US",
+     "locale": "en_US.UTF-8"
+    },
+    "region": {
+     "tag": "en-GB",
+     "locale": "en_GB.UTF-8"
+    },
+    "keyboards": [
+     {
+      "id": "us",
+      "lang": "",
+      "name": "English (US)"
+     }
+    ],
+    "vcKeymap": "us",
+    "x11Variant": ""
+   }
+  },
+  "language.locales": {
+   "ok": true,
+   "data": {
+    "locales": [
+     {
+      "id": "en_US.UTF-8",
+      "tag": "en-US"
+     },
+     {
+      "id": "de_DE.UTF-8",
+      "tag": "de-DE"
+     },
+     {
+      "id": "fr_FR.UTF-8",
+      "tag": "fr-FR"
+     },
+     {
+      "id": "C.UTF-8",
+      "tag": ""
+     }
+    ]
+   }
+  },
+  "datetime.status": {
+   "ok": true,
+   "data": {
+    "platform": "linux",
+    "ntp": true,
+    "ntpSynchronized": true,
+    "timeSource": "time.cloudflare.com",
+    "timezone": "Europe/London",
+    "timezoneLabel": "London",
+    "utcOffset": "+00:00",
+    "dst": false,
+    "canSetTimezone": true,
+    "canSetNtp": true
+   }
+  },
+  "datetime.zones": {
+   "ok": true,
+   "data": {
+    "zones": [
+     {
+      "id": "Europe/London",
+      "label": "London",
+      "group": "Europe"
+     },
+     {
+      "id": "Europe/Paris",
+      "label": "Paris",
+      "group": "Europe"
+     },
+     {
+      "id": "America/New_York",
+      "label": "New York",
+      "group": "America"
+     }
+    ]
+   }
+  },
+  "bluetooth.status": {
+   "ok": true,
+   "data": {
+    "available": true,
+    "powered": true,
+    "canPower": true,
+    "canPair": true,
+    "adapter": "Intel AX201",
+    "devices": [
+     {
+      "address": "11:22:33:44:55:66",
+      "name": "DualSense Wireless Controller",
+      "type": "gamepad",
+      "paired": true,
+      "connected": true
+     },
+     {
+      "address": "22:33:44:55:66:77",
+      "name": "WH-1000XM4",
+      "type": "audio",
+      "paired": true,
+      "connected": false
+     }
+    ]
+   }
+  },
+  "bluetooth.scan": {
+   "ok": true,
+   "data": {
+    "devices": [
+     {
+      "address": "33:44:55:66:77:88",
+      "name": "Keyboard K380",
+      "type": "keyboard"
+     }
+    ]
+   }
+  },
+  "recording.status": {
+   "ok": true,
+   "data": {
+    "supported": true,
+    "recording": false,
+    "replay": true,
+    "replaySupported": true,
+    "replaySeconds": 60,
+    "videoDir": "/home/anyps5/Videos/AnyPS5"
+   }
+  },
+  "family.usage": {
+   "ok": true,
+   "data": {
+    "date": "2026-11-16",
+    "today": {
+     "u3kid0003": 35
+    }
+   }
+  },
+  "controller.status": {
+   "ok": true,
+   "data": {
+    "controllers": [],
+    "settings": {
+     "vibration": "medium",
+     "trigger": "strong",
+     "brightness": "bright",
+     "color": "purple",
+     "playerLed": "auto",
+     "swapSticks": false,
+     "remap": {
+      "cross": "circle",
+      "circle": "cross"
+     }
+    },
+    "preset": "swapCrossCircle",
+    "presets": [
+     {
+      "id": "default",
+      "name": "Default"
+     },
+     {
+      "id": "swapCrossCircle",
+      "name": "Swap Cross and Circle"
+     },
+     {
+      "id": "swapShoulders",
+      "name": "Swap L1/R1 with L2/R2"
+     },
+     {
+      "id": "swapSides",
+      "name": "Swap Left and Right Buttons"
+     }
+    ],
+    "buttons": [
+     {
+      "id": "cross",
+      "name": "Cross"
+     },
+     {
+      "id": "circle",
+      "name": "Circle"
+     },
+     {
+      "id": "square",
+      "name": "Square"
+     },
+     {
+      "id": "triangle",
+      "name": "Triangle"
+     },
+     {
+      "id": "l1",
+      "name": "L1"
+     },
+     {
+      "id": "r1",
+      "name": "R1"
+     },
+     {
+      "id": "l2",
+      "name": "L2"
+     },
+     {
+      "id": "r2",
+      "name": "R2"
+     },
+     {
+      "id": "l3",
+      "name": "L3"
+     },
+     {
+      "id": "r3",
+      "name": "R3"
+     },
+     {
+      "id": "options",
+      "name": "Options"
+     },
+     {
+      "id": "create",
+      "name": "Create"
+     },
+     {
+      "id": "up",
+      "name": "Up"
+     },
+     {
+      "id": "down",
+      "name": "Down"
+     },
+     {
+      "id": "left",
+      "name": "Left"
+     },
+     {
+      "id": "right",
+      "name": "Right"
+     }
+    ],
+    "colors": []
+   }
+  }
+ },
+ "events": []
+}

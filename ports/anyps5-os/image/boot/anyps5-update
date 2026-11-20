@@ -1,0 +1,96 @@
+#!/bin/bash
+set -euo pipefail
+. /usr/lib/anyps5/boot-lib.sh
+
+usage() {
+  echo "usage: anyps5-update [--slot a|b] SOURCE"
+  echo "SOURCE: rootfs tar (.tar, .tar.zst, .tar.gz, .tar.xz), an http(s) URL to one,"
+  echo "        an AnyPS5 OS v2 disk image (.img) or a block device holding one (USB stick)"
+  exit 2
+}
+
+SLOT=""
+while [ $# -gt 0 ]; do
+  case $1 in
+    --slot) SLOT=${2:-}; shift 2 ;;
+    -h|--help) usage ;;
+    *) break ;;
+  esac
+done
+[ $# -eq 1 ] || usage
+SRC=$1
+[ "$(id -u)" = 0 ] || { echo "run as root"; exit 1; }
+
+aos_mount_efi
+aos_layout
+CUR=$(aos_current_slot)
+if [ -z "$SLOT" ]; then
+  if [ -n "$CUR" ]; then SLOT=$(aos_other "$CUR"); else SLOT=$(aos_pick_slot); fi
+fi
+case $SLOT in a|b) ;; *) echo "bad slot '$SLOT'"; exit 1 ;; esac
+[ "$SLOT" != "$CUR" ] || { echo "refusing: slot $SLOT is the running system"; exit 1; }
+DEV=$(aos_dev "$SLOT")
+[ -b "$DEV" ] || { echo "missing slot $SLOT partition $DEV"; exit 1; }
+if findmnt -rn -S "$(readlink -f "$DEV")" >/dev/null; then echo "refusing: $DEV is mounted"; exit 1; fi
+
+W=/run/anyps5-update
+NEW=$W/new
+OLD=$W/old
+cleanup() {
+  umount "$W/src" 2>/dev/null || true
+  umount "$W/srcesp" 2>/dev/null || true
+  umount "$OLD" 2>/dev/null || true
+  umount "$NEW" 2>/dev/null || true
+}
+trap cleanup EXIT
+install -d "$NEW" "$OLD"
+
+rm -f "$AOS_EFI/loader/entries/anyps5-$SLOT.conf" "$AOS_EFI/loader/entries/anyps5-$SLOT+"*.conf
+sync
+echo "== formatting slot $SLOT ($DEV)"
+mkfs.ext4 -F -q -L "AOS-$ID-${SLOT^^}" "$DEV"
+mount "$DEV" "$NEW"
+
+echo "== copying system from $SRC"
+case "$SRC" in
+  http://*|https://*) curl -fsSL "$SRC" | aos_untar "$SRC" "$NEW" ;;
+  *)
+    if [ -b "$SRC" ] || { [ -f "$SRC" ] && [[ "$SRC" == *.img ]]; }; then
+      aos_copy_from_disk "$SRC" "$NEW" "$W"
+    elif [ -f "$SRC" ]; then
+      aos_untar "$SRC" "$NEW" < "$SRC"
+    else
+      echo "cannot read $SRC"; exit 1
+    fi
+    ;;
+esac
+
+[ -f "$NEW/etc/anyps5/v2" ] || { echo "refusing: $SRC is not an AnyPS5 OS v2 system"; exit 1; }
+[ -f "$NEW/boot/vmlinuz-linux" ] && [ -f "$NEW/boot/initramfs-linux.img" ] || { echo "refusing: no kernel in $SRC"; exit 1; }
+
+FROM=""
+if [ -n "$CUR" ]; then
+  FROM=/
+elif mount -o ro "$(aos_dev "$(aos_other "$SLOT")")" "$OLD" 2>/dev/null; then
+  [ -f "$OLD/etc/anyps5/v2" ] && FROM=$OLD
+fi
+if [ -n "$FROM" ]; then
+  echo "== keeping machine id, ssh host keys, Wi-Fi and Bluetooth from ${FROM}"
+  aos_carry_state "$FROM" "$NEW"
+fi
+aos_write_fstab "$NEW"
+
+echo "== boot files"
+install -d "$AOS_EFI/anyps5/$SLOT"
+for f in vmlinuz-linux initramfs-linux.img; do
+  cp -f "$NEW/boot/$f" "$AOS_EFI/anyps5/$SLOT/$f.new"
+  mv -f "$AOS_EFI/anyps5/$SLOT/$f.new" "$AOS_EFI/anyps5/$SLOT/$f"
+done
+VER=$(( $(aos_max_version) + 1 ))
+aos_write_entry "$SLOT" "$VER" 3 "AnyPS5 OS"
+O=$(aos_entry_file "$(aos_other "$SLOT")")
+[ -n "$O" ] && aos_set_title "$O" "AnyPS5 OS (previous)"
+BUILD=$(cat "$NEW/etc/anyps5/v2")
+sync
+echo "== slot $SLOT installed: build $BUILD, entry version $VER, 3 tries; it starts on the next boot"
+ls "$AOS_EFI/loader/entries"

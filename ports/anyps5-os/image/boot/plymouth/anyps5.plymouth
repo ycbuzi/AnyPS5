@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=AnyPS5
+Description=AnyPS5 OS boot logo
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/anyps5
+ScriptFile=/usr/share/plymouth/themes/anyps5/anyps5.script

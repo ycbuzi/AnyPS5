@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+import fcntl
+import glob
+import json
+import math
+import os
+import struct
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+
+UI_SET_EVBIT = 0x40045564
+UI_SET_KEYBIT = 0x40045565
+UI_DEV_SETUP = 0x405C5503
+UI_DEV_CREATE = 0x5501
+UI_DEV_DESTROY = 0x5502
+EV_SYN, EV_KEY = 0, 1
+KEYS = {"mute": 113, "voldown": 114, "volup": 115, "brightdown": 224, "brightup": 225, "back": 158, "esc": 1}
+USER = ["runuser", "-u", "anyps5", "--", "env", "XDG_RUNTIME_DIR=/run/user/1000",
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus"]
+HOST = "http://127.0.0.1:8790"
+results = []
+
+
+def check(name, ok, detail=""):
+    results.append((name, ok))
+    print("%s %s%s" % ("PASS" if ok else "FAIL", name, (" - " + detail) if detail else ""), flush=True)
+
+
+class Keyboard:
+    def __init__(self):
+        self.fd = os.open("/dev/uinput", os.O_WRONLY | os.O_NONBLOCK)
+        fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_KEY)
+        for code in KEYS.values():
+            fcntl.ioctl(self.fd, UI_SET_KEYBIT, code)
+        setup = struct.pack("HHHH80sI", 0x06, 0x1209, 0x5005, 1, b"AnyPS5 selftest keyboard", 0)
+        fcntl.ioctl(self.fd, UI_DEV_SETUP, setup)
+        fcntl.ioctl(self.fd, UI_DEV_CREATE)
+        time.sleep(7)
+
+    def emit(self, typ, code, value):
+        os.write(self.fd, struct.pack("llHHi", 0, 0, typ, code, value))
+
+    def press(self, name):
+        code = KEYS[name]
+        self.emit(EV_KEY, code, 1)
+        self.emit(EV_SYN, 0, 0)
+        time.sleep(0.05)
+        self.emit(EV_KEY, code, 0)
+        self.emit(EV_SYN, 0, 0)
+        time.sleep(0.8)
+
+    def close(self):
+        fcntl.ioctl(self.fd, UI_DEV_DESTROY)
+        os.close(self.fd)
+
+
+def wp(*args):
+    return subprocess.run(USER + ["wpctl"] + list(args), capture_output=True, text=True, timeout=10).stdout
+
+
+def volume():
+    out = wp("get-volume", "@DEFAULT_AUDIO_SINK@").split()
+    return (float(out[1]), "[MUTED]" in out) if len(out) >= 2 else (None, None)
+
+
+def backlight():
+    d = sorted(glob.glob("/sys/class/backlight/*"))[0]
+    return int(open(d + "/brightness").read()), d
+
+
+class Events:
+    def __init__(self):
+        self.lines = []
+        self.stop = False
+        threading.Thread(target=self.run, daemon=True).start()
+        time.sleep(1)
+
+    def run(self):
+        try:
+            with urllib.request.urlopen(HOST + "/events", timeout=120) as r:
+                for raw in r:
+                    if self.stop:
+                        return
+                    line = raw.decode("utf-8", "replace").strip()
+                    if line.startswith("data:"):
+                        self.lines.append(line[5:].strip())
+        except OSError:
+            pass
+
+    def osd(self, kind):
+        return [l for l in self.lines if '"osd"' in l and '"%s"' % kind in l]
+
+
+def test_keys():
+    events = Events()
+    kb = Keyboard()
+    try:
+        v0, m0 = volume()
+        if m0:
+            kb.press("mute")
+            v0, m0 = volume()
+        kb.press("voldown")
+        v1, _ = volume()
+        check("volume down key lowers volume", v1 is not None and v1 < v0, "%.2f -> %.2f" % (v0, v1))
+        kb.press("volup")
+        v2, _ = volume()
+        check("volume up key raises volume", v2 is not None and v2 > v1, "%.2f -> %.2f" % (v1, v2))
+        kb.press("mute")
+        _, m1 = volume()
+        kb.press("mute")
+        _, m2 = volume()
+        check("mute key toggles mute", m1 is True and m2 is False)
+        check("volume keys reach the console as an on-screen indicator", len(events.osd("volume")) >= 4, "%d osd events" % len(events.osd("volume")))
+        b0, path = backlight()
+        kb.press("brightdown")
+        b1, _ = backlight()
+        kb.press("brightup")
+        b2, _ = backlight()
+        check("brightness keys change the backlight", b1 < b0 or b2 > b1, "%d -> %d -> %d" % (b0, b1, b2))
+        check("brightness keys reach the console as an on-screen indicator", len(events.osd("brightness")) >= 1)
+    finally:
+        kb.close()
+        events.stop = True
+
+
+def test_sound():
+    sink = None
+    for line in wp("status", "-n").splitlines():
+        if "*" in line and "alsa_output" in line:
+            sink = line.split(".", 1)[1].strip().split()[0]
+            break
+    if sink is None:
+        name = subprocess.run(USER + ["wpctl", "inspect", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True, timeout=10).stdout
+        for l in name.splitlines():
+            if "node.name" in l:
+                sink = l.split("=", 1)[1].strip().strip('"')
+    if sink is None:
+        check("default speaker found", False)
+        return
+    raw = "/tmp/anyps5-selftest-rec.raw"
+    rec = subprocess.Popen(USER + ["pw-record", "--target", sink, "-P", "stream.capture.sink=true", "--rate", "48000",
+                                   "--channels", "1", "--format", "s16", raw], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.7)
+    subprocess.run(USER + ["speaker-test", "-t", "sine", "-f", "440", "-l", "1", "-p", "1"], capture_output=True, timeout=15)
+    time.sleep(0.3)
+    rec.terminate()
+    rec.wait(5)
+    data = open(raw, "rb").read() if os.path.exists(raw) else b""
+    os.remove(raw) if os.path.exists(raw) else None
+    n = len(data) // 2
+    samples = struct.unpack("<%dh" % n, data[:n * 2]) if n else ()
+    rms = math.sqrt(sum(s * s for s in samples) / n) if n else 0
+    check("test tone reaches the speaker output", rms > 300, "rms %.0f over %.1f s" % (rms, n / 48000))
+
+
+def main():
+    if os.geteuid() != 0:
+        sys.exit("run as root")
+    which = sys.argv[1:] or ["keys", "sound"]
+    if "keys" in which:
+        test_keys()
+    if "sound" in which:
+        test_sound()
+    failed = [n for n, ok in results if not ok]
+    print("selftest: %d passed, %d failed" % (len(results) - len(failed), len(failed)))
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()
