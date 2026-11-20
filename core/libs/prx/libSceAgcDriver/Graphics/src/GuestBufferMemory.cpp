@@ -3697,7 +3697,19 @@ std::vector<std::pair<std::size_t, std::uint64_t>> refreshHeapRuns(const GuestBu
     checked.reserve(space.heapRuns.size());
     for (std::size_t index = 0; index < space.heapRuns.size(); ++index) {
         const auto& run = space.heapRuns[index];
-        prepareRange(run.begin, run.bytes);
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> published;
+        for (auto* mirror : std::span<ImageMirror* const>(space.heapMirrors).subspan(run.first, run.last - run.first)) {
+            if (mirror->buffer == nullptr) continue;
+            const auto covered = StorageTexture::PublishToMirror(mirror->base, static_cast<std::size_t>(mirror->bytes), mirror->buffer->Handle(), mirror->base, mirror->bytes);
+            published.insert(published.end(), covered.begin(), covered.end());
+        }
+        std::sort(published.begin(), published.end());
+        auto at = run.begin;
+        for (const auto& [from, to] : published) {
+            if (from > at) prepareRange(at, from - at);
+            at = std::max(at, to);
+        }
+        if (at < run.begin + run.bytes) prepareRange(at, run.begin + run.bytes - at);
         const auto generation = GuestMemory::CollectWrites(run.begin, static_cast<std::size_t>(run.bytes));
         const auto since = space.verified[index].load(std::memory_order_relaxed);
         if (since == 0 || !GuestMemory::UnchangedSince(run.begin, static_cast<std::size_t>(run.bytes), since)) appendHeapRun(std::span<ImageMirror* const>(space.heapMirrors).subspan(run.first, run.last - run.first), generation, blocks);
@@ -3848,7 +3860,7 @@ std::shared_ptr<ImageMirror> acquireMirror(const Context& context, const std::sh
         return mirror;
     }
     try {
-        mirror->buffer = std::make_shared<Buffer>(context, static_cast<std::size_t>(mirror->bytes), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT);
+        mirror->buffer = std::make_shared<Buffer>(context, static_cast<std::size_t>(mirror->bytes), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
     } catch (const std::runtime_error& error) {
         if (heap) {
             std::uint64_t held = 0;

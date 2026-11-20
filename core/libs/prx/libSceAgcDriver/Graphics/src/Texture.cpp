@@ -5243,6 +5243,71 @@ bool& GpuOrderedSkipped() {
 
 }
 
+std::vector<std::pair<std::uint64_t, std::uint64_t>> StorageTexture::PublishToMirror(std::uint64_t address, std::size_t bytes, VkBuffer mirror, std::uint64_t mirrorBase, std::uint64_t mirrorBytes) {
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> covered;
+    static const bool enabled = std::getenv("APS5_MIRROR_PUBLISH") != nullptr;
+    if (!enabled || mirror == VK_NULL_HANDLE || bytes == 0) return covered;
+    auto images = overlappingPending(address, bytes);
+    if (images.empty()) return covered;
+    std::lock_guard gpu(GuestMemory::GpuMutex());
+    for (const auto& texture : images) {
+        auto& t = *texture;
+        const auto base = t.descriptor.baseAddress;
+        const auto end = base + t.guestBytes;
+        const auto elementBytes = BytesPerElement(t.descriptor.format);
+        if (base < mirrorBase || end > mirrorBase + mirrorBytes || t.generation == 0) continue;
+        if (t.geometry.levelMajor || t.geometry.thick || elementBytes % 4 != 0) continue;
+        bool whole = true;
+        for (std::uint32_t layer = 0; layer < t.trackedLayers && whole; ++layer) whole = t.layerPending[layer];
+        if (!whole || !t.importSegments().empty()) continue;
+        if (!GuestMemory::UnchangedSince(base, static_cast<std::size_t>(t.guestBytes), t.generation)) continue;
+        if (t.mirrorTarget == mirror && t.mirrorVersion == t.version) {
+            covered.emplace_back(base, end);
+            continue;
+        }
+        auto* recorder = recorderFor(t.context);
+        if (recorder == nullptr) continue;
+        const auto commands = recorder->Commands();
+        auto linear = std::make_shared<DeviceBuffer>(t.context, static_cast<std::size_t>(t.sliceLinearBytes * t.arrayLayers), VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        recorder->Keep(linear, linear->Size());
+        keepStorageTexture(*recorder, texture);
+        VkImageMemoryBarrier toSource{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        toSource.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        toSource.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toSource.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+        toSource.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toSource.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toSource.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toSource.image = t.image;
+        toSource.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, t.descriptor.mipCount, 0, VK_REMAINING_ARRAY_LAYERS};
+        const auto barrier = t.context.Function<PFN_vkCmdPipelineBarrier>("vkCmdPipelineBarrier");
+        barrier(commands, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 1, &toSource);
+        const auto regions = t.CopyRegions(nullptr);
+        t.context.Function<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer")(commands, t.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, linear->Handle(), static_cast<std::uint32_t>(regions.size()), regions.data());
+        const VkMemoryBarrier ready{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT};
+        barrier(commands, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &ready, 0, nullptr, 0, nullptr);
+        t.detiler.BeginBatch();
+        for (std::uint32_t layer = 0; layer < t.arrayLayers; ++layer) {
+            for (std::uint32_t level = 0; level < t.mips.size(); ++level) {
+                if (!t.geometry.HasLayer(level, layer)) continue;
+                const auto& mip = t.mips[level];
+                t.detiler.Dispatch(commands, t.descriptor.tileMode, elementBytes, linear->Handle(), t.geometry.LinearLayerOffset(layer) + mip.linearOffset, mirror, base + t.geometry.GuestOffset(layer, mip) - mirrorBase, mip, true, layer, t.geometry.thick, {.pipeBankXor = t.descriptor.pipeBankXor});
+            }
+        }
+        VkImageMemoryBarrier back = toSource;
+        back.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        back.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+        back.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        back.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        const VkMemoryBarrier stored{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT};
+        barrier(commands, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &stored, 0, nullptr, 1, &back);
+        t.mirrorTarget = mirror;
+        t.mirrorVersion = t.version;
+        covered.emplace_back(base, end);
+    }
+    return covered;
+}
+
 bool StorageTexture::FlushPending(std::uint64_t address, std::size_t bytes, const StorageTexture* except, const char* reason, PublishScope scope, bool* published, bool waited, VkDevice device) {
     if (!FlushDepthPlanes(address, bytes).empty()) waitForIdlePublish(reason);
     if (published != nullptr) *published = false;

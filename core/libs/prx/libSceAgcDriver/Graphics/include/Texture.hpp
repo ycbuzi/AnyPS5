@@ -339,6 +339,7 @@ public:
     static void FlushAllPending(const char* reason, VkDevice device = VK_NULL_HANDLE);
     static bool FlushAllPendingUntil(const char* reason, const std::function<bool()>& stop, VkDevice device = VK_NULL_HANDLE);
     static bool WaitForFlushing(std::uint64_t address, std::size_t bytes, const StorageTexture* except = nullptr);
+    static std::vector<std::pair<std::uint64_t, std::uint64_t>> PublishToMirror(std::uint64_t address, std::size_t bytes, VkBuffer mirror, std::uint64_t mirrorBase, std::uint64_t mirrorBytes);
     static void InstallUnwatchHook();
     static void SaveBeforeUnwatch(std::uint64_t address, std::size_t bytes);
     static bool UnwatchHookLocksGpu(std::span<const std::pair<std::uint64_t, std::uint64_t>> ranges);
@@ -908,6 +909,8 @@ private:
     std::uint64_t writtenFlip = 0;
     std::atomic<bool> writtenOccasionally{false};
     std::uint64_t version = 0;
+    std::uint64_t mirrorVersion = 0;
+    VkBuffer mirrorTarget = VK_NULL_HANDLE;
     std::uint64_t writes = 0;
     // `original` holds the guest bytes; false after a GPU-side clear, which never read them.
     std::vector<bool> layerOriginal;
