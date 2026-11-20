@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libkernel_sys/include/Api.hpp"
 #include "prx/libkernel/include/Api.hpp"
 #include "prx/libc/include/Api.hpp"
@@ -387,9 +388,9 @@ int RenamePath(const std::filesystem::path& source, const std::filesystem::path&
     }
     if (sourceIsDirectory && !sameFile) {
         error.clear();
-        const auto canonicalSource = fs::weakly_canonical(source, error);
+        const auto canonicalSource = HostWeaklyCanonical(source, error);
         if (error) return FilesystemError(error);
-        const auto canonicalDestination = fs::weakly_canonical(destination, error);
+        const auto canonicalDestination = HostWeaklyCanonical(destination, error);
         if (error) return FilesystemError(error);
         const auto relative = canonicalDestination.lexically_relative(canonicalSource);
         if (!relative.empty() && *relative.begin() != "..") return GuestEinval;
@@ -729,7 +730,7 @@ static int LinkNative(const std::filesystem::path& source, const std::filesystem
     if (const int followError = FollowLinkPath(source, target)) return static_cast<int>(Fail(followError));
     if (std::filesystem::is_directory(target, error)) return static_cast<int>(Fail(GuestEperm));
 #else
-    const auto target = std::filesystem::is_symlink(source, error) ? std::filesystem::canonical(source, error) : source;
+    const auto target = std::filesystem::is_symlink(source, error) ? HostCanonical(source, error) : source;
 #endif
     if (!error) std::filesystem::create_hard_link(target, destination, error);
     if (error == std::errc::cross_device_link) return static_cast<int>(Fail(GuestExdev));

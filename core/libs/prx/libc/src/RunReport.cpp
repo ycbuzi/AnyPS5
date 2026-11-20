@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libc/include/RunReport.hpp"
 #include "prx/libc/include/General.hpp"
 #include "prx/libc/include/HostThreadLocal.hpp"
@@ -671,7 +672,7 @@ fs::path ExecutableDirectory() {
     std::string path(size, '\0');
     if (_NSGetExecutablePath(path.data(), &size) != 0) return {};
     path.resize(std::strlen(path.c_str()));
-    return fs::weakly_canonical(path, error).parent_path();
+    return HostWeaklyCanonical(path, error).parent_path();
 #else
     return fs::read_symlink("/proc/self/exe", error).parent_path();
 #endif
@@ -1297,7 +1298,7 @@ bool EnsureRealDirectory(const fs::path& path) {
 
 fs::path Canonical(const fs::path& path) {
     std::error_code error;
-    auto result = fs::weakly_canonical(path, error);
+    auto result = HostWeaklyCanonical(path, error);
     return error ? path : result;
 }
 

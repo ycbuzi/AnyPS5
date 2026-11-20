@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libkernel/include/Api.hpp"
 #include "prx/libc/include/Api.hpp"
 #include "prx/libc/include/General.hpp"
@@ -80,7 +81,7 @@ const char* NamedObjectDirectory() {
 #ifdef __APPLE__
     static const std::string directory = [] {
         std::error_code error;
-        auto canonical = std::filesystem::canonical(std::filesystem::temp_directory_path(error), error);
+        auto canonical = HostCanonical(std::filesystem::temp_directory_path(error), error);
         return error ? std::string{} : canonical.string();
     }();
     return directory.c_str();

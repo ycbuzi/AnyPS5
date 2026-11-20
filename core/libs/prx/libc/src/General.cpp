@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libc/include/Api.hpp"
 #include "prx/libc/include/RunReport.hpp"
 #include <algorithm>
@@ -336,7 +337,7 @@ std::optional<std::filesystem::path> ResolveAlias(const std::string& guestPath, 
 
 struct WorkingDirectory {
     std::mutex mutex;
-    const std::filesystem::path root = std::filesystem::canonical(std::filesystem::current_path());
+    const std::filesystem::path root = HostCanonical(std::filesystem::current_path());
     std::filesystem::path current = root;
 };
 WorkingDirectory& Directories() {
@@ -531,7 +532,7 @@ int DirectoryFailure(const std::error_code& error) {
 }
 int SetWorkingDirectory(WorkingDirectory& state, const std::filesystem::path& resolved) {
     std::error_code error;
-    const auto canonical = std::filesystem::canonical(resolved, error);
+    const auto canonical = HostCanonical(resolved, error);
     if (error) return DirectoryFailure(error);
     if (!std::filesystem::is_directory(canonical, error)) return error ? DirectoryFailure(error) : 20;
     auto relative = canonical.lexically_relative(state.root);

@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libkernel/include/Api.hpp"
 #include "prx/libc/include/Api.hpp"
 #include <algorithm>
@@ -1483,7 +1484,7 @@ static bool InsideApp0(int fd) {
         const auto directory = File::DirectoryDescriptorPath(fd);
         if (!directory) return false;
         std::error_code error;
-        const auto app0 = std::filesystem::weakly_canonical(ResolveDiskPath_nid_no_patch("/app0"), error);
+        const auto app0 = HostWeaklyCanonical(ResolveDiskPath_nid_no_patch("/app0"), error);
         if (error || app0.empty()) return false;
         const auto relative = directory->lexically_relative(app0);
         return !relative.empty() && *relative.begin() != "..";

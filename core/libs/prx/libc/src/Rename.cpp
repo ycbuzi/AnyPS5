@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libc/include/Api.hpp"
 #include "prx/libc/include/FilesystemError.hpp"
 #include "prx/libc/include/RenameDot.hpp"
@@ -155,9 +156,9 @@ static int RenamePath_nid_no_patch(const std::filesystem::path& source, const st
     }
     if (sourceIsDirectory && !sameFile) {
         error.clear();
-        const auto canonicalSource = fs::weakly_canonical(actualSource, error);
+        const auto canonicalSource = HostWeaklyCanonical(actualSource, error);
         if (error) return FilesystemError(error);
-        const auto canonicalDestination = fs::weakly_canonical(checkedDest, error);
+        const auto canonicalDestination = HostWeaklyCanonical(checkedDest, error);
         if (error) return FilesystemError(error);
         const auto relative = canonicalDestination.lexically_relative(canonicalSource);
         if (!relative.empty() && *relative.begin() != "..") return GuestEinval;

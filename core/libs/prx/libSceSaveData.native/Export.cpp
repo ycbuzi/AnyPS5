@@ -1,3 +1,4 @@
+#include "prx/libc/include/general/HostCanonical.hpp"
 #include "prx/libSceSaveData.native/include/Api.hpp"
 #include "prx/libSceSaveData/include/Api.hpp"
 #include <algorithm>
@@ -552,8 +553,8 @@ static void require_plain_tree(const std::string& path) {
 }
 
 static void require_inside(const std::string& root, const std::string& path) {
-    const auto base = std::filesystem::weakly_canonical(std::filesystem::absolute(root));
-    const auto target = std::filesystem::weakly_canonical(std::filesystem::absolute(path));
+    const auto base = HostWeaklyCanonical(std::filesystem::absolute(root));
+    const auto target = HostWeaklyCanonical(std::filesystem::absolute(path));
     const auto [inBase, inTarget] = std::mismatch(base.begin(), base.end(), target.begin(), target.end());
     if (inBase != base.end() || inTarget == target.end()) {
         throw std::filesystem::filesystem_error("SaveData: a save path leaves its root", path, root, std::make_error_code(std::errc::operation_not_permitted));
