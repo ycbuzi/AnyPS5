@@ -1,0 +1,1759 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="xbox.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AnyPS5</title>
+<style>
+:root{--fg:#fff;--dim:rgba(255,255,255,.62);--faint:rgba(255,255,255,.38);--line:rgba(255,255,255,.14);--panel:rgba(18,22,38,.78);--ok:#5be3a5;--warn:#ffbe5c;--bad:#ff6b6b;--glow:0 0 0 .19rem #fff,0 0 1.6rem rgba(160,200,255,.55)}
+html{font-size:min(calc(100vw / 120), calc(100vh / 67.5))}
+*{box-sizing:border-box;margin:0;padding:0}
+*{scrollbar-width:none;-ms-overflow-style:none}
+*::-webkit-scrollbar{display:none;width:0;height:0}
+html,body{height:100%;background:#040814;color:var(--fg);font-family:"Segoe UI Variable Display","Segoe UI",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-font-smoothing:antialiased}
+.screen{position:fixed;inset:0;opacity:0;pointer-events:none;transition:opacity .45s ease}
+.screen.on{opacity:1;pointer-events:auto}
+.sel{box-shadow:var(--glow)!important}
+svg{width:1.6rem;height:1.6rem;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bgwave{position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 70% 20%,#16336e 0,rgba(10,22,60,.6) 40%,transparent 70%),radial-gradient(ellipse 70% 60% at 10% 90%,#0d2453 0,transparent 60%),linear-gradient(180deg,#071330,#040814)}
+/* boot (PS5-UI-SPEC.md) */
+#boot{background:radial-gradient(ellipse 130% 90% at 50% 125%,#1e2233 0,#08090e 58%)}
+#boot .rays{position:absolute;inset:0;background:conic-gradient(from 150deg at 14% -18%,transparent 0deg,rgba(255,236,214,.13) 7deg,transparent 13deg,rgba(255,236,214,.08) 19deg,transparent 26deg,rgba(255,236,214,.05) 33deg,transparent 40deg);filter:blur(.5rem)}
+#boot canvas{position:absolute;inset:0;width:100%;height:100%;animation:bokeh 40s linear infinite alternate}
+@keyframes bokeh{to{transform:translateX(-2%) scale(1.03)}}
+#boot p{position:absolute;top:15.3rem;width:100%;text-align:center;font-size:1.85rem;font-weight:300;color:rgba(255,255,255,.88);transform:translateY(-50%);opacity:0;transition:opacity 1.2s .6s}
+#boot .logo{position:absolute;left:50%;top:35rem;width:5.25rem;height:5.25rem;border-radius:50%;background:#fff;display:grid;place-items:center;transform:translate(-50%,-50%) scale(.9);opacity:0;transition:all 1.2s cubic-bezier(.2,.8,.2,1);box-shadow:0 0 3rem rgba(255,255,255,.18)}
+#boot .logo img{width:3.3rem;height:3.3rem;filter:brightness(0)}
+#boot.ready .logo{opacity:1;transform:translate(-50%,-50%)}
+#boot.ready p{opacity:1}
+/* user select */
+#profiles{background:#0a0e17}
+#profiles h1{position:absolute;left:0;right:0;top:13.45rem;transform:translateY(-50%);text-align:center;font-size:4rem;font-weight:300}
+#profiles h2{position:absolute;left:0;right:0;top:19.4rem;transform:translateY(-50%);text-align:center;font-size:1.85rem;font-weight:300;color:rgba(255,255,255,.85)}
+.pclock{position:absolute;right:4.4rem;top:3.75rem;transform:translateY(-50%);font-size:2.1rem;font-weight:300}
+.plist{position:absolute;left:50%;top:31rem;transform:translateX(-50%);display:flex;gap:4.6rem;align-items:flex-start}
+.prof{display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;width:16.25rem}
+.prof .avw{height:16.25rem;display:grid;place-items:center}
+.prof .av{width:11.9rem;height:11.9rem;border-radius:50%;display:grid;place-items:center;font-size:4.4rem;font-weight:600;transition:all .25s;background-size:cover}
+.prof.on .av{width:16.25rem;height:16.25rem;box-shadow:0 0 0 .25rem #fff}
+.prof.add .av{font-size:4rem;font-weight:300}
+.prof span{margin-top:1.9rem;font-size:1.75rem;white-space:nowrap}
+.prof em{font-style:normal;font-size:1.25rem;color:rgba(255,255,255,.75);margin-top:.4rem}
+.padg{position:absolute;top:-6.3rem;left:50%;transform:translateX(-50%);text-align:center;font-size:.9rem;line-height:1}
+.padg svg{width:3.3rem;height:3.3rem;display:block;margin:.1rem auto 0}
+.padg{font-size:1.3rem}
+/* passcode */
+.ov{position:fixed;inset:0;display:none;place-items:center;background:rgba(3,6,16,.86);backdrop-filter:blur(14px);z-index:30}
+.ov.on{display:grid}
+.pin{text-align:center}
+.pin b{display:block;font-weight:300;font-size:1.8rem;margin-bottom:1.8rem}
+.dots{display:flex;gap:1.1rem;justify-content:center}
+.dots i{width:3.2rem;height:3.6rem;border-radius:.6rem;border:.12rem solid var(--faint);display:grid;place-items:center;font-style:normal;font-size:1.6rem}
+.dots i.f::after{content:"";width:.9rem;height:.9rem;border-radius:50%;background:#fff}
+.dots.bad{animation:shake .4s}
+@keyframes shake{25%{transform:translateX(-.8rem)}75%{transform:translateX(.8rem)}}
+.keys{display:grid;grid-template-columns:repeat(3,4.6rem);gap:.7rem;justify-content:center;margin-top:2rem}
+.keys span,.osk span{height:3.4rem;display:grid;place-items:center;border-radius:.7rem;background:rgba(255,255,255,.08);font-size:1.4rem;cursor:pointer}
+.keys span:hover,.osk span:hover{background:rgba(255,255,255,.16)}
+.pin small{display:block;margin-top:1.6rem;color:var(--dim);font-size:1.3rem}
+/* passcode page (PS5-UI-SPEC.md) */
+.ov.pinscreen{background:#15171d;backdrop-filter:none;place-items:initial}
+.ov.pinscreen.on{display:block}
+.phead{position:absolute;left:6rem;top:6.4rem;transform:translateY(-50%);font-size:2.85rem;font-weight:300}
+.pprompt{position:absolute;left:0;right:0;top:21.75rem;transform:translateY(-50%);text-align:center;font-size:1.75rem;color:rgba(255,255,255,.9)}
+.pprompt.bad{color:#ff9a8a}
+.puser{position:absolute;left:41.4rem;top:39.4rem;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:1.4rem}
+.puser .av{width:15.4rem;height:15.4rem;border-radius:50%;display:grid;place-items:center;font-size:5.6rem;font-weight:600}
+.puser span{font-size:1.6rem}
+.pbox{position:absolute;left:59.4rem;top:30.75rem;width:27.1rem}
+.pinscreen .dots{display:flex;gap:.5rem;justify-content:flex-start}
+.pinscreen .dots i{width:6.4rem;height:5rem;border:0;border-bottom:.15rem solid rgba(255,255,255,.35);border-radius:0;display:grid;place-items:center}
+.pinscreen .dots i.cur{background:#4c4e59;border:.12rem solid #fff;border-radius:.3rem}
+.pinscreen .dots i.f::after{content:"";width:1rem;height:1rem;border-radius:50%;background:#fff}
+.pinscreen .keys{grid-template-columns:repeat(3,1fr);gap:0;margin-top:1.4rem;background:rgba(32,34,44,.96);padding:1.2rem .6rem;border-radius:.3rem;justify-content:stretch}
+.pinscreen .keys span{height:5.4rem;background:none;border-radius:.4rem;font-size:1.9rem;gap:.7rem;grid-auto-flow:column;justify-content:center}
+.pinscreen .keys span:hover{background:rgba(255,255,255,.08)}
+.pinscreen .keys span.sel{background:rgba(255,255,255,.1);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)!important}
+.pinscreen .keys span.gap{visibility:hidden}
+.pinscreen .keys em{font-style:normal;font-size:1.25rem;font-weight:700;min-width:2.5rem;height:2.1rem;padding:0 .3rem;border-radius:.3rem;background:rgba(255,255,255,.82);color:#1a1c24;display:grid;place-items:center}
+.pnote{position:absolute;left:0;right:0;bottom:3rem;text-align:center;color:rgba(255,255,255,.6);font-size:1.3rem}
+/* home (PS5-UI-SPEC.md) */
+#home .art{position:absolute;inset:0;background-size:cover;background-position:center;opacity:0;transition:opacity .7s ease}
+#home .art.on{opacity:1}
+#home .shade{position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.5) 0,rgba(0,0,0,.12) 42%,rgba(0,0,0,0) 65%),linear-gradient(0deg,rgba(0,0,0,.7) 0,rgba(0,0,0,0) 38%),linear-gradient(180deg,rgba(0,0,0,.45) 0,rgba(0,0,0,0) 24%)}
+.top{position:absolute;top:0;left:0;right:0;height:7.75rem;display:flex;align-items:center;padding:0 5.25rem 0 5.7rem;z-index:2}
+.tabs{display:flex;gap:4.6rem;font-size:2.1rem}
+.tabs span{color:rgba(255,255,255,.55);cursor:pointer}
+.tabs span.on{color:#fff;font-weight:600}
+.right{margin-left:auto;display:flex;align-items:center;gap:3.4rem}
+.ib{width:2.8rem;height:2.8rem;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:#fff}
+.ib svg{width:2.1rem;height:2.1rem}
+.ib:hover{background:rgba(255,255,255,.14)}
+.me{width:2.5rem;height:2.5rem;border-radius:50%;display:grid;place-items:center;font-weight:600;font-size:1.1rem;cursor:pointer;position:relative}
+.me::after{content:"";position:absolute;right:-.15rem;bottom:-.15rem;width:.8rem;height:.8rem;border-radius:50%;background:#2fd36b;border:.15rem solid #000}
+#clock{font-size:2.1rem;font-weight:300;min-width:8.6rem;text-align:right}
+.row{position:absolute;left:10.5rem;right:0;top:7.8rem;height:14rem}
+.track{display:flex;gap:.65rem;align-items:flex-start;transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+.tile{flex:none;width:6.5rem;height:6.5rem;border-radius:.9rem;background:#1c2233 center/cover;position:relative;cursor:pointer;display:grid;place-items:center;color:rgba(255,255,255,.7);transition:width .22s cubic-bezier(.2,.8,.2,1),height .22s cubic-bezier(.2,.8,.2,1),border-radius .22s}
+.tile.on{width:10.94rem;height:10.94rem;border-radius:1.4rem}
+.tile.on.foc{box-shadow:0 0 0 .13rem rgba(255,255,255,.95),0 .6rem 2rem rgba(0,0,0,.55),0 0 1.6rem rgba(255,255,255,.25)}
+.tile .badge{position:absolute;left:.4rem;top:.4rem;font-size:.95rem;background:rgba(0,0,0,.7);padding:.15rem .45rem;border-radius:.3rem;color:#fff}
+.tile.lib{background:rgba(40,46,64,.85);color:#fff}
+.tile.lib svg{width:2.4rem;height:2.4rem}
+.tile .ph{font-size:2rem;font-weight:700;color:#fff}
+.tname{position:absolute;top:7.45rem;font-size:1.8rem;white-space:nowrap;text-shadow:0 .1rem .8rem rgba(0,0,0,.8);transition:left .22s cubic-bezier(.2,.8,.2,1);pointer-events:none}
+.hero{position:absolute;left:11.25rem;top:31rem;width:56rem}
+.hero h2{font-size:4.3rem;font-weight:700;line-height:1.05;text-shadow:0 .2rem 1.6rem rgba(0,0,0,.6);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;gap:1.6rem;margin-top:1rem;color:rgba(255,255,255,.85);font-size:1.4rem;text-shadow:0 .1rem .6rem rgba(0,0,0,.8)}
+.meta .ok{color:var(--ok)}.meta .warn{color:var(--warn)}
+.acts{position:absolute;left:11.25rem;top:46.5rem;display:flex;gap:1rem;align-items:center}
+.play{min-width:18.1rem;height:4.4rem;border-radius:2.2rem;background:rgba(36,40,52,.78);backdrop-filter:blur(.6rem);color:#fff;font-size:1.95rem;display:grid;place-items:center;cursor:pointer;padding:0 2.4rem;transition:background .15s,color .15s}
+.play.sel{background:#fff;color:#0a0f1e;box-shadow:0 0 1.8rem rgba(255,255,255,.35)!important}
+.more{width:4.4rem;height:4.4rem;border-radius:50%;background:rgba(36,40,52,.78);backdrop-filter:blur(.6rem);display:grid;place-items:center;cursor:pointer;font-size:1.6rem;letter-spacing:.1rem}
+.more.sel{background:#fff;color:#0a0f1e}
+.side{position:absolute;right:10.9rem;top:22.5rem;width:23.1rem;border-radius:.8rem;overflow:hidden;background:rgba(14,18,30,.82);backdrop-filter:blur(.8rem)}
+.side .pic{height:14rem;background:#1c2233 center/cover}
+.side .lab{padding:.8rem 1.1rem 0;font-size:1.3rem;color:rgba(255,255,255,.7)}
+.side .stats{display:flex;padding:.6rem 1rem 1rem;gap:1.6rem}
+.side .stats div small{display:block;font-size:1.25rem;color:rgba(255,255,255,.65)}
+.side .stats div b{font-size:1.6rem;font-weight:600}
+.shelf{position:absolute;left:10.8rem;top:52rem}
+.shelf h4{font-size:1.6rem;font-weight:400;margin-bottom:.9rem;text-shadow:0 .1rem .6rem rgba(0,0,0,.8)}
+.cards{display:flex;gap:1.95rem}
+.card{width:16rem;height:9rem;border-radius:.5rem;background:rgba(18,22,36,.82) center/cover;padding:.8rem;display:flex;flex-direction:column;justify-content:flex-end;cursor:pointer;backdrop-filter:blur(.6rem)}
+.card small{color:rgba(255,255,255,.7);font-size:1.25rem;text-transform:uppercase;letter-spacing:.06em}
+.card b{font-size:1.45rem;margin-top:.1rem;line-height:1.2}
+.card span{color:rgba(255,255,255,.72);font-size:1.25rem;line-height:1.25}
+.card.img{background-color:#000}
+.card.img b,.card.img small{text-shadow:0 .1rem .6rem #000}
+.path{position:absolute;left:11.25rem;bottom:1.4rem;color:rgba(255,255,255,.45);font-size:1.25rem}
+body.safe .path,body.safe .secret{filter:blur(.4rem)}
+/* game hub (PS5-UI-SPEC.md): down from a game; tile row and top bar slide away, header with the game's icon and name */
+.top,.row{transition:opacity .3s,transform .35s cubic-bezier(.2,.8,.2,1)}
+.hero,.acts,.side,.hubrows{transition:top .35s cubic-bezier(.2,.8,.2,1),transform .35s cubic-bezier(.2,.8,.2,1),opacity .3s,width .35s,right .35s}
+#home.hub .top,#home.hub .row{opacity:0;transform:translateY(-4rem);pointer-events:none}
+#home.hub .shelf,#home.hub .path{opacity:0;pointer-events:none}
+#home.hub .shade{background:linear-gradient(0deg,rgba(0,0,0,.82) 0,rgba(0,0,0,.35) 62%),linear-gradient(90deg,rgba(0,0,0,.45),rgba(0,0,0,.1) 60%),rgba(0,0,0,.28)}
+.hubhead{position:absolute;left:0;right:0;top:0;height:10.5rem;padding:0 0 .6rem 3rem;display:flex;align-items:center;gap:2.75rem;font-size:2.25rem;opacity:0;transition:opacity .3s;pointer-events:none;text-shadow:0 .1rem .6rem rgba(0,0,0,.7);z-index:3;background:linear-gradient(180deg,rgba(4,6,12,.96) 0,rgba(4,6,12,.9) 62%,rgba(4,6,12,0))}
+.hubhead i{width:4.9rem;height:4.9rem;border-radius:.7rem;background:#222 center/cover;flex:none}
+#home.hub .hubhead{opacity:1}
+#home.hub .hero{top:23rem;transform:translateY(var(--hubY,0))}
+#home.hub .acts{top:37.7rem;transform:translateY(var(--hubY,0))}
+#home.hub .play{height:4.7rem;min-width:21rem}
+#home.hub .more{width:4.7rem;height:4.7rem}
+#home.hub .side{top:11.6rem;right:10.6rem;width:23.3rem;transform:translateY(var(--hubY,0))}
+#home.hub .side .pic{height:23.3rem}
+.hubrows{position:absolute;left:10.7rem;right:0;top:46.9rem;opacity:0;pointer-events:none}
+#home.hub .hubrows{opacity:1;pointer-events:auto;transform:translateY(var(--hubY,0))}
+.hsec{height:31.6rem}
+#home.hubdeep .side,#home.hubdeep2 .hero,#home.hubdeep2 .acts{opacity:0;pointer-events:none}
+body.inhub .legend{top:3.6rem;bottom:auto}
+.hsec h4{font-size:1.5rem;font-weight:400;margin-bottom:1.1rem;text-shadow:0 .1rem .6rem rgba(0,0,0,.8)}
+.hcards{display:flex;gap:2rem}
+.hcard{flex:none;width:22.8rem;height:26rem;border-radius:1.2rem;background:rgba(22,26,40,.88) center/cover;position:relative;overflow:hidden;cursor:pointer;padding:1.4rem;display:flex;flex-direction:column;justify-content:flex-end}
+.hcard::before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.82) 0,rgba(0,0,0,.1) 60%)}
+.hcard>*{position:relative}
+.hcard .big{font-size:3.6rem;font-weight:700;line-height:1}
+.hcard .hb{align-self:flex-start;border:.1rem solid #fff;padding:.15rem .6rem;font-size:1.25rem;margin:.6rem 0 1.2rem}
+.hcard small{font-size:1.3rem;color:rgba(255,255,255,.72)}
+.hcard b{font-size:1.75rem;font-weight:600;line-height:1.15;word-break:break-word}
+.hcard span{font-size:1.3rem;color:rgba(255,255,255,.72);margin-top:.2rem}
+/* media tab (PS5-UI-SPEC.md, Figma Media frame): media tiles, light title + description, "Featured" cards with a label strip */
+#home.mediatab .acts,#home.mediatab .side,#home.mediatab .path{display:none}
+#home.mediatab .tile.on.foc{box-shadow:0 0 0 .2rem #d9ceff,0 .6rem 2rem rgba(0,0,0,.55),0 0 1.8rem rgba(190,170,255,.45)}
+#home.mediatab .tile{background:#1f2131;color:#fff}
+#home.mediatab .tile svg{width:2.6rem;height:2.6rem}
+#home.mediatab .tile.on svg{width:3.6rem;height:3.6rem}
+#home.mediatab .hero{top:31rem}
+#home.mediatab .hero h2{font-size:3.45rem;font-weight:300}
+#home.mediatab .meta{font-size:1.95rem;color:rgba(255,255,255,.85);max-width:40rem;display:block;line-height:1.4}
+#home.mediatab .shelf{top:47.3rem;left:10.9rem;right:0}
+#home.mediatab .shelf h4{font-size:2.1rem}
+#home.mediatab .cards{transition:transform .3s cubic-bezier(.2,.8,.2,1)}
+#home.mediatab .card{width:14.9rem;height:12.6rem;padding:0;border-radius:.5rem;overflow:hidden;background:#111 center top/cover;justify-content:flex-end;flex:none}
+#home.mediatab .card .strip{height:3.9rem;line-height:3.9rem;background:#fff;color:#111;display:block;text-align:center;font-size:1.3rem;font-weight:600;padding:0 .7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.viewer{background:#000!important;backdrop-filter:none!important}
+.viewer .vimg{position:absolute;inset:4rem 8rem 9rem;background:center/contain no-repeat}
+.viewer .vcap{position:absolute;left:0;right:0;bottom:3.4rem;text-align:center;font-size:1.6rem}
+.viewer .vcap small{display:block;color:rgba(255,255,255,.6);font-size:1.3rem;margin-top:.3rem}
+.viewer .vnav{position:absolute;top:50%;transform:translateY(-50%);width:4.6rem;height:4.6rem;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;font-size:2.6rem;cursor:pointer}
+.viewer .vnav:hover{background:rgba(255,255,255,.24)}
+.viewer .vprev{left:2rem}.viewer .vnext{right:2rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(17rem,1fr));gap:1rem}
+.shot{aspect-ratio:16/9;border-radius:.8rem;background:#1b2440 center/cover;position:relative;cursor:pointer}
+.shot span{position:absolute;left:.7rem;bottom:.5rem;font-size:.95rem;text-shadow:0 .1rem .5rem #000}
+/* library (PS5-UI-SPEC.md) */
+#search .head{position:absolute;left:4rem;top:2.2rem;font-size:1.9rem;font-weight:300}
+.lgrid{position:absolute;left:4rem;right:4rem;top:9rem;bottom:2rem;overflow:auto;display:grid;grid-template-columns:repeat(8,1fr);gap:1.4rem 1.1rem;align-content:start;padding:.4rem}
+.li{cursor:pointer}
+.li div{aspect-ratio:1;border-radius:.8rem;background:#1b2440 center/cover;display:grid;place-items:center;font-size:2rem;font-weight:700}
+.li span{display:block;margin-top:.5rem;font-size:.95rem;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li.on div{box-shadow:var(--glow)}
+.li.on span{color:var(--fg)}
+.libbg{position:absolute;inset:0;background:#0b0d13}
+.libbg i{position:absolute;inset:0;background:center/cover;opacity:.22;transition:opacity .6s}
+.libbg::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(8,10,16,.96) 0,rgba(8,10,16,.82) 45%,rgba(8,10,16,.55)),linear-gradient(0deg,rgba(8,10,16,.9),rgba(8,10,16,0) 40%)}
+.lhead{position:absolute;left:4.3rem;top:5.4rem;transform:translateY(-50%);display:flex;align-items:center;gap:4.3rem;font-size:1.95rem}
+.lhead svg{width:2.2rem;height:2.2rem}
+#library .ltabs{position:absolute;left:10.8rem;top:10.2rem;transform:translateY(-50%);display:flex;gap:3.2rem;font-size:1.95rem}
+#library .ltabs span{color:rgba(255,255,255,.4);cursor:pointer}
+#library .ltabs span.on{color:#fff}
+.lcount{position:absolute;left:10.8rem;top:18.4rem;transform:translateY(-50%);font-size:1.5rem;color:rgba(255,255,255,.72)}
+.lsort{position:absolute;right:10.8rem;top:18.4rem;transform:translateY(-50%);font-size:1.5rem;color:rgba(255,255,255,.72);cursor:pointer}
+.lsortbtn{position:absolute;left:4.1rem;top:23.25rem;transform:translateY(-50%);width:2.8rem;height:2.8rem;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;cursor:pointer}
+.lsortbtn svg{width:1.6rem;height:1.6rem}
+.libgrid{position:absolute;left:10.8rem;right:0;top:21rem;bottom:0;overflow:auto;display:grid;grid-template-columns:repeat(5,18.44rem);gap:1.5rem;align-content:start;padding:.3rem .3rem 6rem}
+.lt{width:18.44rem;height:18.44rem;border-radius:.9rem;background:#1c2233 center/cover;position:relative;cursor:pointer;display:grid;place-items:center;font-size:3.4rem;font-weight:700;overflow:hidden}
+.lt .ln{position:absolute;left:0;right:0;bottom:0;padding:2.6rem 1rem .8rem;font-size:1.5rem;font-weight:400;background:linear-gradient(0deg,rgba(0,0,0,.85),rgba(0,0,0,0));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity .15s}
+.lt.on .ln,.lt:hover .ln{opacity:1}
+.lt .st{position:absolute;right:.6rem;top:.6rem;width:.7rem;height:.7rem;border-radius:50%;border:.12rem solid rgba(0,0,0,.6)}
+/* search */
+.sbox{position:absolute;left:4rem;right:4rem;top:5.6rem;height:3.4rem;border-radius:1.7rem;background:rgba(255,255,255,.1);display:flex;align-items:center;gap:1rem;padding:0 1.4rem;font-size:1.3rem}
+.sbox .ph2{color:var(--faint)}
+/* search + keyboard (PS5 search screenshot, PS5-UI-SPEC.md) */
+.stabs{position:absolute;left:10.75rem;top:3.9rem;transform:translateY(-50%);display:flex;gap:2.6rem;font-size:1.6rem;color:rgba(255,255,255,.5)}
+.stabs .on{color:#fff}
+.stabs span{cursor:pointer;padding:.3rem .7rem;margin:0 -.7rem;border-radius:.2rem}
+.stabs span.sel{box-shadow:0 0 0 .1rem rgba(255,255,255,.85);background:rgba(255,255,255,.07)}
+.li.round div{border-radius:50%;font-size:3rem}
+#search #sgrid.hist{grid-template-columns:minmax(0,1fr);gap:0;align-content:start}
+#search #sgrid.hist h4{font-weight:400;font-size:1.4rem;color:rgba(255,255,255,.6);padding:0 1.4rem .8rem}
+#search #sgrid.hist .hrow{height:4.6rem;display:flex;align-items:center;gap:1.2rem;padding:0 1.4rem;border-radius:.2rem;font-size:1.65rem;cursor:pointer;border-bottom:.06rem solid rgba(255,255,255,.08)}
+#search #sgrid.hist .hrow svg{width:1.7rem;height:1.7rem;flex:none;fill:none;stroke:rgba(255,255,255,.6);stroke-width:2}
+#search #sgrid.hist .hrow span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#search #sgrid.hist .hrow.clr{color:rgba(255,255,255,.7);border-bottom:0}
+#search #sgrid.hist .hrow:hover{background:rgba(255,255,255,.06)}
+#search #sgrid.hist .hrow.on{background:rgba(255,255,255,.07);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)}
+#search .sbox{left:10.75rem;right:16.2rem;top:7.3rem;height:4.4rem;border-radius:.2rem;background:rgba(255,255,255,.07);gap:1.1rem;padding:0 1.6rem;font-size:1.85rem}
+#search .sbox svg{width:1.7rem;height:1.7rem;flex:none;fill:none;stroke:#fff;stroke-width:2.4}
+#search .sbox .ph2{color:rgba(255,255,255,.85)}
+.caret{display:inline-block;width:.12rem;height:1.1em;background:#fff;margin:0 .05rem;vertical-align:middle;animation:pulse 1s infinite}
+#search .sbox #sText:empty::after{content:"";display:inline-block;width:.12rem;height:2rem;background:#fff;margin-left:.1rem;vertical-align:middle;animation:pulse 1s infinite}
+#search .lgrid{left:67.4rem;right:16.2rem;top:15.8rem;bottom:3rem;grid-template-columns:repeat(4,minmax(0,1fr));overflow:hidden;gap:1.4rem 1rem}
+#search .li span{font-size:1.25rem}
+.osk{display:grid;grid-template-columns:repeat(11,1fr);width:54.4rem;max-width:calc(100vw - 4rem);gap:0;padding:.9rem .4rem .4rem;background:rgba(28,30,38,.94);border-radius:.2rem;justify-content:stretch}
+.osk span{height:4rem;background:none;border-radius:.2rem;font-size:1.65rem;font-weight:300}
+.osk span:hover{background:rgba(255,255,255,.08)}
+.osk span.sel{background:rgba(255,255,255,.14);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)!important}
+.osk span.fn{height:3.4rem;margin:.5rem .05rem 0;background:rgba(255,255,255,.07);font-size:1.4rem;font-weight:400;position:relative}
+.osk span.fn.act{background:rgba(255,255,255,.22)}
+.osk span.s2{grid-column:span 2}
+.osk span.s5{grid-column:span 5}
+.osk span.s3{grid-column:span 3}
+.osk span.s4{grid-column:span 4}
+.osk span.s7{grid-column:span 7}
+.osk span.fn.r5{margin-top:.1rem}
+.osk span em{position:absolute;right:.3rem;top:.15rem;font-style:normal;font-size:1.25rem;color:rgba(255,255,255,.55)}
+#search .osk{position:absolute;left:10.75rem;top:15.8rem}
+/* settings (PS5-UI-SPEC.md) */
+.setbg{position:absolute;inset:0;background:radial-gradient(ellipse 36% 55% at 13% -8%,rgba(255,236,214,.22),rgba(255,236,214,0) 70%),radial-gradient(ellipse 60% 55% at 88% 55%,rgba(36,56,104,.38),transparent 70%),radial-gradient(ellipse 90% 28% at 30% 106%,rgba(255,255,255,.08),transparent 70%),linear-gradient(180deg,#191b21,#0f1117)}
+#settings .head{position:absolute;left:6rem;top:6.45rem;transform:translateY(-50%);font-size:2.85rem;font-weight:300}
+.slist{position:absolute;bottom:4.2rem;overflow:auto;padding:.3rem .4rem .8rem}
+.slist.stop{left:50%;transform:translateX(-50%);top:11.1rem;width:82.75rem}
+.slist.spage{left:42rem;top:11.5rem;width:67rem}
+.srow{display:flex;align-items:center;gap:1.6rem;padding:0 1rem;cursor:pointer;font-size:1.9rem}
+.stop .srow{height:6.1rem;border-radius:.25rem;border-bottom:.06rem solid rgba(255,255,255,.09);gap:2.2rem;padding:0 1.4rem}
+.stop .srow .ic{width:2.4rem;display:grid;place-items:center;color:rgba(255,255,255,.75)}
+.stop .srow .ic svg{width:2.3rem;height:2.3rem}
+.spage .srow{height:6.1rem;border-bottom:.06rem solid rgba(255,255,255,.09)}
+.srow:hover{background:rgba(255,255,255,.05)}
+.srow.sel{background:rgba(255,255,255,.07);border-radius:.25rem;box-shadow:0 0 0 .1rem rgba(255,255,255,.85),0 0 1rem rgba(255,255,255,.1)!important}
+.srow .val{margin-left:auto;color:rgba(255,255,255,.6);font-size:1.5rem}
+.srow>span:not(.val):not(.ic){flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow .val{flex:none;max-width:48%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.srow.info{cursor:default}
+.srow.info .val{color:#fff}
+.ssec{position:absolute;left:12.3rem;top:11.25rem;width:26rem}
+.ssec div{height:6.5rem;display:flex;align-items:center;font-size:1.9rem;color:rgba(255,255,255,.38);cursor:pointer;padding:0 1rem;margin-left:-1rem;border-radius:.5rem}
+.ssec div.cur{color:#fff}
+.ssec div.cur.foc{background:rgba(255,255,255,.07);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)}
+.sh{color:rgba(255,255,255,.5);font-size:1.3rem;text-transform:uppercase;letter-spacing:.08em;margin:1.6rem 1rem .4rem}
+.tg{display:inline-block;vertical-align:middle;width:3.9rem;height:1.85rem;border-radius:1rem;background:rgba(255,255,255,.18);position:relative;transition:background .2s;border:.08rem solid rgba(255,255,255,.35)}
+.tg::after{content:"";position:absolute;left:.25rem;top:.22rem;width:1.25rem;height:1.25rem;border-radius:50%;background:rgba(255,255,255,.85);transition:left .2s}
+.tg.on{background:#1f6fe5;border-color:#1f6fe5}.tg.on::after{left:2.3rem;background:#fff}
+.snote{color:rgba(255,255,255,.65);font-size:1.35rem;margin:1rem 1rem 0;line-height:1.55}
+/* control center (PS5-UI-SPEC.md) */
+.cc{position:fixed;inset:0;z-index:20;opacity:0;pointer-events:none;transition:opacity .22s}
+.cc.on{opacity:1;pointer-events:auto}
+.cc::before{content:"";position:absolute;left:0;right:0;bottom:0;height:36rem;background:linear-gradient(0deg,rgba(0,0,0,.94) 0,rgba(0,0,0,.78) 42%,rgba(0,0,0,0))}
+.ccards{position:absolute;left:5.1rem;right:0;bottom:11.9rem;display:flex;align-items:flex-end;gap:.9rem;transition:transform .25s}
+.ccard{flex:none;width:22.5rem;height:25rem;border-radius:1.2rem;background:#1b2133 center/cover;position:relative;overflow:hidden;cursor:pointer;padding:1.2rem 1.4rem;display:flex;flex-direction:column;justify-content:flex-end;transition:width .2s,height .2s}
+.ccard::before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(0,0,0,.8) 0,rgba(0,0,0,.15) 55%,rgba(0,0,0,.25))}
+.ccard>*{position:relative}
+.ccard.sel{width:27.25rem;height:32.9rem;box-shadow:0 0 0 .13rem #fff!important}
+.ccard .gi{position:absolute;left:1.1rem;top:1.1rem;width:2.4rem;height:2.4rem;border-radius:.4rem;background:#333 center/cover}
+.ccard .big{font-size:3.75rem;font-weight:700;line-height:1}
+.ccard .badge2{align-self:flex-start;border:.1rem solid #fff;padding:.15rem .6rem;font-size:1.25rem;margin:.6rem 0 1.4rem}
+.ccard small{font-size:1.4rem;color:rgba(255,255,255,.72)}
+.ccard b{font-size:1.85rem;font-weight:600;line-height:1.15}
+.ccard span{font-size:1.35rem;color:rgba(255,255,255,.72);margin-top:.2rem}
+.cchint{position:absolute;bottom:8.9rem;font-size:1.4rem;transform:translateX(-50%);white-space:nowrap;display:flex;align-items:center;gap:.5rem}
+.cchint b{display:inline-grid;place-items:center;min-width:2rem;height:2rem;border-radius:50%;border:.1rem solid #fff;font-size:1.25rem}
+.cicons{position:absolute;left:50%;transform:translateX(-50%);bottom:3.4rem;display:flex;gap:4.9rem;align-items:center}
+.ci{width:2.2rem;height:2.2rem;display:grid;place-items:center;position:relative;cursor:pointer;color:#fff}
+.ci svg{width:2.1rem;height:2.1rem;position:relative}
+.ci::before{content:"";position:absolute;width:4.4rem;height:4.4rem;left:50%;top:50%;transform:translate(-50%,-50%);border-radius:50%;background:rgba(255,255,255,0);transition:background .15s}
+.ci.sel::before{background:rgba(255,255,255,.16);box-shadow:0 0 0 .13rem rgba(255,255,255,.9),0 0 1.4rem rgba(255,255,255,.3)}
+.ci:hover::before{background:rgba(255,255,255,.12)}
+.ci .lbl{position:absolute;bottom:calc(100% + 1.6rem);left:50%;transform:translateX(-50%);white-space:nowrap;font-size:1.45rem;opacity:0;transition:opacity .15s;pointer-events:none}
+.ci.sel .lbl,.ci:hover .lbl{opacity:1}
+.ci.act::after{content:"";position:absolute;bottom:-1rem;left:50%;width:.4rem;height:.4rem;margin-left:-.2rem;border-radius:50%;background:#2fd36b}
+.ci .gt{width:2.9rem;height:2.9rem;border-radius:.5rem;background:#333 center/cover;position:relative}
+.ci .av2{width:2.3rem;height:2.3rem;border-radius:50%;display:grid;place-items:center;font-size:1rem;font-weight:600;position:relative}
+.ci .av2::after{content:"";position:absolute;right:-.15rem;bottom:-.15rem;width:.7rem;height:.7rem;border-radius:50%;background:#2fd36b;border:.12rem solid #000}
+body.ccopen .legend{opacity:0}
+.ccclock{position:absolute;right:4.4rem;top:3.9rem;transform:translateY(-50%);font-size:2.1rem;font-weight:300;display:none;text-shadow:0 .1rem .8rem rgba(0,0,0,.7)}
+body.ingame .ccclock{display:block}
+.ccard .gi.sys{background:#14182a url('logo-mark.png') center/62% no-repeat}
+.ccard .glyph{position:absolute;left:0;right:0;top:34%;transform:translateY(-50%);display:grid;place-items:center;opacity:.85}
+.ccard .glyph svg{width:5.6rem;height:5.6rem;stroke-width:1.4}
+.ccard.sel .glyph svg{width:7rem;height:7rem}
+.shelf,.acts,.side,.path{transition:opacity .22s}
+body.ccopen .shelf,body.ccopen .acts,body.ccopen .side,body.ccopen .path{opacity:0}
+.menu{position:fixed;display:none;z-index:40;background:rgba(14,18,34,.97);border-radius:.9rem;padding:.6rem;min-width:18rem;box-shadow:0 1rem 3rem rgba(0,0,0,.6)}
+.menu.on{display:block}
+.menu.ccpanel{min-width:30rem;padding:1rem;border-radius:1.2rem;background:rgba(20,24,40,.98)}
+.menu .mh{font-size:1.6rem;font-weight:600;padding:.6rem 1.3rem 1rem}
+/* game options menu (PS5 home screenshot, PS5-UI-SPEC.md) */
+.menu.psmenu{width:34.4rem;min-width:0;max-width:calc(100vw - 2rem);padding:.25rem 0;border-radius:.3rem;background:rgba(40,42,50,.97)}
+.psmenu .mi{height:4.5rem;display:flex;align-items:center;padding:0 2.1rem;font-size:1.75rem;border-radius:.2rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.psmenu .mi.sep{margin-top:.7rem;position:relative;overflow:visible}
+.psmenu .mi.sep::before{content:"";position:absolute;left:1.2rem;right:1.2rem;top:-.4rem;border-top:.06rem solid rgba(255,255,255,.15)}
+.psmenu .mi.sel{background:rgba(255,255,255,.07);outline:.1rem solid #fff;outline-offset:-.1rem}
+/* notifications panel (PS5 control center screenshot, PS5-UI-SPEC.md) */
+.menu.notespanel{width:40.8rem;min-width:0;max-width:calc(100vw - 4rem);padding:0 0 .6rem;border-radius:.3rem;background:rgba(36,38,46,.97);max-height:calc(100vh - 16.7rem);overflow:hidden}
+.notespanel .mh{font-size:1.5rem;font-weight:400;color:rgba(255,255,255,.75);padding:1.5rem 1.6rem 1rem}
+.notespanel .mi{display:flex;align-items:center;gap:1.4rem;padding:0 1.5rem;height:8rem;border-radius:.2rem;font-size:1.25rem}
+.notespanel .mi.sel{background:rgba(255,255,255,.07);outline:.1rem solid #fff;outline-offset:-.1rem}
+.notespanel .mi.ndnd{height:9.2rem}
+.notespanel .nic{flex:none;width:4.2rem;height:4.2rem;border-radius:.2rem;background:#14182a url('logo-mark.png') center/62% no-repeat}
+.notespanel .nic.g{background-size:cover}
+.notespanel .ntx{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:.3rem;align-self:stretch;border-bottom:.06rem solid rgba(255,255,255,.1)}
+.notespanel .ntx small{font-size:1.3rem;color:rgba(255,255,255,.65);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notespanel .ntx b{font-weight:400;font-size:1.85rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.notespanel .ndnd .ntx b{font-size:1.75rem}
+.notespanel .mi em{font-style:normal;font-size:1.25rem;color:rgba(255,255,255,.55);align-self:flex-start;margin-top:1.4rem}
+.notespanel .ntg{flex:none;width:3.6rem;height:2rem;border-radius:1rem;background:rgba(255,255,255,.25);position:relative}
+.notespanel .ntg::after{content:"";position:absolute;top:.25rem;left:.25rem;width:1.5rem;height:1.5rem;border-radius:50%;background:#fff;transition:left .15s}
+.notespanel .ntg.on{background:rgba(255,255,255,.6)}
+.notespanel .ntg.on::after{left:1.85rem}
+body.ccmenu #ccards,body.ccmenu #cchint{opacity:0;pointer-events:none}
+body.ccmenu .ci .lbl{opacity:0!important}
+#ccards,#cchint{transition:opacity .2s}
+.mi{padding:.95rem 1.3rem;border-radius:.5rem;font-size:1.4rem;cursor:pointer}
+.mi:hover{background:rgba(255,255,255,.08)}
+.mi.sel{background:rgba(255,255,255,.14);box-shadow:none!important;outline:.15rem solid #fff}
+/* overlays */
+#ingameBg{position:fixed;inset:0;background:#000 center/contain no-repeat;display:none;z-index:15}
+#ingameBg.on{display:block}
+#ingameBg::after{content:"";position:absolute;inset:0;background:rgba(0,0,0,.12)}
+.toasts{position:fixed;right:2rem;top:7.5rem;display:flex;flex-direction:column;gap:.6rem;z-index:50;align-items:flex-end;pointer-events:none}
+#scrim{position:fixed;inset:0;z-index:39;display:none}
+#scrim.on{display:block}
+body.dimmenu #scrim{background:rgba(0,0,0,.55)}
+#ssec:empty{display:none}
+.toast i{flex:none;width:2.6rem;height:2.6rem;border-radius:.4rem;background:#14182a url('logo-mark.png') center/62% no-repeat}
+.toast{display:flex;align-items:center;gap:1rem;background:rgba(20,26,46,.96);padding:1rem 1.5rem;border-radius:.8rem;font-size:1.35rem;max-width:40rem;box-shadow:0 .6rem 2rem rgba(0,0,0,.5);animation:tin .25s ease}
+@keyframes tin{from{opacity:0;transform:translateX(2rem)}}
+.legend{position:fixed;right:2.4rem;bottom:1.2rem;display:flex;gap:1.6rem;font-size:1.25rem;color:var(--dim);z-index:25;pointer-events:none;transition:opacity .3s}
+.legend b{display:inline-grid;place-items:center;min-width:2rem;height:2rem;padding:0 .45rem;border-radius:.45rem;border:.1rem solid var(--faint);color:var(--fg);font-size:1.05rem;font-weight:600;margin-right:.4rem}
+.help .cols{display:flex;gap:1.6rem;flex-wrap:wrap;justify-content:center;max-width:90rem}
+.help .col{background:rgba(255,255,255,.06);border-radius:1rem;padding:1.6rem 1.8rem;width:28rem}
+.help h4{font-weight:600;font-size:1.6rem;margin-bottom:.8rem}
+.help p{color:var(--dim);font-size:1.3rem;line-height:1.6;margin:.3rem 0}
+.help p b{color:var(--fg)}
+.help .close{text-align:center;color:var(--dim);margin-top:1.6rem;font-size:1.3rem}
+.oskbox{text-align:center}
+.oskbox b{display:block;font-weight:300;font-size:1.6rem;margin-bottom:1rem}
+.oskbox .osk{margin:0 auto}
+.oskbox .field{min-width:34rem;height:3.4rem;border-radius:.6rem;background:rgba(255,255,255,.1);display:flex;align-items:center;padding:0 1.2rem;font-size:1.4rem;margin:0 auto 1.4rem;max-width:40rem}
+.oskbox .field:empty::after{content:"";width:.12rem;height:1.6rem;background:#fff;margin-left:.1rem;animation:pulse 1s infinite}
+.notes .item{background:rgba(255,255,255,.06);border-radius:.7rem;padding:.9rem 1.2rem;margin:.5rem 0;min-width:44rem;font-size:1.35rem}
+.notes .item small{color:var(--faint);margin-right:.8rem;font-size:1.3rem}
+.notes>p{font-size:1.3rem}
+.ginfo{background:rgba(14,18,34,.97);border-radius:1rem;padding:1.8rem 2.2rem;min-width:40rem;max-width:60rem}
+.ginfo h3{font-size:1.6rem;font-weight:600;margin-bottom:1rem}
+.ginfo p{color:var(--dim);font-size:1.35rem;margin:.4rem 0;word-break:break-all}
+.ginfo p b{color:var(--fg);font-weight:600}
+/* game Information page (PS5 options menu > Information, PS5-UI-SPEC.md) */
+.ov.infoscreen{background:#15171d;backdrop-filter:none;place-items:initial}
+.ov.infoscreen.on{display:block}
+.iart{position:absolute;left:10.5rem;top:11.2rem;width:22.9rem;height:22.9rem;border-radius:.4rem;background:#2a2d38 center/cover no-repeat;display:grid;place-items:center;font-size:7rem;font-weight:600;color:rgba(255,255,255,.5)}
+.ibody{position:absolute;left:39.2rem;right:6rem;top:11.2rem}
+.ititle{font-size:2.6rem;font-weight:300;line-height:1.25;padding:0 1.4rem 1.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irows div{height:6.2rem;display:flex;align-items:center;justify-content:space-between;gap:2rem;padding:0 1.4rem;border-bottom:.06rem solid rgba(255,255,255,.09);border-radius:.25rem;font-size:1.75rem}
+.irows div span{color:rgba(255,255,255,.62);font-size:1.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62%}
+.irows div.sel{background:rgba(255,255,255,.07);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)}
+@media (max-aspect-ratio: 4/3) {
+  .iart{left:6rem;top:10rem;width:14rem;height:14rem;font-size:4.5rem}
+  .ibody{left:3rem;right:3rem;top:26rem}
+  .stabs{left:3rem}
+  #search .sbox{left:3rem;right:3rem}
+  #search .osk{left:3rem}
+  #search .lgrid{left:3rem;right:3rem;top:43rem}
+}
+/* narrow window (11-15, Blu: side by side with the pipeline window, ~734x1039): taller or narrower than 4:3. The layout
+   is 70rem wide instead of 120rem, so everything is ~70% bigger than plain width-scaling; side margins shrink, the right
+   side card hides, the activity row sits at the bottom, settings and the library reflow, the control row tightens. */
+@media (max-aspect-ratio: 4/3) {
+  html{font-size:min(calc(100vw / 70), calc(100vh / 67.5))}
+  .top{padding:0 2rem 0 3rem}
+  .right{gap:2rem}
+  #clock{min-width:0}
+  .row{left:3rem}
+  .hero,.acts,.path,.hubrows{left:3rem}
+  .hero{width:auto;right:3rem}
+  .side{display:none!important}
+  .path{display:none}
+  .shelf,#home.mediatab .shelf{top:max(52rem, calc(100vh - 18.5rem));bottom:auto;left:3rem;right:0;overflow:hidden}
+  #home.mediatab .shelf{top:max(47rem, calc(100vh - 22rem))}
+  .ccards{left:2rem}
+  .cicons{gap:3.2rem}
+  #settings .head{left:3rem}
+  .ssec{left:3rem;width:19rem}
+  .slist.spage{left:23rem;width:auto;right:2rem}
+  .slist.stop{width:auto;left:3rem;right:3rem;transform:none}
+  .lhead{left:1.5rem;gap:2.4rem}
+  #library .ltabs,.lcount{left:3rem}
+  .lsort{right:3rem}
+  .lsortbtn{left:auto;right:3rem;top:14.6rem}
+  .libgrid{left:3rem;right:3rem;grid-template-columns:repeat(4,1fr)}
+  .lt{width:100%;height:calc((100vw - 10.5rem - .6rem) / 4)}
+}
+@media (max-aspect-ratio: 1/1) {
+  .libgrid{grid-template-columns:repeat(3,1fr)}
+  .lt{height:calc((100vw - 9rem - .6rem) / 3)}
+}
+/* card text never spills out of its card (11-15 audit) */
+.card small,.hcard small,.ccard small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;display:block}
+.card b,.card span,.hcard b,.hcard span,.ccard b,.ccard span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card b{display:block;white-space:nowrap;text-overflow:ellipsis}
+.card,.hcard,.ccard{overflow:hidden}
+/* trophies (PS5 trophy screenshots: Push Square overview, makeuseof game list; PS5-UI-SPEC.md) */
+.cup{width:2.6rem;height:2.6rem;flex:none}
+.cup.platinum{color:#b9d3f5}.cup.gold{color:#e3b347}.cup.silver{color:#c3c8d1}.cup.bronze{color:#c9875a}.cup.none{color:rgba(255,255,255,.22)}
+.trhead{position:absolute;left:5.9rem;top:6.4rem;transform:translateY(-50%);display:flex;align-items:center;gap:1.2rem;font-size:2.85rem;font-weight:300;max-width:56rem;white-space:nowrap}
+.trhead i{flex:none;width:3.4rem;height:3.4rem;border-radius:.3rem;background:#2a2d38 center/cover}
+.trhead span{overflow:hidden;text-overflow:ellipsis}
+.trsum{position:absolute;right:9.9rem;top:6.4rem;transform:translateY(-50%);display:flex;align-items:center;gap:2.4rem;font-size:1.5rem}
+.trsum .g{display:flex;align-items:center;gap:.6rem}
+.trsum .lv{display:flex;align-items:center;gap:.8rem;font-size:2.4rem;font-weight:300}
+.trsum .lv svg{width:3.4rem;height:3.4rem}
+.trsum .tx small{display:block;font-size:1.25rem;color:rgba(255,255,255,.6)}
+.trsum .tx b{display:block;font-size:1.75rem;font-weight:400}
+.trbarw{height:.25rem;background:rgba(255,255,255,.22);border-radius:.2rem;overflow:hidden;margin-top:.35rem}
+.trbarw i{display:block;height:100%;background:#fff}
+.trbar{position:absolute;left:10.6rem;right:9.9rem;top:12.6rem;transform:translateY(-50%);display:none;justify-content:space-between;font-size:1.3rem;color:rgba(255,255,255,.65)}
+#trophies.list .trbar{display:flex}
+.trlist{position:absolute;left:10.6rem;right:9.9rem;top:11.4rem;bottom:4.6rem;overflow:hidden;padding:.2rem}
+#trophies.list .trlist{top:14.2rem}
+.trempty{font-size:1.6rem;color:rgba(255,255,255,.65);padding:2rem 1.2rem;line-height:1.5}
+.trg{height:8.9rem;display:flex;align-items:center;gap:1.6rem;padding:0 1.2rem;border-bottom:.06rem solid rgba(255,255,255,.09);border-radius:.3rem;cursor:pointer}
+.trg .ic{flex:none;width:6.2rem;height:6.2rem;border-radius:.3rem;background:#2a2d38 center/cover}
+.trg .nm{flex:1;min-width:0}
+.trg .nm b{display:block;font-weight:400;font-size:1.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trg .nm em{display:inline-block;margin-top:.5rem;font-style:normal;font-size:1.25rem;padding:0 .4rem;border:.08rem solid rgba(255,255,255,.5);border-radius:.15rem;color:rgba(255,255,255,.8)}
+.trg .pl{flex:none;width:2.8rem}
+.trg .pc{flex:none;width:8rem;text-align:center;font-size:2rem;font-weight:300}
+.trg .ct{flex:none;display:flex;gap:2.2rem;width:19rem;justify-content:flex-end;font-size:1.5rem}
+.trg .ct span{display:flex;align-items:center;gap:.5rem}
+.trg .ct .cup{width:2.2rem;height:2.2rem}
+.trc{height:10.8rem;margin-bottom:1.35rem;background:rgba(255,255,255,.06);border-radius:.4rem;display:flex;align-items:flex-start;gap:2rem;padding:1.6rem 2rem;cursor:pointer}
+.trc .ti{flex:none;width:7.6rem;height:7.6rem;border-radius:.3rem;background:#2a2d38 center/cover;display:grid;place-items:center;font-size:3rem;color:rgba(255,255,255,.5)}
+.trc.lock .ti{filter:grayscale(1) brightness(.5)}
+.trc .tm{flex:0 0 34%;min-width:0;display:flex;flex-direction:column;gap:.45rem}
+.trc .tm b{font-weight:400;font-size:1.75rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trc .tm span{display:flex;align-items:center;gap:.5rem;font-size:1.3rem;color:rgba(255,255,255,.65);white-space:nowrap;overflow:hidden}
+.trc .tm .cup{width:1.6rem;height:1.6rem}
+.trc .tm .d2{display:none}
+.trc .dt{flex:none;width:13rem;text-align:right;font-size:1.3rem;color:rgba(255,255,255,.7);padding-top:.3rem}
+.trc .ds{flex:1;min-width:0;align-self:stretch;border-left:.06rem solid rgba(255,255,255,.15);padding-left:1.6rem;font-size:1.4rem;line-height:1.35;color:rgba(255,255,255,.78);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.trg.sel,.trc.sel{background:rgba(255,255,255,.08);box-shadow:0 0 0 .12rem rgba(255,255,255,.9)}
+@media (max-aspect-ratio: 4/3) {
+  .trhead{left:3rem;max-width:62rem}
+  .trsum{left:3rem;right:auto;top:11.6rem;gap:1.8rem}
+  .trbar{left:3rem;right:3rem;top:16.4rem}
+  .trlist{left:3rem;right:3rem;top:15rem}
+  #trophies.list .trlist{top:18rem}
+  .trg .ct{width:auto;gap:1.2rem}
+  .trg .pc{width:6.5rem}
+  .trc .dt{display:none}
+  .trc .tm{flex-basis:40%}
+  .trc .tm .d2{display:flex}
+}
+/* media gallery (PS5 Media Gallery: Sony's guide diagram, VG247 and Trusted Reviews shots; PS5-UI-SPEC.md) */
+#gallery .phead{max-width:70rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gtabs{position:absolute;left:10.2rem;top:11.1rem;transform:translateY(-50%);display:flex;gap:1.2rem;font-size:1.6rem}
+.gtabs span{padding:.45rem 1.1rem;border-radius:.25rem;color:rgba(255,255,255,.5);cursor:pointer}
+.gtabs span.on{color:#fff}
+.gtabs span.sel{background:rgba(255,255,255,.1);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)}
+.gsortl{position:absolute;right:10.4rem;top:18.1rem;transform:translateY(-50%);font-size:1.3rem;color:rgba(255,255,255,.7)}
+.gside{position:absolute;left:5.1rem;top:21rem;display:flex;flex-direction:column;gap:3rem}
+.gside span{width:3.6rem;height:3.6rem;border-radius:50%;background:rgba(255,255,255,.1);display:grid;place-items:center;cursor:pointer}
+.gside span svg{width:1.8rem;height:1.8rem;fill:none;stroke:#fff;stroke-width:2}
+.gside span.sel{background:rgba(255,255,255,.18);box-shadow:0 0 0 .1rem rgba(255,255,255,.85)}
+.ggrid{position:absolute;left:10.2rem;right:10.4rem;top:20.9rem;bottom:3rem;overflow:hidden;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2rem 1.75rem;align-content:start;padding:.2rem}
+.gi{position:relative;aspect-ratio:16/9;border-radius:.3rem;overflow:hidden;background:#20232c;cursor:pointer}
+.gi i{position:absolute;inset:0;background:center/cover no-repeat}
+.gi .gg{position:absolute;left:0;right:0;top:0;padding:.6rem .8rem 1.6rem;font-size:1.25rem;background:linear-gradient(rgba(0,0,0,.65),transparent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gi .gb{position:absolute;right:.7rem;top:.55rem;display:flex;gap:.5rem;align-items:center}
+.gi .gb .cup{width:1.9rem;height:1.9rem}
+.gi .gb svg.heart{width:1.7rem;height:1.7rem;fill:#fff}
+.gi .gt{position:absolute;left:.7rem;bottom:.6rem;font-size:1.25rem;padding:.1rem .5rem;border-radius:.2rem;background:rgba(0,0,0,.6)}
+.gi .ga{position:absolute;left:0;right:0;bottom:0;padding:1.6rem .9rem .7rem;background:linear-gradient(transparent,rgba(0,0,0,.75))}
+.gi .ga b{display:block;font-weight:400;font-size:1.6rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gi .ga small{font-size:1.25rem;color:rgba(255,255,255,.7)}
+.gi.sel{box-shadow:0 0 0 .15rem #fff,0 0 1.2rem rgba(255,255,255,.2)}
+.gempty{grid-column:1/-1;font-size:1.6rem;color:rgba(255,255,255,.65);line-height:1.5;padding:1rem .2rem}
+@media (max-aspect-ratio: 4/3) {
+  .gtabs{left:3rem}
+  .gside{left:auto;right:3rem;top:15.5rem;flex-direction:row;gap:1.4rem}
+  .gsortl{right:auto;left:3rem;top:18.6rem}
+  .ggrid{left:3rem;right:3rem;top:21.4rem;grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+/* Create menu (DualSense Create button; Eurogamer's 1840x1070 shot of the PS5 Create menu; PS5-UI-SPEC.md) */
+.ov.createov{background:transparent;backdrop-filter:none;place-items:initial;z-index:31}
+.ov.createov.on{display:block}
+.crbar{position:absolute;left:0;right:0;bottom:0;height:16.9rem;background:linear-gradient(rgba(6,7,11,.95),rgba(6,7,11,.99))}
+.crlast{position:absolute;left:.4rem;top:4rem;width:15.3rem;height:8.6rem;border-radius:.3rem;background:#20232c center/cover no-repeat;cursor:pointer;overflow:hidden}
+.crlast em{position:absolute;right:.5rem;bottom:.4rem;font-style:normal;font-size:1.25rem;padding:.05rem .45rem;border-radius:.2rem;background:rgba(0,0,0,.6)}
+.crlast span{position:absolute;inset:0;display:grid;place-items:center;text-align:center;font-size:1.25rem;color:rgba(255,255,255,.6);padding:.6rem}
+.crbtn{position:absolute;top:5.7rem;width:4.4rem;height:4.4rem;border-radius:50%;display:grid;place-items:center;cursor:pointer}
+.crbtn svg{width:2.5rem;height:2.5rem;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+#crShot{left:calc(47.9% - 2.2rem)}
+#crRecent{left:calc(40.9% - 2.2rem)}
+#crRec{left:calc(54.6% - 2.2rem)}
+#crOpts{right:7.6rem}
+.crlast.sel,.crbtn.sel{box-shadow:0 0 0 .15rem #fff,0 0 1rem rgba(255,255,255,.2)}
+.crbtn.sel{background:rgba(255,255,255,.12)}
+.crlabel{position:absolute;top:1.9rem;transform:translateX(-50%);font-size:1.5rem;white-space:nowrap;pointer-events:none}
+@media (max-aspect-ratio: 4/3) {
+  #crShot{left:calc(50% - 2.2rem)}
+  #crOpts{right:3rem}
+}
+/* power menu (TheGamer's PS5 control center shot) and rest mode */
+.menu.powerpanel{width:41rem;min-width:0;max-width:calc(100vw - 4rem);padding:0 0 .6rem;border-radius:.3rem;background:rgba(36,38,46,.97)}
+.powerpanel .mh{font-size:1.5rem;font-weight:400;color:rgba(255,255,255,.75);padding:1.5rem 1.6rem 1rem}
+.powerpanel .mi{display:flex;gap:1.4rem;align-items:flex-start;padding:1.7rem 1.6rem;border-radius:.2rem;font-size:1.75rem;border-bottom:.06rem solid rgba(255,255,255,.08)}
+.powerpanel .mi:last-child{border-bottom:0}
+.powerpanel .mi svg{width:2.3rem;height:2.3rem;flex:none;fill:none;stroke:#fff;stroke-width:1.8;stroke-linecap:round;margin-top:.1rem}
+.powerpanel .mi div{min-width:0}
+.powerpanel .pd{display:none;font-size:1.3rem;color:rgba(255,255,255,.65);line-height:1.4;margin-top:.5rem}
+.powerpanel .mi.sel .pd{display:block}
+.powerpanel .mi.sel{background:rgba(255,255,255,.07);outline:.1rem solid #fff;outline-offset:-.1rem}
+.ov.restov{background:#000;backdrop-filter:none;place-items:initial;z-index:60;cursor:none}
+.ov.restov.on{display:block}
+.restlight{position:absolute;right:3rem;bottom:3rem;width:1.1rem;height:1.1rem;border-radius:50%;background:#ff9a2e;box-shadow:0 0 1.4rem #ff9a2e;animation:restpulse 2.8s ease-in-out infinite}
+@keyframes restpulse{0%,100%{opacity:.2}50%{opacity:1}}
+.resttext{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;font-size:2.2rem;font-weight:300;color:rgba(255,255,255,.75);animation:restfade 5s forwards}
+.resttext small{display:block;margin-top:.8rem;font-size:1.4rem;color:rgba(255,255,255,.55)}
+@keyframes restfade{0%,65%{opacity:1}100%{opacity:0}}
+/* downloads in the control center (PS5 Downloads/Uploads; here: copies from the PS5, builds, tests) */
+.menu.dlpanel{width:40.8rem;min-width:0;max-width:calc(100vw - 4rem);padding:0 0 .6rem;border-radius:.3rem;background:rgba(36,38,46,.97);max-height:calc(100vh - 16.7rem);overflow:hidden}
+.dlpanel .mh{font-size:1.5rem;font-weight:400;color:rgba(255,255,255,.75);padding:1.5rem 1.6rem 1rem;display:flex;justify-content:space-between;gap:1rem}
+.dlpanel .mh em{font-style:normal;color:#ffb35c}
+.dlpanel .mi{display:flex;align-items:center;gap:1.4rem;padding:1.1rem 1.5rem;border-radius:.2rem;font-size:1.25rem;border-bottom:.06rem solid rgba(255,255,255,.08)}
+.dlpanel .mi.sel{background:rgba(255,255,255,.07);outline:.1rem solid #fff;outline-offset:-.1rem}
+.dlpanel .dic{flex:none;width:4.6rem;height:4.6rem;border-radius:.2rem;background:#2a2d38 center/cover no-repeat;display:grid;place-items:center}
+.dlpanel .dic svg{width:2.4rem;height:2.4rem;fill:none;stroke:#fff;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.dlpanel .dtx{flex:1;min-width:0;display:flex;flex-direction:column;gap:.2rem}
+.dlpanel .dtx small{font-size:1.25rem;color:rgba(255,255,255,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlpanel .dtx b{font-weight:400;font-size:1.7rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlpanel .dtx span{font-size:1.25rem;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlpanel .dbar{height:.3rem;background:rgba(255,255,255,.18);border-radius:.2rem;margin-top:.5rem;overflow:hidden}
+.dlpanel .dbar i{display:block;height:100%;background:#fff}
+.dlpanel .dbar.ind i{width:30%;animation:dlind 1.6s linear infinite}
+@keyframes dlind{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+.dlpanel .mi em{flex:none;font-style:normal;font-size:1.4rem;color:rgba(255,255,255,.8)}
+.dlpanel .mi.dla{font-size:1.6rem;padding:1.4rem 1.5rem}
+/* accessibility settings */
+body.reducemotion *,body.reducemotion *::before,body.reducemotion *::after{transition:none!important;animation-duration:.001s!important;animation-iteration-count:1!important}
+body.boldtext *{font-weight:600!important}
+body.highcontrast *{color:#fff!important;text-shadow:none!important}
+body.highcontrast .sel,body.highcontrast .foc,body.highcontrast .srow.sel,body.highcontrast .mi.sel{outline:.22rem solid #fff!important;outline-offset:-.22rem}
+body.highcontrast .menu,body.highcontrast .toast{background:#000!important}
+/* motion polish (PS5: hero text fades up on a new game, the art pushes in slowly, the control center rises, menus pop) */
+@keyframes heroin{from{opacity:0;transform:translateY(.9rem)}}
+#gTitle.enter,#gMeta.enter{animation:heroin .45s cubic-bezier(.2,.8,.2,1) both}
+#gMeta.enter{animation-delay:.06s}
+@keyframes artin{from{transform:scale(1.06)}to{transform:scale(1)}}
+#home .art.on{animation:artin 1.6s cubic-bezier(.2,.7,.2,1) both}
+@keyframes ccrise{from{opacity:0;transform:translateY(3.2rem)}}
+@keyframes ccrise2{from{opacity:0;transform:translate(-50%,2.4rem)}}
+.cc.on .ccards{animation:ccrise .32s cubic-bezier(.2,.8,.2,1)}
+.cc.on .cicons{animation:ccrise2 .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes menuin{from{opacity:0;transform:translateY(.7rem) scale(.98)}}
+.menu.on{animation:menuin .17s cubic-bezier(.2,.8,.2,1)}
+@keyframes ovin{from{opacity:0}}
+.ov.on{animation:ovin .2s ease-out}
+.screen{transform:scale(1.012);transition:opacity .45s ease,transform .5s cubic-bezier(.2,.8,.2,1)}
+.screen.on{transform:none}
+</style>
+</head>
+<body>
+<div class="bgwave" id="bgwave"></div>
+
+<section id="boot" class="screen on"><div class="rays"></div><canvas id="bokeh"></canvas><p>Press the PS button on your controller, or any key.</p><div class="logo"><img src="logo-mark.png" alt="AnyPS5"></div></section>
+
+<section id="profiles" class="screen"><span class="pclock" id="pclock"></span><h1>Welcome back to AnyPS5</h1><h2>Who's using this controller?</h2><div class="plist" id="plist"></div></section>
+
+<section id="home" class="screen">
+  <div class="art" id="artA"></div><div class="art" id="artB"></div><div class="shade"></div>
+  <div class="top"><div class="tabs" id="tabs"><span class="on" data-tab="games">Games</span><span data-tab="media">Media</span></div>
+    <div class="right"><div class="ib" id="searchBtn" title="Search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/></svg></div><div class="ib" id="setBtn" title="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/></svg></div><div class="ib" id="menuBtn" title="Control center"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></div><div class="ib" id="helpBtn" title="Help"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.8v.4M12 17h.01"/></svg></div><div class="me" id="me"></div><span id="clock"></span></div></div>
+  <div id="gamesView">
+    <div class="row"><div class="track" id="track"></div><div class="tname" id="tname"></div></div>
+    <div class="hero" id="hub"><h2 id="gTitle"></h2><div class="meta" id="gMeta"></div></div>
+    <div class="acts" id="acts"><div class="play" id="playBtn" data-act="0">Play Game</div><div class="more" id="moreBtn" data-act="1">···</div></div>
+    <div class="side" id="side"></div>
+    <div class="shelf" id="shelf"><h4 id="shelfT">Your activity</h4><div class="cards" id="cards"></div></div>
+    <div class="path secret" id="gPath"></div>
+    <div class="hubhead" id="hubhead"></div>
+    <div class="hubrows" id="hubrows"></div>
+  </div>
+</section>
+
+<section id="library" class="screen"><div class="libbg"><i id="libart"></i></div><div class="lhead"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/></svg>Game Library</div><div class="ltabs" id="ltabs"><span class="on" data-f="all">Your Collection</span><span data-f="installed">Installed</span><span data-f="plays">Plays</span></div><div class="lcount" id="lcount"></div><div class="lsort" id="lsort"></div><div class="lsortbtn" id="lsortBtn" title="Sort and filter"><svg viewBox="0 0 24 24"><path d="M4 6h12M4 12h8M4 18h5M18 5v14M15 16l3 3 3-3"/></svg></div><div class="libgrid" id="lgrid"></div></section>
+
+<section id="search" class="screen"><div class="setbg"></div><div class="stabs" id="stabs"></div><div class="sbox"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.6-4.6"/></svg><span id="sText"></span><span class="ph2" id="sPh">Search for games</span></div><div class="osk" id="sOsk"></div><div class="lgrid" id="sgrid"></div></section>
+
+<section id="gallery" class="screen"><div class="setbg"></div><div class="phead" id="gHead">Media Gallery</div><div class="gtabs" id="gTabs"></div><div class="gside"><span id="gSortBtn" title="Sort and options"><svg viewBox="0 0 24 24"><path d="M7 4v15M3.5 15.5L7 19l3.5-3.5M13 6h8M13 11h6M13 16h4"/></svg></span></div><div class="gsortl" id="gSortLbl"></div><div class="ggrid" id="gGrid"></div></section>
+<section id="trophies" class="screen"><div class="setbg"></div><div class="trhead" id="trHead"></div><div class="trsum" id="trSum"></div><div class="trbar" id="trBar"></div><div class="trlist" id="trList"></div></section>
+<section id="settings" class="screen"><div class="setbg"></div><div class="head" id="setHead">Settings</div><div class="ssec" id="ssec"></div><div class="slist" id="slist"></div></section>
+
+<div id="ingameBg"></div>
+<div class="cc" id="cc"><span class="ccclock" id="ccclock"></span><div class="ccards" id="ccards"></div><div class="cchint" id="cchint"></div><div class="cicons" id="cicons"></div></div>
+<div id="scrim"></div><div class="menu" id="menu"></div>
+
+<div class="ov pinscreen" id="pin"><div class="setbg"></div><div class="phead" id="pinTitle">Log In</div><div class="pprompt" id="pinPrompt">Enter your passcode.</div><div class="puser"><div class="av" id="pinAv"></div><span id="pinName"></span></div><div class="pbox"><div class="dots" id="dots"><i></i><i></i><i></i><i></i></div><div class="keys" id="keys"></div></div><small class="pnote" id="pinNote">Type the digits, press the controller buttons shown, or click. Esc or B goes back.</small></div>
+<div class="ov" id="osk"><div class="oskbox"><b id="oskTitle"></b><div class="field" id="oskField"></div><div class="osk" id="oskKeys"></div></div></div>
+<div class="ov" id="notes"><div class="notes"><h3 style="font-weight:300;font-size:1.6rem;margin-bottom:1rem">Notifications</h3><div id="noteList"></div><p style="color:var(--dim);margin-top:1rem;font-size:1.3rem">Esc, B or a click closes this</p></div></div>
+<div class="ov restov" id="rest"><div class="resttext">Rest mode<small>Press any button to wake AnyPS5</small></div><div class="restlight"></div></div>
+<div class="ov createov" id="create"><div class="crbar"><div class="crlabel" id="crLabel"></div><div class="crlast" id="crLast"></div><div class="crbtn" id="crRecent" style="display:none"><svg viewBox="0 0 24 24"><path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><path d="M12 8.5V12l2.2 1.5"/><circle cx="12" cy="12" r="4.2"/></svg></div><div class="crbtn" id="crRec" style="display:none"><svg viewBox="0 0 24 24"><path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><circle cx="12" cy="12" r="3.4" fill="#e5484d" stroke="none"/></svg></div><div class="crbtn" id="crShot"><svg viewBox="0 0 24 24"><path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><path d="M8 9.5h1.6l1-1.5h2.8l1 1.5H16v6H8z"/><circle cx="12" cy="12.4" r="1.7"/></svg></div><div class="crbtn" id="crOpts"><svg viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/></svg></div></div></div>
+<div class="ov viewer" id="viewer"><div class="vimg" id="vimg"></div><div class="vcap" id="vcap"></div><div class="vnav vprev" id="vprev">‹</div><div class="vnav vnext" id="vnext">›</div></div>
+<div class="ov infoscreen" id="ginfo"><div class="setbg"></div><div class="phead">Information</div><div class="iart" id="iArt"></div><div class="ibody"><div class="ititle" id="iTitle"></div><div class="irows" id="iRows"></div></div><small class="pnote">Esc or B goes back</small></div>
+<div class="ov help" id="help"><div><div class="cols">
+<div class="col"><h4>Keyboard</h4><p><b>Arrows</b> or <b>WASD</b> move</p><p><b>Enter</b> select, play</p><p><b>Esc</b> back</p><p><b>Q</b> control center (like the PS button)</p><p><b>O</b> options for the selected game (···)</p><p><b>H</b> this help · <b>C</b> Create menu · <b>F11</b> full screen</p><p>In a game: <b>Shift+Esc</b> closes it</p></div>
+<div class="col"><h4>Mouse</h4><p>Click a game to pick it, <b>click again to play</b></p><p>Top right: <b>search</b>, <b>settings</b>, <b>control center</b>, <b>help</b>, your profile</p><p>Wheel scrolls the game row</p><p>Click outside a menu to close it</p><p>In a game: click it to give it the keyboard</p></div>
+<div class="col"><h4>Controller</h4><p><b>PS button</b> (Xbox: Guide) control center; in a game, the game menu</p><p><b>D-pad</b> or <b>left stick</b> move · <b>Cross / A</b> select · <b>Circle / B</b> back</p><p><b>Options / Menu</b> game options (···)</p><p><b>Create / View</b> Create menu: screenshots and captures</p><p><b>L1 / R1</b> switch tabs</p><p>In a game: <b>PS button &gt; Close game</b>, or hold View + Menu on an Xbox pad</p></div>
+</div><p class="close">Esc, B or a click closes this</p></div></div>
+<div class="toasts" id="toasts"></div>
+<div class="legend" id="legend"></div>
+
+<script src="library.js"></script>
+<script>window.OS_AREAS = window.OS_AREAS || []; window.registerOsArea = a => { const i = OS_AREAS.findIndex(x => x.id === a.id); if (i >= 0) OS_AREAS[i] = a; else OS_AREAS.push(a); };</script>
+<script src="ospages/network.js" onerror="0"></script>
+<script src="ospages/language.js" onerror="0"></script>
+<script src="ospages/datetime.js" onerror="0"></script>
+<script src="ospages/family.js" onerror="0"></script>
+<script src="ospages/bluetooth.js" onerror="0"></script>
+<script src="ospages/recording.js" onerror="0"></script>
+<script>
+const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
+const esc = t => String(t == null ? "" : t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const HOST = window.chrome && window.chrome.webview;
+function send(o) { if (HOST) HOST.postMessage(JSON.stringify(o)); else if (location.protocol.startsWith("http") && location.port === "8790") fetch("/msg", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(o) }).catch(() => {}); }
+/* system areas (OS pages): the page asks the host, AnyPS5.exe on Windows (host-<area>.cs) or os-host/host.py on the
+   Chromebook (os-host/areas/<area>.py). Reply: { ok, data, error, unsupported }. */
+var OS_AREAS = window.OS_AREAS || (window.OS_AREAS = []);
+let sysSeq = 0; const sysWait = {};
+function sysCall(area, action, args) {
+  return new Promise(resolve => {
+    const id = ++sysSeq;
+    if (HOST) { sysWait[id] = resolve; send({ sys: area, action, args: args || {}, id }); setTimeout(() => { if (sysWait[id]) { delete sysWait[id]; resolve({ ok: false, error: "AnyPS5 did not answer" }); } }, 45000); return; }
+    fetch("/sys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ area, action, args: args || {} }) }).then(r => r.json()).then(resolve).catch(() => resolve({ ok: false, unsupported: true, error: "No system host here (browser preview)" }));
+  });
+}
+function registerOsArea(a) { const i = OS_AREAS.findIndex(x => x.id === a.id); if (i >= 0) OS_AREAS[i] = a; else OS_AREAS.push(a); }
+function osAreasIn(cat) { return OS_AREAS.filter(a => a.cat === cat); }
+const COLORS = ["linear-gradient(135deg,#3b82f6,#22d3ee)", "linear-gradient(135deg,#a855f7,#ec4899)", "linear-gradient(135deg,#f59e0b,#ef4444)", "linear-gradient(135deg,#10b981,#84cc16)", "linear-gradient(135deg,#64748b,#94a3b8)", "linear-gradient(135deg,#f43f5e,#fb923c)"];
+const DEFAULTS = { profiles: [{ name: "Blu", color: 0, pinHash: "" }, { name: "Guest", color: 3, pinHash: "" }], sounds: true, volume: 2, psAction: "cc", showNoArt: false, safe: false, libSort: "recent" };
+let S = JSON.parse(JSON.stringify(DEFAULTS)), H = { paused: false, pads: [], build: "", program: "", root: "", playing: null, fullscreenStart: false };
+let ALL = window.LIBRARY || [], LIB = [], view = [], PROFILES = [];
+let screen = "boot", prof = 1, me = null, sel = 0, focus = "row", act = 0, tab = "games", filter = "all", helpOn = false, ingame = false, lastPad = false;
+let selBy = { games: 0, media: 0 }, vItems = [], vIdx = 0, hsec = 0, hcard = 0, pinDigits = "", ksel = 0, pinMode = null, pinFirst = "", qsel = 0, crow = 1, ccard = 0, lsel = 0, msel = 0, srow = 0, sQuery = "", sOskSel = 0, sFocus = "osk", oskSel = 0, oskText = "", oskDone = null, setPage = null, notes = [], menuItems = [], menuBack = null, dnd = false, nTop = 0;
+const KP = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
+const KPB = { "1": "◀", "2": "▲", "3": "▶", "4": "▼", "5": "R1", "6": "R2", "7": "L1", "8": "L2", "9": "△", "0": "□", "⌫": "Bksp" };
+const PADC = ["1234567890@", "qwertyuiop#", "asdfghjkl'/", "zxcvbnm-_?!"];
+const PADS = ["!\"#$%&'()*+", ",-./:;<=>?@", "[\\]^_`{|}~€", "£¥•…°±×÷¡¿§"];
+const PADA = ["àáâäãåæçèéê", "ëìíîïñòóôöõ", "øœùúûüýÿßðþ", "āēīōūłśźżğş"];
+const OSKFN = [[["Shift", "⇧", "L2", 2], ["ABC", "ABC", "", 1], ["Sym", "@#:", "", 1], ["Acc", "àé", "", 1], ["Space", "Space", "△", 4], ["⌫", "⌫", "□", 2]], [["Left", "◀", "L1", 2], ["Right", "▶", "R1", 2], ["Done", "Done", "R2", 7]]];
+let oskCaps = false, oskPage = "abc", sCur = 0, oskCur = 0;
+
+let actx;
+function beep(f, d = .06, v = 1) { if (!S.sounds) return; try { actx = actx || new AudioContext(); const o = actx.createOscillator(), g = actx.createGain(); o.type = "sine"; o.frequency.value = f; g.gain.setValueAtTime([0, .015, .03, .05][S.volume] * v, actx.currentTime); g.gain.exponentialRampToValueAtTime(.0001, actx.currentTime + d); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + d); } catch (e) {} }
+const move = () => beep(700, .035, .7), ok = () => { beep(900, .06); setTimeout(() => beep(1350, .08), 55); }, back = () => beep(480, .07, .8);
+function toast(t, src, icon) { notes.unshift({ t, ts: Date.now(), src: src || "AnyPS5", icon: icon || "" }); notes = notes.slice(0, 30); if (a11yv("readNotes", true)) speak(src && src !== "AnyPS5" ? src + ": " + t : t, true); if (dnd || !noteOpt("popups", true)) return; const e = document.createElement("div"); e.className = "toast"; e.innerHTML = `<i></i><span>${esc(t)}</span>`; $("#toasts").appendChild(e); setTimeout(() => e.remove(), noteOpt("time", 3) * 1000 + 200); while ($("#toasts").children.length > 3) $("#toasts").firstChild.remove(); }
+function show(id) { $$(".screen").forEach(s => s.classList.toggle("on", s.id === id)); screen = id; $("#bgwave").style.opacity = id === "home" ? 0 : 1; }
+function saveSettings() { send({ settings: S }); try { localStorage.setItem("anyps5-settings", JSON.stringify(S)); } catch (x) {} }
+function loadSettings(o) { if (!o || !Array.isArray(o.profiles) || !o.profiles.length) return; S = Object.assign(JSON.parse(JSON.stringify(DEFAULTS)), o); if (me) me = S.profiles.find(p => p.name === me.name) || me; if (setPage && setPage.user) setPage.user = S.profiles.find(p => p.name === setPage.user.name) || setPage.user; applySettings(); }
+function isTestUser(p) { return !!p && (S.testUid ? p.uid === S.testUid : /^anyps5$/i.test(p.name || "")); }
+function ensureUids() { let changed = false; (S.profiles || []).forEach(p => { if (!p.uid) { p.uid = "u" + Math.random().toString(36).slice(2, 10); changed = true; } }); if (!S.testUid) { const t = (S.profiles || []).find(p => /^anyps5$/i.test(p.name || "")); if (t) { S.testUid = t.uid; changed = true; } } if (changed) saveSettings(); const first = (S.profiles || []).find(p => !isTestUser(p)); if (first) send({ trophyOwner: first.uid }); }
+function applySettings() { ensureUids(); document.body.classList.toggle("reducemotion", a11y("motion")); document.body.classList.toggle("boldtext", a11y("bold")); document.body.classList.toggle("highcontrast", a11y("contrast")); applyA11y(); PROFILES = [{ name: "Add User", add: true }].concat(S.profiles); if (prof < 1 && PROFILES.length > 1) prof = 1; document.body.classList.toggle("safe", !!S.safe); filterLib(); if (screen === "profiles") drawProfiles(); }
+try { const ls = JSON.parse(localStorage.getItem("anyps5-settings") || "null"); if (ls) loadSettings(ls); } catch (x) {}
+applySettings();
+setTimeout(() => $("#boot").classList.add("ready"), 200);
+setTimeout(() => {
+  let r = null; try { r = JSON.parse(sessionStorage.getItem("anyps5-resume") || "null"); sessionStorage.removeItem("anyps5-resume"); } catch (x) {}
+  if (!r || Date.now() - r.at > 60000 || !r.user) return;
+  const u = S.profiles.find(p => p.name === r.user); if (!u) return;
+  try { localStorage.setItem("anyps5-help-seen", "1"); } catch (x) {}
+  enterHome(u); if (r.tab === "media") setTab("media", true); sel = r.sel || 0; filter = r.filter || "all"; drawRow();
+  if (r.screen === "settings") { openSettings(); if (r.setPage) { const c = CATS.find(x => x[0] === r.setPage); if (c) openSetPage(c[0], c[1]); } }
+  else if (r.screen === "library") openLibrary();
+  toast("Screen updated");
+}, 400);
+(function bokeh() { const c = $("#bokeh"), x = c.getContext("2d"); c.width = 1920; c.height = 1080; for (let i = 0; i < 460; i++) { const px = Math.random() * 1920, band = 520 + (px - 960) * -0.12, py = band + (Math.random() - .5) * 360 * Math.random(), r = Math.random() < .15 ? 6 + Math.random() * 10 : 1 + Math.random() * 3.5, a = .18 + Math.random() * .6; const g = x.createRadialGradient(px, py, 0, px, py, r); g.addColorStop(0, `rgba(255,${170 + Math.random() * 60 | 0},${110 + Math.random() * 50 | 0},${a})`); g.addColorStop(1, "rgba(255,180,120,0)"); x.fillStyle = g; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill(); } })();
+
+async function hashPin(name, pin) { const t = "anyps5:" + name.toLowerCase() + ":" + pin; try { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t)); return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join(""); } catch (e) { let h = 0; for (const c of t) h = (h * 31 + c.charCodeAt(0)) | 0; return "w" + h; } }
+
+/* users */
+function avatar(p) { return p.add ? "+" : esc(p.name[0] || "?").toUpperCase(); }
+function drawProfiles() {
+  $("#plist").innerHTML = PROFILES.map((p, i) => `<div class="prof${i === prof ? " on" : ""}${p.add ? " add" : ""}" data-i="${i}">${i === prof && !p.add ? '<div class="padg">1<svg viewBox="0 0 24 24"><path d="M7 9h10a4 4 0 0 1 3.9 4.8l-.8 3.6a2 2 0 0 1-3.4 1L14.5 16h-5l-2.2 2.4a2 2 0 0 1-3.4-1l-.8-3.6A4 4 0 0 1 7 9z" fill="#fff" stroke="none"/></svg></div>' : ""}<div class="avw"><div class="av" style="background:${p.add ? "#4a4c55" : COLORS[p.color % COLORS.length]}">${avatar(p)}</div></div><span>${esc(p.name)}${p.pinHash ? " 🔒" : ""}</span>${i === prof && !p.add ? "<em>Options</em>" : ""}</div>`).join("");
+  $$(".prof").forEach(e => e.onclick = () => { prof = +e.dataset.i; drawProfiles(); pickProfile(); });
+}
+function autoLogin() { const i = PROFILES.findIndex(p => p.uid && S.autoLogin && p.uid === S.autoLogin && !p.pinHash); if (i < 1) return false; prof = i; show("profiles"); pickProfile(); return true; }
+function fmtTime(d) { return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !S.clock24 }); }
+function setDnd(v) { dnd = !!v; send({ dnd: dnd }); }
+let lastInputAt = Date.now();
+setInterval(() => { const a = S.restAfter || 0; if (a && me && !restOn() && !ingame && !playingGame() && screen !== "boot" && Date.now() - lastInputAt > a * 60000) enterRest(); }, 30000);
+addEventListener("pointermove", () => { lastInputAt = Date.now(); }, { passive: true });
+function pickProfile() {
+  const p = PROFILES[prof];
+  if (p.add) { addUser(true); return; }
+  ok();
+  if (p.pinHash) { openPin("login", "Enter the passcode for " + p.name); return; }
+  enterHome(p);
+}
+function familyRestricted(p) { return !!(p && p.family && (p.family.limited || p.family.allowAll === false)); }
+function addUser(fromLogin) { if ((fromLogin && S.profiles.some(familyRestricted)) || (!fromLogin && familyRestricted(me))) { toast("Ask the family manager to add users (Settings > Users and Accounts)"); return; } openOsk("Name for the new user", "", name => { name = name.trim(); if (!name) return; if (S.profiles.some(x => x.name.toLowerCase() === name.toLowerCase())) { toast("There is already a user called " + name); return; } S.profiles.push({ name, color: S.profiles.length % COLORS.length, pinHash: "" }); saveSettings(); applySettings(); toast("Added " + name); if (fromLogin) { prof = S.profiles.length; drawProfiles(); } else drawSettings(); }); }
+
+/* passcode */
+function openPin(mode, title) {
+  pinMode = mode; pinDigits = ""; ksel = 0;
+  const u = mode === "login" ? PROFILES[prof] : setPage && setPage.user;
+  $("#pinTitle").textContent = mode === "login" ? "Log In" : mode === "check" ? "Passcode" : "Set Login Passcode";
+  setPrompt(mode === "login" ? "Enter your passcode." : mode === "set1" ? "Enter a new passcode." : mode === "set2" ? "Enter the new passcode again." : "Enter the current passcode.");
+  $("#pinAv").textContent = u ? avatar(u) : "?"; $("#pinAv").style.background = u ? COLORS[u.color % COLORS.length] : "#555"; $("#pinName").textContent = u ? u.name : "";
+  $("#pin").classList.add("on"); drawPin();
+}
+function setPrompt(t, bad) { const p = $("#pinPrompt"); p.textContent = t; p.classList.toggle("bad", !!bad); }
+function closePin() { $("#pin").classList.remove("on"); pinMode = null; }
+function drawPin() { $$("#dots i").forEach((d, i) => { d.classList.toggle("f", i < pinDigits.length); d.classList.toggle("cur", i === pinDigits.length); }); $("#keys").innerHTML = KP.map((k, i) => k ? `<span class="${i === ksel ? "sel" : ""}" data-i="${i}">${k}<em>${KPB[k]}</em></span>` : `<span class="gap"></span>`).join(""); $$("#keys span").forEach(e => e.onclick = ev => { ev.stopPropagation(); ksel = +e.dataset.i; pressKey(KP[ksel]); }); }
+function pinDigit(d) { if (pinDigits.length >= 4) return; pinDigits += d; move(); drawPin(); if (pinDigits.length === 4) setTimeout(pinDone, 200); }
+function pressKey(k) { if (k === "⌫") { pinDigits = pinDigits.slice(0, -1); back(); drawPin(); } else if (k === "✓") { if (pinDigits.length === 4) pinDone(); else toast("Enter 4 digits"); } else pinDigit(k); }
+function pinWrong(msg) { const d = $("#dots"); d.classList.remove("bad"); void d.offsetWidth; d.classList.add("bad"); setPrompt(msg === "Wrong passcode" ? "The passcode is incorrect." : msg, true); pinDigits = ""; drawPin(); back(); }
+async function pinDone() {
+  if (pinDigits.length !== 4 || !pinMode) return;
+  const target = pinMode === "login" ? PROFILES[prof] : setPage && setPage.user;
+  if (pinMode === "login") { if (await hashPin(target.name, pinDigits) === target.pinHash) { closePin(); enterHome(target); } else pinWrong("Wrong passcode"); return; }
+  if (pinMode === "set1") { pinFirst = pinDigits; openPin("set2", "Enter the new passcode again"); return; }
+  if (pinMode === "set2") { if (pinDigits !== pinFirst) { pinMode = "set1"; pinWrong("They did not match. Enter a new passcode."); return; } target.pinHash = await hashPin(target.name, pinDigits); saveSettings(); closePin(); toast("Passcode set for " + target.name); drawSettings(); return; }
+  if (pinMode === "check") { if (await hashPin(target.name, pinDigits) === target.pinHash) { closePin(); const then = pinFirst; pinFirst = ""; if (then === "remove") { target.pinHash = ""; saveSettings(); toast("Passcode removed"); drawSettings(); } else openPin("set1", "Enter a new passcode for " + target.name); } else pinWrong("Wrong passcode"); }
+}
+
+/* home */
+function enterHome(p) {
+  me = p; $("#me").textContent = avatar(p); $("#me").style.background = COLORS[p.color % COLORS.length];
+  show("home"); tab = "games"; focus = "row"; sel = 0; setTab("games", true); drawRow();
+  let seen = false; try { seen = !!localStorage.getItem("anyps5-help-seen"); } catch (x) {} if (!seen) setTimeout(openHelp, 1200);
+}
+function filterLib() {
+  LIB = ALL.filter(g => S.showNoArt || g.icon);
+  view = LIB.slice().sort((a, b) => (b.lastRun || "").localeCompare(a.lastRun || ""));
+  if (sel >= rowItems().length) sel = 0;
+}
+function playingGame() { if (!H.playing) return null; const n = H.playing.toLowerCase(); return ALL.find(g => g.exe && g.exe.toLowerCase().replace(/^.*\\/, "").replace(/\.exe$/, "") === n) || { title: H.playing, id: "", icon: "", folder: "", running: true }; }
+const MICONS = { gallery: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 8"/>', art: '<rect x="2.5" y="6" width="19" height="12" rx="1.5"/><path d="M2.5 15l5-4 4 3 3-2 7 5"/>', box: '<rect x="5" y="3" width="14" height="18" rx="1.5"/><path d="M8 7h8M8 11h8"/>' };
+function mediaTiles() {
+  const recent = ALL.slice().sort((a, b) => (b.lastRun || "").localeCompare(a.lastRun || ""));
+  return [
+    { media: "gallery", title: "Media Gallery", desc: "Your screenshots and trophy captures, newest first. Select to open the Media Gallery.", items: (MEDIA ? MEDIA.items : []).map(m => ({ img: m.src, thumb: m.thumb, title: m.game, sub: mediaSub(m), mid: m.id })) },
+    { media: "art", title: "Key Art", desc: "Each game's own background art, as it ships with the game.", items: recent.filter(g => g.bg).map(g => ({ img: g.bg, title: g.title, sub: "Key art" })) },
+    { media: "box", title: "Box Art", desc: "The cover art of every game in your library.", items: ALL.filter(g => g.icon).sort((a, b) => a.title.localeCompare(b.title)).map(g => ({ img: g.icon, title: g.title, sub: "Box art" })) }];
+}
+function rowItems() {
+  if (tab === "media") return mediaTiles(); const pg = playingGame(); const list = view.slice(0, 12); if (pg) { const i = list.findIndex(g => g.id && g.id === pg.id); if (i >= 0) list.splice(i, 1); list.unshift(Object.assign({}, pg, { running: true })); } return list.concat([{ lib: true, title: "Game Library" }]); }
+function tileArt(g) { return g.icon ? `background-image:url('${g.icon}')` : ""; }
+function drawRow() {
+  const items = rowItems(); if (sel >= items.length) sel = items.length - 1;
+  $("#track").innerHTML = items.map((g, i) => {
+    const inner = g.media ? `<svg viewBox="0 0 24 24">${MICONS[g.media]}</svg>` : g.lib ? `<svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/></svg>` : g.icon ? "" : `<span class="ph">${esc((g.title || "?")[0])}</span>`;
+    return `<div class="tile${g.lib ? " lib" : ""}${i === sel ? " on" : ""}${i === sel && focus === "row" ? " foc" : ""}" data-i="${i}" style="${tileArt(g)}">${inner}${g.running ? '<span class="badge">Playing</span>' : ""}</div>`;
+  }).join("");
+  $$("#track .tile").forEach(e => e.onclick = () => { const i = +e.dataset.i; if (sel === i && focus === "row") activate(); else { sel = i; focus = "row"; move(); drawRow(); } });
+  placeName();
+  drawHub();
+}
+function placeName() {
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize), g = cur(), t = $("#track .tile.on"), n = $("#tname");
+  if (!g || !t) return;
+  n.textContent = g.title;
+  const small = 6.5 * rem, big = 10.94 * rem, gap = .65 * rem;
+  const left = sel * (small + gap), right = left + big;
+  const room = innerWidth - 10.5 * rem - 3 * rem;
+  const shift = Math.max(0, right + .75 * rem + n.offsetWidth - room);
+  $("#track").style.transform = `translateX(${-shift}px)`;
+  n.style.left = (right + .75 * rem - shift) + "px";
+}
+function cur() { return rowItems()[sel]; }
+function drawHub() {
+  const g = cur();
+  if (!g) return;
+  const side = $("#side"), shelf = $("#shelf");
+  if (g.media) {
+    $("#gTitle").textContent = g.title; $("#gMeta").textContent = g.desc;
+    $("#shelfT").textContent = g.items.length ? "Featured" : "Nothing here yet"; shelf.style.display = "";
+    $("#cards").innerHTML = g.items.slice(0, 40).map((it, i) => `<div class="card" data-i="${i}" style="background-image:url('${it.thumb || it.img}')"><div class="strip">${esc(it.title)}</div></div>`).join("");
+    $$("#cards .card").forEach(e => e.onclick = ev => { ev.stopPropagation(); focus = "cards"; act = +e.dataset.i; drawActs(); openViewer(g.items, act); });
+    const pick = focus === "cards" && g.items[act] ? g.items[act] : g.items[0];
+    setArt(pick ? (focus === "cards" ? pick.img : pick.hero || pick.img) : "");
+    drawActs(); return;
+  }
+  $("#shelfT").textContent = "Your activity";
+  if (g.lib) { $("#gTitle").textContent = "Game Library"; $("#gMeta").innerHTML = `<span>${LIB.length} games</span><span>${LIB.filter(x => x.status === "Plays").length} play</span>`; $("#playBtn").textContent = "Open"; $("#cards").innerHTML = ""; shelf.style.display = "none"; side.style.display = "none"; $("#gPath").textContent = ""; setArt(""); drawActs(); return; }
+  $("#gTitle").textContent = g.title;
+  const st = g.running ? `<span class="ok">Playing now</span>` : g.status ? `<span class="${g.status === "Plays" ? "ok" : g.status === "Stops early" ? "warn" : ""}">${esc(g.status)}</span>` : "";
+  $("#gMeta").innerHTML = st + (g.fps ? `<span>${g.fps} FPS on the PC</span>` : "") + (g.lastRun ? `<span>Last run ${esc(g.lastRun)}</span>` : "") + (g.id ? `<span>${esc(g.id)}</span>` : "");
+  $("#playBtn").textContent = g.running ? "Resume" : "Play Game";
+  side.style.display = "";
+  side.innerHTML = `<div class="pic" style="background-image:url('${g.shot || g.bg || g.icon || ""}')"></div><div class="lab">${g.shot ? "Latest capture" : "Box art"}</div><div class="stats"><div><small>Status</small><b>${esc(g.running ? "Running" : g.status === "Plays" ? "Plays" : g.status === "Stops early" ? "Stops" : "Untested")}</b></div><div><small>FPS</small><b>${g.fps || "–"}</b></div><div><small>Saves</small><b>${g.saves || 0}</b></div></div>`;
+  side.onclick = () => gameInfo(g);
+  const c = [];
+  if (g.shot) c.push(`<div class="card img" style="background-image:url('${g.shot}')"><small>Captures</small><b>Latest screenshot</b></div>`);
+  c.push(`<div class="card"><small>Status</small><b>${g.running ? "Running now" : esc(g.status || "Not tested yet")}</b><span>${g.fps ? g.fps + " FPS measured by the pipeline" : "No FPS measured yet"}</span></div>`);
+  c.push(`<div class="card"><small>Saved data</small><b>${g.saves ? g.saves + " save file" + (g.saves === 1 ? "" : "s") : "No saves yet"}</b><span>In the game's _sd folder</span></div>`);
+  if (g.lastRun) c.push(`<div class="card"><small>Last played or tested</small><b>${esc(g.lastRun)}</b><span>From the game's log</span></div>`);
+  c.push(`<div class="card"><small>Game info</small><b>${esc(g.id || "")}</b><span>Folder, program and results</span></div>`);
+  $("#cards").innerHTML = c.join(""); shelf.style.display = "";
+  $$("#cards .card").forEach((e, i) => e.onclick = () => { if (i === 0 && g.shot) openViewer([{ img: g.shot, title: g.title, sub: g.lastRun ? "Captured " + g.lastRun : "Capture" }], 0); else gameInfo(g); });
+  $("#gPath").textContent = g.folder || "";
+  setArt(g.bg || g.shot || "");
+  drawActs();
+}
+let artFlip = false;
+let heroKey = "";
+function heroEnter() { const g = cur(), key = g ? (g.id || g.media || g.title || "") : ""; if (key === heroKey) return; heroKey = key; ["#gTitle", "#gMeta"].forEach(q => { const e = $(q); if (!e) return; e.classList.remove("enter"); void e.offsetWidth; e.classList.add("enter"); }); }
+function setArt(src) { heroEnter(); const next = artFlip ? $("#artA") : $("#artB"), now = artFlip ? $("#artB") : $("#artA"); if ((now.dataset.src || "") === src) return; next.style.backgroundImage = src ? `url('${src}')` : "none"; next.dataset.src = src; next.classList.add("on"); now.classList.remove("on"); artFlip = !artFlip; }
+function scrollCards() { const row = $("#cards"), sc = $("#cards .card.sel"); if (!row) return; if (!sc || tab !== "media") { row.style.transform = ""; return; } const rem = parseFloat(getComputedStyle(document.documentElement).fontSize), right = sc.offsetLeft + sc.offsetWidth, room = innerWidth - 10.9 * rem - 3 * rem; row.style.transform = `translateX(${-Math.max(0, right - room)}px)`; const g = cur(); if (g && g.media && g.items[act]) setArt(g.items[act].img); }
+function drawActs() { $("#playBtn").classList.toggle("sel", focus === "acts" && act === 0); $("#moreBtn").classList.toggle("sel", focus === "acts" && act === 1); $$("#cards .card").forEach((c, i) => c.classList.toggle("sel", focus === "cards" && i === act)); scrollCards(); syncHub(); }
+function hubOk() { const g = cur(); return !!g && !g.lib && tab === "games"; }
+function hubSections(g) {
+  const st = g.running ? "Running" : g.status === "Plays" ? "Plays" : g.status === "Stops early" ? "Stops" : "Untested";
+  const A = [];
+  if (g.running) A.push({ big: "Now", hb: "Running", label: "Playing now", title: "Return to the game", sub: g.title, img: g.bg, run: () => send({ resume: true }) });
+  A.push({ big: st, hb: "Pipeline", label: "Status", title: g.status || "Not tested yet", sub: g.fps ? g.fps + " FPS measured" : "No FPS measured yet", run: () => gameInfo(g) });
+  const ts = trophySet(g.id);
+  if (ts) { const tst = trStats(ts); A.push({ big: tst.pct + "%", hb: tst.earned + "/" + tst.total, label: "Trophies", title: tst.earned ? tst.earned + " of " + tst.total + " earned" : "No trophies earned yet", sub: ["gold", "silver", "bronze"].map(gr => tst.got[gr] + " " + gr).join(" · "), run: () => openTrophyList(ts.key, "hub") }); }
+  A.push({ big: g.fps ? String(g.fps) : "–", hb: "FPS", label: "Performance", title: "Frame rate on the PC", sub: g.fps ? "Measured by the test pipeline" : "Not measured yet", run: () => gameInfo(g) });
+  A.push({ big: String(g.saves || 0), hb: "Files", label: "Saved data", title: "Saves in its _sd folder", sub: "Shared by all users", run: () => gameInfo(g) });
+  A.push({ big: g.lastRun ? g.lastRun.slice(5, 10) : "–", hb: g.lastRun ? g.lastRun.slice(11) : "Never", label: "Last played or tested", title: g.lastRun ? "On " + g.lastRun.slice(0, 10) : "Not played yet", sub: "From the game's log", run: () => gameInfo(g) });
+  const C = [];
+  const mine = MEDIA ? MEDIA.items.filter(m => m.gameId === g.id) : [];
+  if (mine.length) C.push({ img: mine[0].thumb, label: "Media Gallery", title: mine.length + (mine.length === 1 ? " capture" : " captures"), sub: "Newest " + gWhen(mine[0].at), run: () => openGallery("albums", g.id) });
+  if (g.shot) C.push({ img: g.shot, label: "Captures", title: "Latest screenshot", sub: "From a test run or the control center", run: () => openViewer([{ img: g.shot, title: g.title, sub: "Latest screenshot" }], 0) });
+  if (g.bg) C.push({ img: g.bg, label: "Key art", title: g.title, sub: "From the game's files", run: () => gameInfo(g) });
+  if (!C.length) C.push({ label: "Captures", title: "No captures yet", sub: "Take one from the control center while playing", run: () => gameInfo(g) });
+  const exe = (g.exe || "").replace(/^.*\\/, "");
+  const I = [{ label: "Title ID", title: g.id || "–", sub: "From game.json", run: () => gameInfo(g) }, { label: "Program", title: exe || "Not built yet", sub: "Started by AnyPS5", run: () => gameInfo(g) }, { label: "Folder", title: g.folder ? g.folder.replace(/^.*\\/, "") : "–", sub: "Select for the full path", secret: true, run: () => gameInfo(g) }];
+  return [{ title: "Activities", cards: A }, { title: "Captures", cards: C }, { title: "About", cards: I }];
+}
+function syncHub() {
+  const home = $("#home"), on = (focus === "acts" || focus === "hub") && hubOk();
+  home.classList.toggle("hub", on);
+  document.body.classList.toggle("inhub", on);
+  if (!on) { home.classList.remove("hubdeep", "hubdeep2"); home.style.setProperty("--hubY", "0rem"); $("#hubrows").style.clipPath = ""; return; }
+  const g = cur(), secs = hubSections(g);
+  if (hsec >= secs.length) hsec = secs.length - 1;
+  if (hcard >= secs[hsec].cards.length) hcard = secs[hsec].cards.length - 1;
+  $("#hubhead").innerHTML = `<i style="${tileArt(g)}"></i>${esc(g.title)}`;
+  const pic = $("#side .pic"); if (pic) pic.style.backgroundImage = g.icon ? `url('${g.icon}')` : "none";
+  const lab = $("#side .lab"); if (lab) lab.textContent = "Box art";
+  $("#hubrows").innerHTML = secs.map((x, si) => `<div class="hsec"><h4>${esc(x.title)}</h4><div class="hcards">${x.cards.map((c, ci) => `<div class="hcard${focus === "hub" && si === hsec && ci === hcard ? " sel" : ""}" data-s="${si}" data-c="${ci}" style="${c.img ? `background-image:url('${c.img}')` : ""}">${c.big ? `<div class="big">${esc(c.big)}</div>` : ""}${c.hb ? `<div class="hb">${esc(c.hb)}</div>` : ""}<small>${esc(c.label)}</small><b class="${c.secret ? "secret" : ""}">${esc(c.title)}</b><span>${esc(c.sub || "")}</span></div>`).join("")}</div></div>`).join("");
+  $$("#hubrows .hcard").forEach(e => e.onclick = ev => { ev.stopPropagation(); focus = "hub"; hsec = +e.dataset.s; hcard = +e.dataset.c; drawActs(); const c = hubSections(cur())[hsec].cards[hcard]; ok(); if (c && c.run) c.run(); });
+  const Y = focus === "hub" ? -(12 + hsec * 31.6) : 0;
+  home.style.setProperty("--hubY", Y + "rem");
+  home.classList.toggle("hubdeep", focus === "hub");
+  home.classList.toggle("hubdeep2", focus === "hub" && hsec >= 1);
+  $("#hubrows").style.clipPath = `inset(${Math.max(0, 10.5 - (46.9 + Y))}rem 0 0 0)`;
+  const row = $$("#hubrows .hsec")[hsec]; if (row && focus === "hub") { const sc = row.querySelector(".hcard.sel"); if (sc) { const cards = row.querySelector(".hcards"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize), right = sc.offsetLeft + sc.offsetWidth, room = innerWidth - 10.7 * rem - 3 * rem; cards.style.transform = `translateX(${-Math.max(0, right - room)}px)`; } }
+}
+function activate() { const g = cur(); if (!g) return; if (g.media) { if (g.media === "gallery") { openGallery(); return; } if (g.items.length) { focus = "cards"; act = 0; drawRow(); } return; } if (g.lib) { openLibrary(); return; } play(g); }
+function play(g) {
+  ok();
+  if (g.running) { send({ resume: true }); return; }
+  if (H.playing) { toast(H.playing + " is still running. PS button > Close game first."); return; }
+  if (window.familyCheck && me) { const f = window.familyCheck(me, g); if (f && !f.ok) { toast(f.reason || "Family and Parental Controls do not allow this game now"); return; } if (f && f.minutesLeft !== null && f.reason) toast(f.reason); }
+  if (!HOST) { toast("The app starts " + g.title + " here"); return; }
+  send({ play: g.folder, user: me && !isTestUser(me) ? me.uid : "", legacy: ((S.profiles || []).find(p => !isTestUser(p)) || {}).uid || "" }); toast("Starting " + g.title);
+}
+let isel = 0;
+function gameInfo(g) {
+  if (!g || g.lib) return;
+  const rows = [["Status", g.running ? "Running now" : g.status || "Not tested yet"], ["Frame rate", g.fps ? g.fps + " FPS on this PC" : "Not measured"], ["Title ID", g.id || "Unknown"], ["Last played", g.lastRun || "Never"], ["Saved data", (g.saves || 0) + " files"], ["Folder", g.folder || "Unknown", "secret"], ["Program", g.exe || "Not built yet", "secret"]];
+  const art = $("#iArt"); art.setAttribute("style", tileArt(g)); art.textContent = g.icon ? "" : (g.title || "?")[0];
+  $("#iTitle").textContent = g.title;
+  $("#iRows").innerHTML = rows.map((r, i) => `<div class="${i === 0 ? "sel " : ""}${r[2] || ""}" data-i="${i}">${esc(r[0])}<span>${esc(r[1])}</span></div>`).join("");
+  isel = 0; $("#ginfo").classList.add("on"); ok();
+}
+function drawInfo() { $$("#iRows div").forEach((d, i) => d.classList.toggle("sel", i === isel)); }
+function moreMenu() { const g = cur(); if (!g || g.lib || g.media) return; openMenu($("#track .tile.on") || $("#moreBtn"), [[g.running ? "Close Game" : "Play Game", () => g.running ? send({ closegame: true }) : play(g)], ["Information", () => gameInfo(g), "", "sep"], ["Game Library", openLibrary], ["Check for New Games", () => send({ rescan: true }), "", "sep"]], "psmenu"); }
+function setTab(t, quiet) { if (t !== tab) { selBy[tab] = sel; tab = t; sel = selBy[t] || 0; focus = "row"; } $$("#tabs span").forEach(s => s.classList.toggle("on", s.dataset.tab === t)); $("#home").classList.toggle("mediatab", t === "media"); if (screen === "home" || screen === "cc") drawRow(); if (!quiet) move(); }
+function drawMedia() { setTab("media", true); }
+
+/* library + search */
+const SORTS = { recent: "Most Recent", az: "Alphabetical", status: "Plays First" };
+const rank = g => g.status === "Plays" ? 0 : g.status === "Stops early" ? 1 : 2;
+function libList() {
+  const l = filter === "installed" ? ALL.filter(g => g.exe) : filter === "plays" ? ALL.filter(g => g.status === "Plays") : ALL.slice();
+  const k = S.libSort || "recent";
+  return l.sort(k === "az" ? (a, b) => a.title.localeCompare(b.title) : k === "status" ? (a, b) => rank(a) - rank(b) || a.title.localeCompare(b.title) : (a, b) => (b.lastRun || "").localeCompare(a.lastRun || "") || a.title.localeCompare(b.title));
+}
+function sortMenu() { openMenu($("#lsortBtn"), Object.keys(SORTS).map(k => [(S.libSort || "recent") === k ? "✓  Sort by: " + SORTS[k] : "Sort by: " + SORTS[k], () => { S.libSort = k; saveSettings(); lsel = 0; drawLibrary(); }]).concat([["Cancel", () => {}, "", "sep"]]), "psmenu"); }
+function drawGrid(el, list, idx, on) { el.innerHTML = list.map((g, i) => `<div class="li${g.round ? " round" : ""}${on && i === idx ? " on" : ""}" data-i="${i}"><div style="${g.round ? "background:" + g.color : tileArt(g)}">${g.round ? esc(g.letter) : g.icon ? "" : esc((g.title || "?")[0])}</div><span>${esc(g.title)}</span></div>`).join("") || "<p style='color:var(--dim);font-size:1.4rem'>Nothing here</p>"; const s = el.querySelector(".li.on"); if (s) s.scrollIntoView({ block: "nearest" }); }
+function openLibrary() { show("library"); lsel = 0; drawLibrary(); ok(); }
+function drawLibrary() {
+  $$("#ltabs span").forEach(s => s.classList.toggle("on", s.dataset.f === filter));
+  const l = libList(); if (lsel >= l.length) lsel = Math.max(0, l.length - 1);
+  $("#lcount").textContent = ({ all: "All", installed: "Installed", plays: "Plays" })[filter] + ": " + l.length;
+  $("#lsort").textContent = "Sort by: " + SORTS[S.libSort || "recent"];
+  $("#lgrid").innerHTML = l.map((g, i) => `<div class="lt${i === lsel ? " on sel" : ""}" data-i="${i}" style="${tileArt(g)}">${g.icon ? "" : esc((g.title || "?")[0])}<span class="st" style="background:${g.status === "Plays" ? "var(--ok)" : g.status === "Stops early" ? "var(--warn)" : "rgba(255,255,255,.35)"}"></span><span class="ln">${esc(g.title)}</span></div>`).join("") || "<p style='color:var(--dim);font-size:1.4rem'>Nothing here</p>";
+  $$("#lgrid .lt").forEach(e => e.onclick = () => { const i = +e.dataset.i; if (i === lsel) play(l[i]); else { lsel = i; move(); drawLibrary(); } });
+  const sel = $("#lgrid .lt.on"); if (sel) sel.scrollIntoView({ block: "nearest" });
+  const g = l[lsel]; $("#libart").style.backgroundImage = g && (g.bg || g.shot) ? `url('${g.bg || g.shot}')` : "none";
+}
+const FOLD = { "ß": "ss", "æ": "ae", "œ": "oe", "ø": "o", "ł": "l", "đ": "d", "ð": "d", "þ": "th", "ı": "i" };
+function fold(t) { return (t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[ßæœøłđðþı]/g, c => FOLD[c]); }
+let sTab = "games";
+const STABS = [["games", "Games", "Search for games"], ["media", "Media", "Search for captures and game art"], ["players", "Players", "Search for players on this console"]];
+function searchHistory() { return (me && me.searches) || []; }
+function addHistory(q) { q = (q || "").trim(); if (!q || !me) return; me.searches = [q].concat(searchHistory().filter(x => fold(x) !== fold(q))).slice(0, 10); saveSettings(); }
+function dropHistory(i) { if (!me) return; const h = searchHistory().slice(); if (i == null) h.length = 0; else h.splice(i, 1); me.searches = h; saveSettings(); }
+function searchCols() { return sQuery.trim() ? 4 : 1; }
+function searchResults() {
+  const q = fold(sQuery.trim());
+  if (!q) { const h = searchHistory().map(t => ({ hist: t, title: t })); return h.length ? h.concat([{ clear: true, title: "Clear Search History" }]) : []; }
+  if (sTab === "media") return mediaTiles().flatMap(t => t.items.map(it => ({ title: it.title, icon: it.img, item: it, kind: t.title }))).filter(x => fold(x.title).includes(q) || fold(x.kind).includes(q)).map(x => Object.assign(x, { title: x.title + " · " + x.kind }));
+  if (sTab === "players") return PROFILES.filter(p => !p.add && fold(p.name).includes(q)).map(p => ({ title: p === me ? p.name + " (you)" : p.name, player: p, round: true, color: COLORS[p.color % COLORS.length], letter: avatar(p) }));
+  return LIB.filter(g => fold(g.title).includes(q) || fold(g.id).includes(q));
+}
+function pickResult(r, i) {
+  const x = r[i]; if (!x) return;
+  if (x.clear) { dropHistory(); sFocus = "osk"; lsel = 0; move(); drawSearch(); return; }
+  if (x.hist) { sQuery = x.hist; sCur = sQuery.length; lsel = 0; sFocus = searchResults().length ? "grid" : "osk"; addHistory(x.hist); move(); drawSearch(); return; }
+  addHistory(sQuery);
+  if (x.item) { openViewer(r.map(y => y.item), i); return; }
+  if (x.player) { const p = x.player, el = $$("#sgrid .li")[i]; if (p === me) openMenu(el, [["Switch User", switchUser], ["Cancel", () => {}, "", "sep"]], "psmenu"); else openMenu(el, [["Switch to " + p.name, () => { switchUser(); prof = PROFILES.indexOf(p); drawProfiles(); pickProfile(); }], ["Cancel", () => {}, "", "sep"]], "psmenu"); return; }
+  play(x);
+}
+function setSearchTab(t) { sTab = t; lsel = 0; if (sFocus === "grid" && !searchResults().length) sFocus = "osk"; move(); drawSearch(); }
+function openSearch() { show("search"); sTab = "games"; sQuery = ""; sCur = 0; oskPage = "abc"; oskCaps = false; sOskSel = 0; sFocus = "osk"; lsel = 0; drawSearch(); ok(); }
+function oskLayout() {
+  const out = [], rows = oskPage === "sym" ? PADS : oskPage === "acc" ? PADA : PADC;
+  rows.forEach((r, ri) => [...r].forEach((ch, ci) => out.push({ k: ch, r: ri, c: ci, w: 1 })));
+  OSKFN.forEach((row, fi) => { let c = 0; row.forEach(f => { out.push({ k: f[0], label: f[1], badge: f[2], r: rows.length + fi, c, w: f[3] }); c += f[3]; }); });
+  return out;
+}
+function oskKeys() { return oskLayout().map(x => x.k); }
+function oskChar(c, first) { return oskCaps || first ? c.toUpperCase() : c; }
+function drawOskGrid(el, idx, on, onPress) {
+  el.innerHTML = oskLayout().map((x, i) => {
+    const sel = on && i === idx ? " sel" : "";
+    if (!x.label) return `<span class="${sel.trim()}" data-i="${i}">${esc(oskPage !== "sym" && oskCaps ? x.k.toUpperCase() : x.k)}</span>`;
+    const act = (x.k === "Shift" && oskCaps) || (x.k === "ABC" && oskPage === "abc") || (x.k === "Sym" && oskPage === "sym") || (x.k === "Acc" && oskPage === "acc") ? " act" : "";
+    return `<span class="fn s${x.w} r${x.r}${act}${sel}" data-i="${i}">${x.label}${x.badge ? `<em>${x.badge}</em>` : ""}</span>`;
+  }).join("");
+  el.querySelectorAll("span").forEach(e => e.onclick = ev => { ev.stopPropagation(); onPress(+e.dataset.i); });
+}
+function caretHTML(t, cur) { return esc(t.slice(0, cur)) + '<i class="caret"></i>' + esc(t.slice(cur)); }
+function textEdit(t, cur, k, max, capFirst) {
+  if (k === "⌫") { if (cur > 0) { t = t.slice(0, cur - 1) + t.slice(cur); cur--; } }
+  else if (k === "Left") cur = Math.max(0, cur - 1);
+  else if (k === "Right") cur = Math.min(t.length, cur + 1);
+  else if (k === "Shift") oskCaps = !oskCaps;
+  else if (k === "ABC") oskPage = "abc";
+  else if (k === "Sym") oskPage = "sym";
+  else if (k === "Acc") oskPage = "acc";
+  else if (t.length < max) { const ch = k === "Space" ? " " : k.length === 1 && oskPage !== "sym" ? oskChar(k, capFirst && t.length === 0) : k; t = t.slice(0, cur) + ch + t.slice(cur); cur += ch.length; }
+  return [t, cur];
+}
+function oskMove(i, k) {
+  const lay = oskLayout(), x = lay[i];
+  if (k === "left" || k === "right") { const j = k === "left" ? i - 1 : i + 1; return lay[j] && lay[j].r === x.r ? j : i; }
+  const r = x.r + (k === "up" ? -1 : k === "down" ? 1 : 0); if (r === x.r) return i;
+  const row = lay.map((y, j) => [y, j]).filter(([y]) => y.r === r); if (!row.length) return i;
+  const col = x.c + (x.w > 1 && k === "down" ? 0 : 0);
+  const hit = row.find(([y]) => col >= y.c && col < y.c + y.w) || row[row.length - 1];
+  return hit[1];
+}
+function drawSearch() { $("#stabs").innerHTML = STABS.map(t => `<span class="${t[0] === sTab ? "on" : ""}${t[0] === sTab && sFocus === "tabs" ? " sel" : ""}" data-t="${t[0]}">${t[1]}</span>`).join(""); $$("#stabs span").forEach(e => e.onclick = ev => { ev.stopPropagation(); setSearchTab(e.dataset.t); }); $("#sPh").textContent = STABS.find(t => t[0] === sTab)[2]; $("#sText").innerHTML = caretHTML(sQuery, sCur); $("#sPh").style.display = sQuery ? "none" : ""; drawOskGrid($("#sOsk"), sOskSel, sFocus === "osk", i => { sOskSel = i; searchKey(oskKeys()[i]); }); const r = searchResults(), hist = !sQuery.trim(), sg = $("#sgrid"); sg.classList.toggle("hist", hist);
+  if (hist) { const clock = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>'; sg.innerHTML = r.length ? `<h4>Recent searches</h4>` + r.map((x, i) => `<div class="li hrow${x.clear ? " clr" : ""}${sFocus === "grid" && i === lsel ? " on" : ""}" data-i="${i}">${x.clear ? "" : clock}<span>${esc(x.title)}</span></div>`).join("") : ""; const on = sg.querySelector(".hrow.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
+  else drawGrid(sg, r, lsel, sFocus === "grid"); $$("#sgrid .li").forEach(e => e.onclick = ev => { ev.stopPropagation(); lsel = +e.dataset.i; sFocus = "grid"; pickResult(r, lsel); }); }
+function searchKey(k) { if (k === "Done") { if (sQuery.trim()) addHistory(sQuery); if (searchResults().length) { sFocus = "grid"; lsel = 0; } } else [sQuery, sCur] = textEdit(sQuery, sCur, k, 60, false); lsel = 0; move(); drawSearch(); }
+
+/* on-screen keyboard */
+let oskOpts = {};
+function openOsk(title, text, done, opts) { oskOpts = opts || {}; oskText = text || ""; oskCur = oskText.length; oskPage = "abc"; oskCaps = false; oskDone = done; oskSel = 0; $("#oskTitle").textContent = title; $("#osk").classList.add("on"); drawOsk(); }
+function drawOsk() { $("#oskField").innerHTML = oskOpts.password ? caretHTML("•".repeat(oskText.length), oskCur) : caretHTML(oskText, oskCur); drawOskGrid($("#oskKeys"), oskSel, true, i => { oskSel = i; oskKey(oskKeys()[i]); }); }
+function oskKey(k) { if (k === "Done") { const d = oskDone; closeOsk(); if (d) d(oskText); return; } [oskText, oskCur] = textEdit(oskText, oskCur, k, oskOpts.max || 24, oskOpts.capFirst !== false); move(); drawOsk(); }
+function closeOsk() { $("#osk").classList.remove("on"); oskDone = null; oskOpts = {}; }
+
+/* settings */
+const ICONS = { users: '<path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 20c1.2-3.6 4.2-5.4 8-5.4s6.8 1.8 8 5.4"/>', screen: '<rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M8.5 20h7M12 16.5V20"/>', sound: '<path d="M4 10v4h4l5 4V6L8 10H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>', pad: '<path d="M7 9h10a4 4 0 0 1 3.9 4.8l-.8 3.6a2 2 0 0 1-3.4 1L14.5 16h-5l-2.2 2.4a2 2 0 0 1-3.4-1l-.8-3.6A4 4 0 0 1 7 9zM8 12v3M6.5 13.5h3M15.5 13h.01M17.5 14.5h.01"/>', data: '<path d="M4 7c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 7v10c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>', pipe: '<path d="M4 6h6v4H4zM14 14h6v4h-6zM10 8h4v8"/>', access: '<circle cx="12" cy="4.8" r="1.8"/><path d="M5 8.5l7 1.5 7-1.5M12 10v4.5M12 14.5l-3 6M12 14.5l3 6"/>', storage: '<rect x="3.5" y="5" width="17" height="6" rx="1.2"/><rect x="3.5" y="13" width="17" height="6" rx="1.2"/><path d="M7 8h.01M7 16h.01"/>', capture: '<path d="M3 8V5.5A1.5 1.5 0 0 1 4.5 4H7M17 4h2.5A1.5 1.5 0 0 1 21 5.5V8M21 16v2.5a1.5 1.5 0 0 1-1.5 1.5H17M7 20H4.5A1.5 1.5 0 0 1 3 18.5V16"/><circle cx="12" cy="12" r="3"/>', notes: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>', system: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/>' };
+const ico = n => `<svg viewBox="0 0 24 24">${ICONS[n] || ""}</svg>`;
+const CATS = [["access", "Accessibility"], ["users", "Users and Accounts"], ["system", "System"], ["storage", "Storage"], ["sound", "Sound"], ["screen", "Screen and Video"], ["pad", "Accessories"], ["data", "Saved Data and Game Library"], ["capture", "Captures and Broadcasts"], ["notes", "Notifications"], ["pipe", "Test Pipeline"]];
+function a11y(k) { return !!(S.a11y && S.a11y[k]); }
+function a11yv(k, d) { return S.a11y && S.a11y[k] !== undefined ? S.a11y[k] : d; }
+function setA11y(k, v) { S.a11y = Object.assign({}, S.a11y || {}, { [k]: v }); saveSettings(); applySettings(); }
+function noteOpt(k, d) { const n = S.notes || {}; return n[k] === undefined ? d : n[k]; }
+function setNoteOpt(k, v) { S.notes = Object.assign({}, S.notes || {}, { [k]: v }); saveSettings(); }
+const gbText = b => b >= 1e12 ? (b / 1e12).toFixed(2) + " TB" : Math.round(b / 1e9) + " GB";
+let setSec = 0, setFocus = "left";
+function catSections(id) {
+  const base = catSectionsBase(id), B = () => { const R = []; R.tog = (label, get, set) => R.push({ label, toggle: get, run: () => set(!get()) }); R.info = (label, val) => R.push({ label, val, info: true }); R.sh = t => R.push({ head: t }); R.note = t => R.push({ note: t }); return R; };
+  const extra = []; osAreasIn(id).forEach(a => { try { (a.sections() || []).forEach(sec => extra.push({ name: sec.name, rows: () => sec.rows(B) })); } catch (x) { extra.push({ name: a.title || a.id, rows: () => { const R = B(); R.note("This page could not be drawn: " + x.message); return R; } }); } });
+  return base.concat(extra);
+}
+function allCats() { const out = CATS.slice(); OS_AREAS.filter(a => a.newCat).forEach(a => { const at = out.findIndex(c => c[0] === a.after); if (!out.some(c => c[0] === a.cat)) out.splice(at >= 0 ? at + 1 : out.length - 1, 0, [a.cat, a.catTitle || a.title]); if (a.icon && !ICONS[a.cat]) ICONS[a.cat] = a.icon; }); return out; }
+function catSectionsBase(id) {
+  const B = () => { const R = []; R.tog = (label, get, set) => R.push({ label, toggle: get, run: () => set(!get()) }); R.info = (label, val) => R.push({ label, val, info: true }); R.sh = t => R.push({ head: t }); R.note = t => R.push({ note: t }); return R; };
+  if (id === "users") return S.profiles.map(u => ({ name: u.name, user: u, rows: () => { const R = B();
+      R.push({ label: "Name", val: esc(u.name), run: () => familyRestricted(me) ? toast("Only the family manager can rename users") : openOsk("New name for " + u.name, u.name, n => { n = n.trim(); if (!n) return; if (S.profiles.some(x => x !== u && x.name.toLowerCase() === n.toLowerCase())) { toast("That name is taken"); return; } if (u.pinHash) { toast("Set the passcode again after a rename"); u.pinHash = ""; } u.name = n; saveSettings(); applySettings(); drawSettings(); }) });
+      R.push({ label: "Color", val: `<span style="display:inline-block;width:1.5rem;height:1.5rem;border-radius:50%;background:${COLORS[u.color % COLORS.length]};vertical-align:middle"></span>`, run: () => { u.color = (u.color + 1) % COLORS.length; saveSettings(); } });
+      if (u.pinHash) { R.push({ label: "Change Passcode", val: "", run: () => { pinFirst = "change"; openPin("check", "Enter the current passcode"); } }); R.push({ label: "Turn Off Passcode", val: "", run: () => { pinFirst = "remove"; openPin("check", "Enter the current passcode"); } }); }
+      else R.push({ label: "Set Passcode", val: "Off", run: () => openPin("set1", "Enter a new 4-digit passcode for " + u.name) });
+      if (S.profiles.length > 1 && u !== me && !familyRestricted(me)) R.push({ label: "Delete User", val: "", run: () => openMenu(null, [["Delete " + u.name, () => { S.profiles = S.profiles.filter(x => x !== u); saveSettings(); applySettings(); setSec = 0; setFocus = "left"; drawSettings(); toast("Deleted " + u.name); }], ["Cancel", () => {}]]) });
+      R.note("The passcode locks this user on the AnyPS5 screen. It is stored only as a hash on this PC."); return R; } }))
+    .concat([{ name: "Login Settings", rows: () => { const R = B(); if (!me) return R; R.tog("Log In Automatically as " + me.name, () => !!S.autoLogin && S.autoLogin === me.uid, v => { if (v && me.pinHash) { toast("Turn off " + me.name + "'s passcode first: logging in automatically skips it"); return; } S.autoLogin = v ? me.uid : ""; saveSettings(); }); R.note("When it is on, AnyPS5 skips the user screen at start and logs this user in. A user with a passcode cannot log in automatically."); return R; } },
+      { name: "Add User", rows: () => { const R = B(); R.push({ label: "Add a User", val: "+", run: () => addUser(false) }); return R; } }]);
+  if (id === "access") return [{ name: "Display", rows: () => { const R = B();
+      R.tog("Zoom", () => a11y("zoom"), v => { setA11y("zoom", v); if (!v && zoomOn) { zoomOn = false; applyZoom(); } });
+      R.tog("Invert Colors", () => a11y("invert"), v => setA11y("invert", v));
+      R.push({ label: "Color Correction", val: CC_NAMES[a11yv("cc", "off")], run: () => { const k = Object.keys(CC_NAMES), i = k.indexOf(a11yv("cc", "off")); setA11y("cc", k[(i + 1) % k.length]); } });
+      if (a11yv("cc", "off") !== "off" && a11yv("cc", "off") !== "gray") R.push({ label: "Color Correction Intensity", val: { 0.5: "Low", 0.75: "Medium", 1: "High" }[a11yv("ccStrength", 1)], run: () => { const v = a11yv("ccStrength", 1); setA11y("ccStrength", v === 1 ? 0.5 : v === 0.5 ? 0.75 : 1); } });
+      R.push({ label: "Text Size", val: { default: "Default", large: "Large", larger: "Larger" }[a11yv("text", "default")], run: () => { const v = a11yv("text", "default"); setA11y("text", v === "default" ? "large" : v === "large" ? "larger" : "default"); } });
+      R.tog("Bold Text", () => a11y("bold"), v => setA11y("bold", v));
+      R.tog("High Contrast", () => a11y("contrast"), v => setA11y("contrast", v));
+      R.push({ label: "Auto-Scroll Speed", val: { slow: "Slow", normal: "Normal", fast: "Fast" }[a11yv("scroll", "normal")], run: () => { const v = a11yv("scroll", "normal"); setA11y("scroll", v === "slow" ? "normal" : v === "normal" ? "fast" : "slow"); } });
+      R.tog("Reduce Motion", () => a11y("motion"), v => setA11y("motion", v));
+      R.note("Zoom: with it on, press L3 and R3 together (or Z on the keyboard) to magnify around what is selected; press again to zoom out. Auto-Scroll Speed sets how fast a selected name that does not fit scrolls sideways."); return R; } },
+    { name: "Screen Reader", rows: () => { const R = B(); const voices = (window.speechSynthesis ? speechSynthesis.getVoices() : []);
+      R.tog("Screen Reader", () => a11y("reader"), v => { setA11y("reader", v); if (v) speak("Screen reader on", true); else if (window.speechSynthesis) speechSynthesis.cancel(); });
+      R.push({ label: "Speed", val: { slow: "Slow", normal: "Normal", fast: "Fast", fastest: "Fastest" }[a11yv("rate", "normal")], run: () => { const k = ["slow", "normal", "fast", "fastest"], i = k.indexOf(a11yv("rate", "normal")); setA11y("rate", k[(i + 1) % 4]); speak("Speed " + k[(i + 1) % 4], true); } });
+      R.push({ label: "Volume", val: { low: "Low", medium: "Medium", high: "High" }[a11yv("vol", "high")], run: () => { const k = ["low", "medium", "high"], i = k.indexOf(a11yv("vol", "high")); setA11y("vol", k[(i + 1) % 3]); speak("Volume " + k[(i + 1) % 3], true); } });
+      R.push({ label: "Voice", val: esc((voices.find(v => v.name === a11yv("voice", "")) || voices.find(v => v.default) || voices[0] || { name: "No voices found" }).name.replace(/^Microsoft /, "").replace(/ - .*$/, "")), run: () => { if (!voices.length) return; const i = voices.findIndex(v => v.name === a11yv("voice", "")); const n = voices[(i + 1) % voices.length]; setA11y("voice", n.name); speak("This is " + n.name.replace(/^Microsoft /, "").replace(/ - .*$/, ""), true); } });
+      R.tog("Read Notifications Aloud", () => a11yv("readNotes", true), v => setA11y("readNotes", v));
+      R.note("The screen reader reads what is selected, as you move. It uses the voices installed in Windows, offline."); return R; } },
+    { name: "Controllers", rows: () => { const R = B();
+      R.tog("Swap Cross and Circle", () => a11y("swap"), v => setA11y("swap", v));
+      R.push({ label: "Press-and-Hold Speed", val: { slow: "Slow", normal: "Normal", fast: "Fast" }[a11yv("hold", "normal")], run: () => { const v = a11yv("hold", "normal"); setA11y("hold", v === "slow" ? "normal" : v === "normal" ? "fast" : "slow"); } });
+      R.note("Swap Cross and Circle makes Circle select and Cross go back on the AnyPS5 screen; games keep their own buttons. Press-and-Hold Speed is how fast a held direction keeps moving."); return R; } }];
+  if (id === "storage") return [{ name: "Drives", rows: () => { const R = B(); const d = H.drives || []; if (!d.length) R.info("Drives", "Shown in AnyPS5.exe"); d.forEach(x => R.info(esc(x.name + (x.label ? " " + x.label : "")), gbText(x.free) + " free of " + gbText(x.total))); R.info("Games Folder", `<span class="secret">${esc(H.root || "D:\\AnyPS5 Games")}</span>`); R.note("Games stay in the games folder; AnyPS5's own previews and lists live in _tools\\console\\cache."); return R; } },
+    { name: "Games and Media", rows: () => { const R = B(); R.info("Games", String(ALL.length)); R.info("Captures", String(MEDIA ? MEDIA.items.length : 0)); R.info("Games With Trophy Lists", String(TR ? TR.games.length : 0)); R.push({ label: "Open the Media Gallery", val: "", run: () => openGallery() }); return R; } }];
+  if (id === "capture") return [{ name: "Captures", rows: () => { const R = B(); R.push({ label: "Screenshot File Type", val: capOpt("fmt", "png").toUpperCase(), run: () => setCapOpt("fmt", capOpt("fmt", "png") === "png" ? "jpg" : "png") }); R.tog("Save Trophy Screenshots", () => capOpt("trophy", true), v => setCapOpt("trophy", v)); R.tog("Show a Notification When Saved", () => capOpt("notify", true), v => setCapOpt("notify", v)); R.note("Screenshots go to each game's screenshots folder and show up in the Media Gallery."); return R; } },
+    { name: "Shortcuts for Create Button", rows: () => { const R = B(); R.push({ label: "Create Button", val: capOpt("createMode", "menu") === "shot" ? "Easy Screenshots" : "Standard", run: () => setCapOpt("createMode", capOpt("createMode", "menu") === "shot" ? "menu" : "shot") }); R.note("Standard: press Create for the Create menu. Easy Screenshots: press Create to take a screenshot, hold it for the Create menu. On the keyboard C takes the screenshot."); return R; } }];
+  if (id === "notes") return [{ name: "Notifications", rows: () => { const R = B(); R.tog("Allow Pop-Up Notifications", () => noteOpt("popups", true), v => setNoteOpt("popups", v)); R.push({ label: "Display Time", val: noteOpt("time", 3) + " seconds", run: () => { const t = noteOpt("time", 3); setNoteOpt("time", t === 3 ? 5 : t === 5 ? 10 : 3); } }); R.tog("Do Not Disturb", () => dnd, v => setDnd(v)); R.note("Do Not Disturb stays on until you log out. Notifications still go into the list."); return R; } },
+    { name: "Trophies", rows: () => { const R = B(); R.tog("Trophy Pop-Ups Over Games", () => noteOpt("trophyPopup", true), v => setNoteOpt("trophyPopup", v)); R.note("The trophy sound is under Sound."); return R; } },
+    { name: "Notification List", rows: () => { const R = B(); R.info("Notifications", String(notes.length)); R.push({ label: "View Notifications", val: "", run: () => { closeAllMenus(); openCc(); qsel = 2; drawCc(); openNotes(); } }); R.push({ label: "Delete All Notifications", val: "", run: () => { notes = []; } }); return R; } }];
+  if (id === "screen") return [{ name: "Display", rows: () => { const R = B(); R.tog("Start AnyPS5.exe in Full Screen", () => H.fullscreenStart, v => { H.fullscreenStart = v; send({ fullscreenStart: v }); }); R.push({ label: "Full Screen Now", val: "F11", run: () => send({ fullscreen: true }) }); return R; } },
+    { name: "Streaming", rows: () => { const R = B(); R.tog("Stream-Safe: Hide Folder Paths", () => !!S.safe, v => { S.safe = v; saveSettings(); applySettings(); }); return R; } }];
+  if (id === "sound") return [{ name: "Menu Sounds", rows: () => { const R = B(); R.tog("Menu Sounds", () => !!S.sounds, v => { S.sounds = v; saveSettings(); }); R.push({ label: "Volume", val: ["", "Low", "Medium", "High"][S.volume], run: () => { S.volume = S.volume % 3 + 1; saveSettings(); ok(); } }); R.tog("Trophy Sound", () => S.trophySound !== false, v => { S.trophySound = v; saveSettings(); }); R.note("The trophy sound plays with the pop-up over a game, and only while Menu Sounds is on."); return R; } }];
+  if (id === "pad") return [{ name: "Controllers", rows: () => { const R = B(); const gp = (navigator.getGamepads ? Array.from(navigator.getGamepads()) : []).filter(Boolean).map(g => g.id.replace(/\(.*?\)/g, "").trim()); const all = (H.pads || []).length ? H.pads : gp; R.sh("Connected"); if (!all.length) R.info("No Controller Found", ""); all.forEach(n => R.info(esc(n), "")); R.sh("Buttons"); R.push({ label: "PS / Guide Button Opens", val: S.psAction === "home" ? "Home Screen" : "Control Center", run: () => { S.psAction = S.psAction === "home" ? "cc" : "home"; saveSettings(); } }); R.note("In a game the PS button always opens the game menu. PlayStation controllers held by Steam Input or DS4Windows show as in use and their PS button cannot be read."); return R; } }];
+  if (id === "data") return [{ name: "Game Library", rows: () => { const R = B(); R.info("Games Folder", `<span class="secret">${esc(H.root || "D:\\AnyPS5 Games")}</span>`); R.info("Games Found", String(ALL.length)); R.info("With Box Art", String(ALL.filter(g => g.icon).length)); R.tog("Show Games Without Box Art", () => !!S.showNoArt, v => { S.showNoArt = v; saveSettings(); applySettings(); }); R.push({ label: "Scan for New Games", val: "", run: () => send({ rescan: true }) }); return R; } },
+    { name: "Saved Data", rows: () => { const R = B(); const w = ALL.filter(g => g.saves); R.info("Games With Saves", String(w.length)); w.slice(0, 12).forEach(g => R.info(esc(g.title), g.saves + " files")); R.note("Saves live in each game's _sd folder and are shared by all users."); return R; } }];
+  if (id === "pipe") return [{ name: "Pipeline", rows: () => { const R = B(); R.tog("Pause the Test Pipeline", () => !!H.paused, v => send({ pause: v })); R.note("While you play a game started here the pipeline pauses by itself and resumes when the game closes."); return R; } },
+    { name: "Other Windows", rows: () => { const R = B(); R.push({ label: "Open the Machines Tab", val: "", run: () => send({ machines: true }) }); R.push({ label: "Open the AnyPS5 Games Work App", val: "", run: () => send({ tab: "work" }) }); return R; } }];
+  if (id === "system") return [{ name: "System Information", rows: () => { const R = B(); R.info("Program", esc(H.program || "browser preview")); R.info("Built", esc(H.build || "")); return R; } },
+    { name: "Guide and Tips", rows: () => { const R = B(); R.push({ label: "Controls and Help", val: "", run: openHelp }); R.push({ label: "Notifications", val: String(notes.length), run: openNotes }); return R; } },
+    { name: "Power Saving", rows: () => { const R = B(); const a = S.restAfter || 0; R.push({ label: "Enter Rest Mode After", val: a ? (a >= 60 ? a / 60 + (a === 60 ? " Hour" : " Hours") : a + " Minutes") : "Don't Enter Rest Mode", run: () => { S.restAfter = ({ 0: 20, 20: 60, 60: 180, 180: 0 })[a] ?? 0; saveSettings(); } }); R.note("Counts time without a button press on the AnyPS5 screen. It never rests while a game is running."); return R; } },
+    { name: "Power", rows: () => { const R = B(); R.push({ label: "Enter Rest Mode", val: "", run: enterRest }); R.push({ label: "Turn Off AnyPS5", val: "", run: () => powerOff(false) }); R.push({ label: "Restart AnyPS5", val: "", run: () => powerOff(true) }); R.push({ label: "Switch User", val: "", run: switchUser }); return R; } }];
+  return [];
+}
+function settingsRows() {
+  if (!setPage) return allCats().map(([i, t]) => ({ icon: i, label: t, go: () => openSetPage(i, t) }));
+  const secs = catSections(setPage.id); if (setSec >= secs.length) setSec = 0;
+  const sec = secs[setSec]; setPage.user = sec && sec.user || (setPage.id === "users" ? null : setPage.user);
+  return sec ? sec.rows() : [];
+}
+function openSettings() { closeAllMenus(); setPage = null; srow = 0; show("settings"); drawSettings(); ok(); }
+function openSetPage(id, title, user) { osAreasIn(id).forEach(a => { if (a.refresh) Promise.resolve(a.refresh()).then(() => { if (screen === "settings" && setPage && setPage.id === id) drawSettings(); }).catch(() => {}); });
+  setPage = { id, title, user }; setSec = 0; setFocus = "left"; if (user) { const k = catSections(id).findIndex(x => x.user === user); if (k >= 0) { setSec = k; setFocus = "right"; } } srow = 0; drawSettings(); ok(); }
+function selectable(r) { return !r.head && !r.note && !r.info; }
+function firstRow(rows) { return Math.max(0, rows.findIndex(selectable)); }
+function drawSettings() {
+  const rows = settingsRows(), list = $("#slist");
+  if (setPage && setFocus === "right") { while (srow < rows.length && !selectable(rows[srow])) srow++; if (srow >= rows.length) srow = firstRow(rows); }
+  $("#setHead").textContent = setPage ? setPage.title : "Settings";
+  list.className = "slist " + (setPage ? "spage" : "stop");
+  $("#ssec").innerHTML = setPage ? catSections(setPage.id).map((x, i) => `<div class="${i === setSec ? "cur" : ""}${i === setSec && setFocus === "left" ? " foc" : ""}" data-i="${i}">${esc(x.name)}</div>`).join("") : "";
+  $$("#ssec div").forEach(e => e.onclick = () => { setSec = +e.dataset.i; setFocus = "left"; srow = 0; move(); drawSettings(); });
+  const hot = !setPage || setFocus === "right";
+  list.innerHTML = rows.map((r, i) => r.head ? `<div class="sh">${esc(r.head)}</div>` : r.note ? `<div class="snote">${esc(r.note)}</div>` : `<div class="srow${r.info ? " info" : ""}${hot && i === srow ? " sel" : ""}" data-i="${i}">${r.icon ? `<span class="ic">${ico(r.icon)}</span>` : ""}<span>${esc(r.label)}</span>${r.toggle ? `<span class="val"><span class="tg${r.toggle() ? " on" : ""}"></span></span>` : `<span class="val">${r.val == null ? "" : r.val}</span>`}</div>`).join("");
+  $$("#slist .srow").forEach(e => e.onclick = () => { const i = +e.dataset.i; srow = i; if (setPage) setFocus = "right"; runRow(rows[i]); });
+  const sl = $("#slist .srow.sel"); if (sl) sl.scrollIntoView({ block: "nearest" });
+}
+function runRow(r) { if (!r || !selectable(r)) return; ok(); if (r.go) r.go(); else if (r.run) { r.run(); if (screen === "settings") drawSettings(); } }
+function settingsBack() { back(); if (setPage) { const id = setPage.id; setPage = null; srow = Math.max(0, allCats().findIndex(c => c[0] === id)); drawSettings(); } else { show(me ? "home" : "profiles"); if (me) drawRow(); else drawProfiles(); } }
+function switchUser() { closeAllMenus(); if (dnd) setDnd(false); me = null; show("profiles"); drawProfiles(); }
+
+/* control center (PS5 order: Home, Switcher, Notifications, Game Base, ..., Profile, Power) */
+function recentGames() { return LIB.filter(g => g.lastRun).sort((a, b) => b.lastRun.localeCompare(a.lastRun)).slice(0, 6); }
+function ccIcons() {
+  const pg = playingGame();
+  return [
+    { label: "Home", svg: '<path d="M4 11l8-7 8 7M6 9.5V20h12V9.5"/>', run: () => { closeCc(); if (ingame) send({ home: true }); goHome(); } },
+    { label: "Switcher", html: pg && pg.icon ? `<span class="gt" style="background-image:url('${pg.icon}')"></span>` : `<svg viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="11" rx="1.5"/><path d="M7 4h12.5A1.5 1.5 0 0 1 21 5.5V15"/></svg>`, run: () => { const r = recentGames(); openMenu($$("#cicons .ci")[1], (pg ? [["Back to " + pg.title, () => { closeCc(); send({ resume: true }); }], ["Close " + pg.title, () => { closeCc(); send({ closegame: true }); }]] : []).concat(r.filter(g => !pg || g.id !== pg.id).map(g => [g.title, () => { closeCc(true); play(g); }])).concat([["Cancel", () => {}]])); } },
+    { label: "Notifications", svg: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>', run: openNotes },
+    { label: "Downloads", svg: DL_SVG, run: () => openDownloads(), act: () => dlItems().length > 0 },
+    { label: "Screenshot", svg: '<rect x="3" y="6" width="18" height="13" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M9 6l1.5-2h3L15 6"/>', run: () => { closeCc(true); send({ shot: true }); } },
+    { label: H.paused ? "Pipeline paused" : "Pipeline running", svg: H.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M9 6v12M15 6v12"/>', run: () => send({ pause: !H.paused }), act: () => H.paused },
+    { label: "Sound", svg: '<path d="M4 10v4h4l5 4V6L8 10H4zM16.5 9a4 4 0 0 1 0 6M19 6.5a7.5 7.5 0 0 1 0 11"/>', run: () => openMenu($$("#cicons .ci")[6], [[S.sounds ? "Turn menu sounds off" : "Turn menu sounds on", () => { S.sounds = !S.sounds; saveSettings(); }], ["Volume: Low", () => { S.volume = 1; saveSettings(); ok(); }], ["Volume: Medium", () => { S.volume = 2; saveSettings(); ok(); }], ["Volume: High", () => { S.volume = 3; saveSettings(); ok(); }], ["Cancel", () => {}]]) },
+    { label: "Accessories", svg: '<path d="M7 9h10a4 4 0 0 1 3.9 4.8l-.8 3.6a2 2 0 0 1-3.4 1L14.5 16h-5l-2.2 2.4a2 2 0 0 1-3.4-1l-.8-3.6A4 4 0 0 1 7 9zM8 12v3M6.5 13.5h3"/>', run: () => openMenu($$("#cicons .ci")[7], ((H.pads || []).length ? H.pads : ["No controller found"]).map(n => [n, () => {}]).concat([["Controller settings", () => { closeCc(true); if (ingame) send({ home: true }); openSettings(); openSetPage("pad", "Accessories"); }]])) },
+    { label: me ? me.name : "Profile", html: `<span class="av2" style="background:${me ? COLORS[me.color % COLORS.length] : "#555"}">${me ? avatar(me) : "?"}</span>`, run: () => openMenu($$("#cicons .ci")[8], [["Trophies", () => { closeCc(true); if (ingame) send({ home: true }); openTrophies(); }], ["Switch user", () => { closeCc(true); if (ingame) send({ home: true }); switchUser(); }], ["Settings", () => { closeCc(true); if (ingame) send({ home: true }); openSettings(); }], ["Controls and help", () => { closeCc(true); openHelp(); }], ["Cancel", () => {}]]) },
+    { label: "Power", svg: '<path d="M12 3v8M7.5 6.2a7.5 7.5 0 1 0 9 0"/>', run: () => powerMenu() }];
+}
+function ccCards() {
+  const C = [], pg = playingGame(), shot = ALL.filter(g => g.shot).sort((a, b) => (b.lastRun || "").localeCompare(a.lastRun || ""))[0];
+  if (pg) C.push({ label: ingame ? "Now playing" : "Running", title: pg.title, sub: ingame ? "Return to the game" : "Select to return to the game", img: pg.bg || pg.icon, icon: pg.icon, big: pg.fps ? pg.fps + " FPS" : "", badge: "Running", hint: "Resume", run: () => { closeCc(); send({ resume: true }); } });
+  if (pg) C.push({ label: "Game", title: "Close game", sub: pg.title + " closes and the pipeline resumes", icon: pg.icon, glyph: '<circle cx="12" cy="12" r="8.5"/><path d="M9 9l6 6M15 9l-6 6"/>', hint: "Close", run: () => openMenu(null, [["Close " + pg.title, () => { closeCc(); send({ closegame: true }); }], ["Cancel", () => {}]]) });
+  const dl = dlItems(), top = dl.find(x => typeof x.pct === "number") || dl[0];
+  if (top) { const g = dlGame(top); C.push({ glyph: DL_SVG, label: "Downloads" + (dl.length > 1 ? " (" + dl.length + ")" : ""), title: top.title, sub: top.status || DL_KIND[top.kind] || "", icon: g && g.icon, big: typeof top.pct === "number" ? top.pct + "%" : "", badge: DL_KIND[top.kind] || "", hint: "Open", run: () => { crow = 1; qsel = 3; drawCc(); openDownloads(); } }); }
+  C.push({ glyph: '<path d="M4 6h6v4H4zM14 14h6v4h-6zM10 8h4v8"/>', label: "Test pipeline", title: H.paused ? "Paused" : "Running", sub: H.paused ? "Select to resume it" : "Select to pause it", big: H.paused ? "Paused" : "On", badge: H.paused ? "Waiting" : "Testing", hint: H.paused ? "Resume" : "Pause", run: () => send({ pause: !H.paused }) });
+  const plays = LIB.filter(g => g.status === "Plays").length;
+  C.push({ glyph: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.2"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.2"/>', label: "Your games", title: "Games that play", sub: LIB.length + " games in the library", big: (LIB.length ? Math.round(plays * 100 / LIB.length) : 0) + "%", badge: plays + " play", hint: "Open", run: () => { closeCc(true); if (ingame) send({ home: true }); openLibrary(); } });
+  if (shot) C.push({ label: "Captures", title: shot.title, sub: "Latest screenshot", img: shot.shot, icon: shot.icon, hint: "View", run: () => { closeCc(true); if (ingame) send({ home: true }); goHome(); setTab("media"); } });
+  C.push({ glyph: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>', label: "Notifications", title: notes.length ? notes[0].t : "No notifications", sub: notes.length ? notes[0].at : "", hint: "View", run: openNotes });
+  return C;
+}
+let ccFrom = "home";
+function openCc() { if (screen === "cc") return; closeAllMenus(); ccFrom = screen; screen = "cc"; crow = 0; ccard = 0; qsel = 0; $("#cc").classList.add("on"); document.body.classList.add("ccopen"); drawCc(); ok(); loadDownloads(() => { if (screen === "cc") drawCc(); }); send({ downloads: true }); }
+function closeCc(quiet) { $("#cc").classList.remove("on"); document.body.classList.remove("ccopen"); if (screen === "cc") screen = ccFrom; closeMenu(); if (!quiet) back(); }
+function drawCc() {
+  const cards = ccCards(), icons = ccIcons();
+  if (ccard >= cards.length) ccard = cards.length - 1;
+  $("#ccards").innerHTML = cards.map((c, i) => `<div class="ccard${crow === 0 && i === ccard ? " sel" : ""}" data-i="${i}" style="${c.img ? `background-image:url('${c.img}')` : ""}">${c.icon ? `<span class="gi" style="background-image:url('${c.icon}')"></span>` : `<span class="gi sys"></span>`}${!c.img && c.glyph && !c.big ? `<span class="glyph"><svg viewBox="0 0 24 24">${c.glyph}</svg></span>` : ""}${c.big ? `<div class="big">${esc(c.big)}</div>` : ""}${c.badge ? `<div class="badge2">${esc(c.badge)}</div>` : ""}<small>${esc(c.label)}</small><b>${esc(c.title)}</b><span>${esc(c.sub)}</span></div>`).join("");
+  $("#cicons").innerHTML = icons.map((c, i) => `<div class="ci${c.act && c.act() ? " act" : ""}${crow === 1 && i === qsel ? " sel" : ""}" data-i="${i}">${c.html || `<svg viewBox="0 0 24 24">${c.svg}</svg>`}<span class="lbl">${esc(c.label)}</span></div>`).join("");
+  $$("#ccards .ccard").forEach(e => e.onclick = ev => { ev.stopPropagation(); crow = 0; ccard = +e.dataset.i; drawCc(); cards[ccard].run(); });
+  $$("#cicons .ci").forEach(e => e.onclick = ev => { ev.stopPropagation(); crow = 1; qsel = +e.dataset.i; drawCc(); icons[qsel].run(); });
+  const h = $("#cchint"), sc = $("#ccards .ccard.sel");
+  if (crow === 0 && sc && cards[ccard]) { const r = sc.getBoundingClientRect(); h.style.left = (r.left + r.width / 2) + "px"; h.innerHTML = `<b>${lastPad ? "A" : "↵"}</b>${esc(cards[ccard].hint || "Select")}`; h.style.display = ""; } else h.style.display = "none";
+}
+function goHome() { closeAllMenus(); if (!me) { show("profiles"); drawProfiles(); return; } show("home"); setTab("games", true); focus = "row"; sel = 0; drawRow(); }
+
+/* small menus */
+function openMenu(anchor, items, cls) {
+  menuItems = items; msel = 0; menuBack = screen; screen = "menu"; $("#scrim").classList.add("on");
+  const m = $("#menu"), fromCc = menuBack === "cc", lbl = anchor && anchor.querySelector ? anchor.querySelector(".lbl") : null;
+  m.classList.toggle("ccpanel", fromCc); m.classList.toggle("notespanel", cls === "notes"); m.classList.toggle("powerpanel", cls === "power"); m.classList.toggle("dlpanel", cls === "dl"); m.classList.toggle("psmenu", cls === "psmenu"); document.body.classList.toggle("ccmenu", fromCc); document.body.classList.toggle("dimmenu", fromCc || cls === "psmenu");
+  m.innerHTML = (fromCc && lbl ? `<div class="mh">${esc(lbl.textContent)}</div>` : "") + items.map((it, i) => `<div class="mi${it[3] ? " " + it[3] : ""}${i === 0 ? " sel" : ""}" data-i="${i}">${it[2] || esc(it[0])}</div>`).join("");
+  m.classList.add("on");
+  const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+  if (fromCc) {
+    const r = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2, width: 0 };
+    m.style.left = Math.min(innerWidth - m.offsetWidth - 5 * rem, Math.max(5 * rem, r.left + r.width / 2 - m.offsetWidth / 2)) + "px";
+    m.style.top = Math.max(2 * rem, innerHeight - 11.9 * rem - m.offsetHeight) + "px";
+  } else if (cls === "psmenu" && anchor && anchor.classList.contains("tile")) {
+    const r = anchor.getBoundingClientRect(), side = r.right + .4 * rem;
+    if (side + m.offsetWidth < innerWidth - rem) { m.style.left = side + "px"; m.style.top = Math.max(rem, Math.min(innerHeight - m.offsetHeight - rem, r.top - .2 * rem)) + "px"; }
+    else { m.style.left = Math.max(rem, Math.min(innerWidth - m.offsetWidth - rem, r.left)) + "px"; m.style.top = Math.min(innerHeight - m.offsetHeight - rem, r.bottom + .4 * rem) + "px"; }
+  } else {
+    const r = anchor ? anchor.getBoundingClientRect() : { left: innerWidth / 2 - 150, bottom: innerHeight / 2 - 80, top: innerHeight / 2 };
+    m.style.left = Math.min(innerWidth - m.offsetWidth - 16, Math.max(16, r.left)) + "px"; const below = r.bottom + 10; m.style.top = (below + m.offsetHeight < innerHeight ? below : Math.max(16, r.top - m.offsetHeight - 10)) + "px";
+  }
+  $$("#menu .mi").forEach(e => e.onclick = ev => { ev.stopPropagation(); msel = +e.dataset.i; menuPick(); }); ok();
+}
+function drawMenu() { const m = $("#menu"); $$("#menu .mi").forEach((e, i) => e.classList.toggle("sel", i === msel)); if (m.classList.contains("notespanel")) notesWindow(); if (m.classList.contains("powerpanel") || m.classList.contains("dlpanel")) { const rem = parseFloat(getComputedStyle(document.documentElement).fontSize); m.style.top = Math.max(2 * rem, innerHeight - 11.9 * rem - m.offsetHeight) + "px"; } }
+function notesOn() { return screen === "menu" && $("#menu").classList.contains("notespanel"); }
+function notesWindow() {
+  const m = $("#menu"), rows = $$("#menu .mi"), rem = parseFloat(getComputedStyle(document.documentElement).fontSize), mh = m.querySelector(".mh");
+  rows.forEach(r => { if (!r._h) { r.style.display = ""; r._h = r.offsetHeight; } });
+  const avail = innerHeight - 16.7 * rem - (mh ? mh.offsetHeight : 0) - .6 * rem, sum = (a, b) => rows.slice(a, b + 1).reduce((t, r) => t + r._h, 0);
+  if (msel < nTop) nTop = msel;
+  while (nTop < msel && sum(nTop, msel) > avail) nTop++;
+  let used = 0, full = false;
+  rows.forEach((r, i) => { let vis = i >= nTop && !full; if (vis && i > nTop && used + r._h > avail) { vis = false; full = true; } if (vis) used += r._h; r.style.display = vis ? "" : "none"; });
+  m.style.top = Math.max(2 * rem, innerHeight - 11.9 * rem - m.offsetHeight) + "px";
+}
+function noteAge(ts) { const s = (Date.now() - ts) / 1000; return s < 60 ? "Now" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d"; }
+function notesKey(k) {
+  if (k === "del" && msel > 0 && notes[msel - 1]) { notes.splice(msel - 1, 1); const keep = Math.min(msel, notes.length); closeMenu(); openNotes(keep); return true; }
+  if (k === "options") { closeMenu(); openMenu($$("#cicons .ci")[2], [["Delete All Notifications", () => { notes = []; openNotes(); }], ["Cancel", () => openNotes()]]); return true; }
+  return false;
+}
+function closeMenu() { document.body.classList.remove("ccmenu", "dimmenu"); $("#scrim").classList.remove("on"); if (!$("#menu").classList.contains("on")) return; $("#menu").classList.remove("on"); if (screen === "menu") screen = menuBack; }
+function menuPick() { const it = menuItems[msel]; closeMenu(); if (it) it[1](); if (screen === "cc") drawCc(); if (screen === "settings") drawSettings(); }
+function openViewer(items, i) { if (!items || !items.length) return; vItems = items; vIdx = Math.max(0, Math.min(i, items.length - 1)); $("#viewer").classList.add("on"); drawViewer(); ok(); }
+function drawViewer() { const it = vItems[vIdx]; if (!it) return; $("#vimg").style.backgroundImage = `url('${it.img}')`; $("#vcap").innerHTML = `${esc(it.title)}<small>${esc(it.sub || "")} · ${vIdx + 1} / ${vItems.length}</small>`; $("#vprev").style.visibility = vIdx > 0 ? "" : "hidden"; $("#vnext").style.visibility = vIdx < vItems.length - 1 ? "" : "hidden"; }
+function closeViewer() { $("#viewer").classList.remove("on"); }
+function openNotes(sel) {
+  const items = [["Do Not Disturb", () => { setDnd(!dnd); openNotes(0); }, `<div class="ntx"><b>Do Not Disturb</b><small>This will stay on until you log out of AnyPS5.</small></div><span class="ntg${dnd ? " on" : ""}"></span>`, "ndnd"]];
+  notes.forEach(n => items.push([n.t, () => {}, `<i class="nic${n.icon ? " g" : ""}"${n.icon ? ` style="background-image:url('${n.icon}')"` : ""}></i><div class="ntx"><small>${esc(n.src || "AnyPS5")}</small><b>${esc(n.t)}</b></div><em>${noteAge(n.ts || Date.now())}</em>`]));
+  if (!notes.length) items.push(["No notifications", () => openNotes(1), `<div class="ntx"><b>No notifications</b><small>New ones appear here, newest first.</small></div>`]);
+  nTop = 0; openMenu($$("#cicons .ci")[2], items, "notes");
+  msel = Math.max(0, Math.min(sel || 0, items.length - 1)); drawMenu();
+}
+function closeAllMenus() { closeViewer(); closeMenu(); $("#create").classList.remove("on"); $("#notes").classList.remove("on"); $("#ginfo").classList.remove("on"); if (screen === "cc") closeCc(true); }
+function openHelp() { helpOn = true; $("#help").classList.add("on"); ok(); try { localStorage.setItem("anyps5-help-seen", "1"); } catch (x) {} }
+function closeHelp() { helpOn = false; $("#help").classList.remove("on"); back(); }
+
+/* host */
+function onHostMessage(m) {
+  if (!m) return;
+  if (m.toast) toast(m.toast);
+  if (m.host) { H = Object.assign(H, m); if (typeof m.paused === "boolean") H.paused = m.paused; if (!H.settingsLoaded) { H.settingsLoaded = true; if (m.settings) loadSettings(m.settings); else saveSettings(); } if (screen === "home") drawRow(); if (screen === "settings") drawSettings(); if (screen === "cc") drawCc(); }
+  else if (typeof m.paused === "boolean") H.paused = m.paused;
+  if (m.library) reloadLibrary();
+  if (m.trophy) { const t = m.trophy; markSeen(t.key + ":" + t.id); toast("Trophy earned: " + (t.name || "a new trophy"), t.title || "Trophies", t.icon || ""); }
+  if (m.sysReply) { const r = m.sysReply, f = sysWait[r.id]; if (f) { delete sysWait[r.id]; f(r); } }
+  if (m.woke) wakeUp(true);
+  if (m.downloadsChanged) loadDownloads(() => { if (screen === "cc") drawCc(); if (dlOn()) openDownloads(true); });
+  if (m.mediaChanged) loadMedia(() => { if (screen === "gallery") drawGallery(); if (screen === "home") drawRow(); });
+  if (m.trophiesChanged) loadTrophies(() => { if (screen === "trophies") drawTrophies(); if (screen === "home") drawRow(); });
+  if (m.reload) { try { sessionStorage.setItem("anyps5-resume", JSON.stringify({ at: Date.now(), user: me ? me.name : null, screen, tab, sel, filter, setPage: setPage ? setPage.id : null })); } catch (x) {} location.reload(); return; }
+  if (m.ps) psButton();
+  if (m.ingame === true) { ingame = true; document.body.classList.add("ingame"); if (m.title) H.playing = m.title; $("#ingameBg").style.backgroundImage = m.bg ? `url('${m.bg}')` : "none"; $("#ingameBg").classList.add("on"); closeAllMenus(); if (helpOn) closeHelp(); if (m.open === "create") openCreate(); else openCc(); }
+  if (m.ingame === false) { setTimeout(() => loadTrophies(), 4000); ingame = false; document.body.classList.remove("ingame"); $("#ingameBg").classList.remove("on"); if (screen === "cc") closeCc(true); }
+}
+if (HOST) HOST.addEventListener("message", e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } onHostMessage(m); });
+else if (location.protocol.startsWith("http") && location.port === "8790" && window.EventSource) { const ev = new EventSource("/events"); ev.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch (x) { return; } onHostMessage(m); }; }
+function psButton() { if (helpOn) { closeHelp(); return; } if (screen === "boot") { input("ok"); return; } if ($("#osk").classList.contains("on") || $("#pin").classList.contains("on")) return; if (screen === "cc") { closeCc(); if (ingame) send({ resume: true }); return; } if (S.psAction === "home" && me && screen !== "home") { goHome(); return; } if (me) { if (screen !== "home") goHome(); openCc(); } }
+function reloadLibrary() { const s = document.createElement("script"); s.src = "library.js?" + Date.now(); s.onload = () => { const keep = cur() && cur().id; ALL = window.LIBRARY || []; filterLib(); const i = rowItems().findIndex(g => g.id && g.id === keep); sel = i >= 0 ? i : 0; if (screen === "home") drawRow(); if (screen === "library") drawLibrary(); s.remove(); }; document.head.appendChild(s); }
+
+/* input */
+function input(k) {
+  lastInputAt = Date.now();
+  if (restOn()) { wakeUp(); return; }
+  if (k === "zoom") { toggleZoom(); return; }
+  if (k === "createshot") { if (me && screen !== "boot" && screen !== "profiles") { closeAllMenus(); if (screen === "cc") closeCc(true); setTimeout(() => send({ shot: true }), 150); } return; }
+  if (helpOn) { if (["back", "ok", "help", "menu"].includes(k)) closeHelp(); return; }
+  if ($("#viewer").classList.contains("on") && screen !== "menu") {
+    if (k === "options") { const it = vItems[vIdx]; if (it && it.mid) openMenu(null, [[favs().includes(it.mid) ? "Remove from Favorites" : "Add to Favorites", () => { toggleFav(it.mid); if (screen === "gallery") drawGallery(); }], ["Cancel", () => {}, "", "sep"]], "psmenu"); return; } if (k === "left" && vIdx > 0) { vIdx--; move(); drawViewer(); } else if (k === "right" && vIdx < vItems.length - 1) { vIdx++; move(); drawViewer(); } else if (k === "back" || k === "ok" || k === "menu" || k === "enter") { closeViewer(); back(); } return; }
+  if ($("#ginfo").classList.contains("on")) { const n = $$("#iRows div").length; if (k === "up" && isel > 0) { isel--; move(); drawInfo(); } else if (k === "down" && isel < n - 1) { isel++; move(); drawInfo(); } else if (["back", "ok", "menu", "enter"].includes(k)) { $("#ginfo").classList.remove("on"); back(); } return; }
+  if (createOn() && screen !== "menu") { createInput(k); return; }
+  if ($("#notes").classList.contains("on") || $("#ginfo").classList.contains("on")) { if (["back", "ok", "menu"].includes(k)) { $("#notes").classList.remove("on"); $("#ginfo").classList.remove("on"); back(); } return; }
+  if ($("#osk").classList.contains("on")) { if (k === "back") { closeOsk(); back(); return; } if (k === "del") { oskKey("⌫"); return; } if (k.length === 1 && k !== " ") { if (oskText.length < (oskOpts.max || 24)) { const ch = oskText || oskOpts.capFirst === false ? k : k.toUpperCase(); oskText = oskText.slice(0, oskCur) + ch + oskText.slice(oskCur); oskCur++; } drawOsk(); return; } if (k === "l1") { oskKey("Left"); return; } if (k === "r1") { oskKey("Right"); return; } if (k === "space") { oskKey("Space"); return; } if (k === "enter") { oskKey("Done"); return; } if (k === "caps") { oskKey("Shift"); return; } if (k === "ok") { oskKey(oskKeys()[oskSel]); return; } if (["left", "right", "up", "down"].includes(k)) { oskSel = oskMove(oskSel, k); move(); drawOsk(); } return; }
+  if ($("#pin").classList.contains("on")) { if (k === "back") { const was = pinMode; closePin(); back(); if (was === "login") drawProfiles(); return; } if (k === "del") { pressKey("⌫"); return; } if (/^\d$/.test(k)) { pinDigit(k); return; } const was = ksel; if (k === "left" && ksel % 3) ksel--; else if (k === "right" && ksel % 3 < 2) ksel++; else if (k === "up" && ksel > 2) ksel -= 3; else if (k === "down" && ksel < 9) ksel += 3; else if (k === "ok" || k === "enter") { if (KP[ksel]) pressKey(KP[ksel]); return; } else return; if (!KP[ksel]) ksel = was; move(); drawPin(); return; }
+  if (notesOn() && notesKey(k)) return;
+  if (screen === "menu") { if (k === "up" && msel > 0) { msel--; move(); } else if (k === "down" && msel < menuItems.length - 1) { msel++; move(); } else if (k === "ok" || k === "enter") menuPick(); else if (k === "back" || k === "menu") { closeMenu(); back(); } drawMenu(); return; }
+  if (k === "help" && screen !== "boot") { openHelp(); return; }
+  if (k === "create" && screen !== "boot") { if (!me || screen === "profiles") openHelp(); else openCreate(); return; }
+  if (screen === "boot") { ok(); if (autoLogin()) return; show("profiles"); drawProfiles(); return; }
+  if (screen === "profiles") { if (k === "left" && prof > 0) { prof--; move(); } else if (k === "right" && prof < PROFILES.length - 1) { prof++; move(); } else if (k === "ok" || k === "enter") { pickProfile(); return; } drawProfiles(); return; }
+  if (screen === "cc") {
+    const cards = ccCards(), icons = ccIcons();
+    if (k === "back" || k === "menu") { closeCc(); if (ingame) send({ resume: true }); return; }
+    if (k === "up" && crow === 1) { crow = 0; ccard = Math.min(ccard, cards.length - 1); move(); } else if (k === "down" && crow === 0) { crow = 1; move(); }
+    else if (k === "left") { if (crow === 0 && ccard > 0) ccard--; if (crow === 1 && qsel > 0) qsel--; move(); } else if (k === "right") { if (crow === 0 && ccard < cards.length - 1) ccard++; if (crow === 1 && qsel < icons.length - 1) qsel++; move(); }
+    else if (k === "ok" || k === "enter") { ok(); if (crow === 0) cards[ccard].run(); else icons[qsel].run(); if (screen === "cc") drawCc(); return; }
+    drawCc(); return;
+  }
+  if (screen === "settings") {
+    if (k === "menu") { openCc(); return; }
+    if (setPage && setFocus === "left") { const n = catSections(setPage.id).length; if (k === "up" && setSec > 0) { setSec--; srow = 0; move(); } else if (k === "down" && setSec < n - 1) { setSec++; srow = 0; move(); } else if (k === "right" || k === "ok" || k === "enter") { setFocus = "right"; srow = firstRow(settingsRows()); move(); } else if (k === "back" || k === "left") { settingsBack(); return; } drawSettings(); return; }
+    const rows = settingsRows(); const next = d => { let i = srow + d; while (i >= 0 && i < rows.length && !selectable(rows[i])) i += d; if (i >= 0 && i < rows.length) { srow = i; move(); } };
+    if (k === "up") next(-1); else if (k === "down") next(1); else if (k === "ok" || k === "enter" || (k === "right" && !setPage)) { runRow(rows[srow]); return; } else if (k === "back" || k === "left") { if (setPage) { setFocus = "left"; back(); } else { settingsBack(); return; } } drawSettings(); return;
+  }
+  if (screen === "trophies") { trophyInput(k); return; }
+  if (screen === "gallery") { galleryInput(k); return; }
+  if (screen === "library" || screen === "search") {
+    const list = screen === "library" ? libList() : searchResults(), cols = screen === "library" ? 5 : searchCols();
+    if (screen === "library" && k === "options") { sortMenu(); return; }
+    if (screen === "search" && sFocus === "tabs") { const ti = STABS.findIndex(t => t[0] === sTab); if (k === "back") { goHome(); back(); return; } if ((k === "left" || k === "l1") && ti > 0) setSearchTab(STABS[ti - 1][0]); else if ((k === "right" || k === "r1" || k === "tab") && ti < STABS.length - 1) setSearchTab(STABS[ti + 1][0]); else if (k === "down" || k === "ok" || k === "enter") { sFocus = "osk"; move(); drawSearch(); } return; }
+    if (screen === "search" && sFocus === "osk" && k === "up" && oskMove(sOskSel, "up") === sOskSel) { sFocus = "tabs"; move(); drawSearch(); return; }
+    if (screen === "search" && sFocus === "osk") { if (k === "back") { goHome(); back(); return; } if (k === "del") { searchKey("⌫"); return; } if (k.length === 1) { sQuery = sQuery.slice(0, sCur) + k + sQuery.slice(sCur); sCur++; lsel = 0; drawSearch(); return; } if (k === "l1") { searchKey("Left"); return; } if (k === "r1") { searchKey("Right"); return; } if (k === "space") { searchKey("Space"); return; } if (k === "enter") { searchKey("Done"); return; } if (k === "caps") { searchKey("Shift"); return; } if (k === "ok") { searchKey(oskKeys()[sOskSel]); return; } if (k === "down" && oskMove(sOskSel, "down") === sOskSel && list.length) { sFocus = "grid"; lsel = 0; move(); drawSearch(); return; } if (["left", "right", "up", "down"].includes(k)) { sOskSel = oskMove(sOskSel, k); move(); drawSearch(); } return; }
+    if (k === "back") { if (screen === "search") { sFocus = "osk"; drawSearch(); back(); return; } goHome(); back(); return; }
+    if (k === "menu") { openCc(); return; }
+    if (screen === "search" && k === "del" && list[lsel] && list[lsel].hist) { dropHistory(lsel); const n = searchResults().length; if (!n) { sFocus = "osk"; lsel = 0; } else lsel = Math.min(lsel, n - 1); move(); drawSearch(); return; }
+    if (screen === "search" && (k === "tab" || k === "r1" || k === "l1")) { const ti = STABS.findIndex(t => t[0] === sTab); setSearchTab(STABS[(ti + (k === "l1" ? STABS.length - 1 : 1)) % STABS.length][0]); return; }
+    if (k === "tab" || k === "r1" || k === "l1") { if (screen === "library") { const f = ["all", "installed", "plays"]; filter = f[(f.indexOf(filter) + (k === "l1" ? 2 : 1)) % 3]; lsel = 0; move(); drawLibrary(); } return; }
+    if (k === "left" && lsel % cols) lsel--; else if (k === "right" && lsel < list.length - 1 && lsel % cols < cols - 1) lsel++; else if (k === "down" && lsel + cols < list.length) lsel += cols; else if (k === "up") { if (lsel >= cols) lsel -= cols; else if (screen === "search") { sFocus = "osk"; } } else if (k === "ok" || k === "enter") { if (screen === "search") pickResult(list, lsel); else if (list[lsel]) play(list[lsel]); return; } else return;
+    move(); screen === "library" ? drawLibrary() : drawSearch(); return;
+  }
+  if (screen !== "home") return;
+  if (k === "menu") { openCc(); return; }
+  if (k === "l1" || k === "r1" || (k === "up" && focus === "row")) { if (k === "up" || k === "l1" || k === "r1") { setTab(tab === "games" ? "media" : "games"); return; } }
+  if (k === "options") { moreMenu(); return; }
+  if (k === "search") { openSearch(); return; }
+  const items = rowItems();
+  if (focus === "row") {
+    if (k === "left" && sel > 0) { sel--; move(); } else if (k === "right" && sel < items.length - 1) { sel++; move(); }
+    else if (k === "down") { if (tab === "media") { if (cur() && cur().items.length) { focus = "cards"; act = 0; move(); } } else { focus = "acts"; act = 0; move(); } } else if (k === "ok" || k === "enter") { if (tab === "media") { if (cur() && cur().items.length) { focus = "cards"; act = 0; move(); drawRow(); } return; } activate(); return; }
+    else if (k === "back") { if (sel > 0) { sel = 0; move(); } }
+    drawRow(); return;
+  }
+  if (focus === "acts") {
+    if (k === "left" && act > 0) { act--; move(); } else if (k === "right" && act < 1) { act++; move(); }
+    else if (k === "down" && hubOk()) { focus = "hub"; hsec = 0; hcard = 0; move(); } else if (k === "down" && $$("#cards .card").length) { focus = "cards"; act = 0; move(); } else if (k === "up" || k === "back") { focus = "row"; back(); drawRow(); return; }
+    else if (k === "ok" || k === "enter") { act === 0 ? activate() : moreMenu(); return; }
+    drawActs(); return;
+  }
+  if (focus === "hub") {
+    const secs = hubSections(cur()), n = secs[hsec].cards.length;
+    if (k === "left" && hcard > 0) { hcard--; move(); } else if (k === "right" && hcard < n - 1) { hcard++; move(); }
+    else if (k === "down" && hsec < secs.length - 1) { hsec++; hcard = Math.min(hcard, secs[hsec].cards.length - 1); move(); }
+    else if (k === "up") { if (hsec > 0) { hsec--; hcard = Math.min(hcard, secs[hsec].cards.length - 1); } else { focus = "acts"; act = 0; } move(); }
+    else if (k === "back") { focus = "acts"; act = 0; back(); }
+    else if (k === "ok" || k === "enter") { ok(); const c = secs[hsec].cards[hcard]; if (c && c.run) c.run(); return; }
+    drawActs(); return;
+  }
+  if (focus === "cards") {
+    const n = $$("#cards .card").length;
+    if (k === "left" && act > 0) { act--; move(); } else if (k === "right" && act < n - 1) { act++; move(); }
+    else if (k === "up" || k === "back") { focus = tab === "media" ? "row" : "acts"; act = 0; move(); if (tab === "media") { drawRow(); return; } } else if (k === "ok" || k === "enter") { $$("#cards .card")[act].click(); return; }
+    drawActs();
+  }
+}
+const KEYS = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", Enter: "enter", Escape: "back", Backspace: "back", Delete: "del", Tab: "tab", PageUp: "l1", PageDown: "r1", " ": "space" };
+const LETTERS = { z: "zoom", c: "create", q: "menu", h: "help", "?": "help", o: "options", a: "left", d: "right", w: "up", s: "down", "/": "search" };
+addEventListener("keydown", e => {
+  lastPad = false;
+  if (e.key === "F11") { e.preventDefault(); send({ fullscreen: true }); return; }
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const typing = $("#osk").classList.contains("on") || (screen === "search" && sFocus === "osk");
+  let k = KEYS[e.key] || null;
+  if (e.key === "Backspace" && (typing || $("#pin").classList.contains("on"))) k = "del";
+  if (!k && /^\d$/.test(e.key)) k = e.key;
+  if (!k && e.key.length === 1) k = typing ? e.key.toLowerCase() : (LETTERS[e.key.toLowerCase()] || null);
+  if (k === "create" && capOpt("createMode", "menu") === "shot") k = "createshot";
+  if (k === "space" && !typing) k = "ok";
+  if (k === "enter" && !typing && !$("#pin").classList.contains("on")) k = "ok";
+  if (screen === "boot") { e.preventDefault(); input("ok"); return; }
+  if (k) { e.preventDefault(); input(k); }
+});
+$("#boot").onclick = () => input("ok");
+$("#menuBtn").onclick = e => { e.stopPropagation(); screen === "cc" ? closeCc() : openCc(); };
+$("#helpBtn").onclick = e => { e.stopPropagation(); openHelp(); };
+$("#setBtn").onclick = e => { e.stopPropagation(); openSettings(); };
+$("#searchBtn").onclick = e => { e.stopPropagation(); openSearch(); };
+$("#me").onclick = e => { e.stopPropagation(); openMenu($("#me"), [["Switch user", switchUser], ["Settings for " + (me ? me.name : ""), () => { openSettings(); if (me) openSetPage("users", "Users and Accounts", me); }], ["Cancel", () => {}]]); };
+$("#playBtn").onclick = () => { if (focus !== "acts" && hubOk()) { focus = "acts"; act = 0; move(); drawActs(); return; } focus = "acts"; act = 0; activate(); };
+$("#moreBtn").onclick = e => { e.stopPropagation(); focus = "acts"; act = 1; drawActs(); moreMenu(); };
+$$("#tabs span").forEach(s => s.onclick = () => setTab(s.dataset.tab));
+$$("#ltabs span").forEach(s => s.onclick = () => { filter = s.dataset.f; lsel = 0; move(); drawLibrary(); });
+$("#lsortBtn").onclick = e => { e.stopPropagation(); sortMenu(); };
+$("#lsort").onclick = e => { e.stopPropagation(); sortMenu(); };
+$("#help").onclick = () => closeHelp();
+$("#notes").onclick = () => { $("#notes").classList.remove("on"); };
+$("#ginfo").onclick = () => { $("#ginfo").classList.remove("on"); };
+$("#viewer").onclick = e => { if (e.target.id === "viewer" || e.target.id === "vimg") { closeViewer(); back(); } };
+$("#vprev").onclick = e => { e.stopPropagation(); input("left"); };
+$("#vnext").onclick = e => { e.stopPropagation(); input("right"); };
+$("#pin").onclick = e => { if (e.target.id === "pin") { closePin(); if (screen === "profiles") drawProfiles(); } };
+$("#scrim").onclick = e => { e.stopPropagation(); closeMenu(); back(); if (screen === "cc") drawCc(); };
+$("#cc").onclick = e => { if (e.target.id === "cc" || e.target.id === "ccards" || e.target.id === "cicons") { e.stopPropagation(); closeCc(); if (ingame) send({ resume: true }); } };
+addEventListener("resize", () => { if (screen === "home") placeName(); });
+addEventListener("wheel", e => { if (screen !== "home" || tab !== "games" || helpOn || Math.abs(e.deltaY) < 20) return; const rem = parseFloat(getComputedStyle(document.documentElement).fontSize); if (focus === "row" && e.clientY < 22 * rem) { input(e.deltaY > 0 ? "right" : "left"); return; } if (!hubOk()) return; if (e.deltaY > 0) { if (focus === "row") { focus = "acts"; act = 0; move(); drawActs(); } else input("down"); } else input("up"); }, { passive: true });
+
+/* controller: standard mapping, held directions repeat */
+const held = {}, heldAt = {};
+let padFocus = false;
+let createDownAt = 0;
+function pad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  const now = performance.now();
+  const focused = document.hasFocus() && document.visibilityState === "visible";
+  const absorb = focused && !padFocus;
+  padFocus = focused;
+  for (const gp of pads) {
+    if (!gp) continue;
+    const hk = held[gp.index] = held[gp.index] || {}, ha = heldAt[gp.index] = heldAt[gp.index] || {};
+    const ax = gp.axes, b = i => gp.buttons[i] && gp.buttons[i].pressed;
+    const pinOn = $("#pin").classList.contains("on");
+    const map = pinOn ? { "1": b(14), "2": b(12), "3": b(15), "4": b(13), "5": b(5), "6": b(7), "7": b(4), "8": b(6), "9": b(3), "0": b(2), back: b(1) } : { left: b(14) || ax[0] < -.55, right: b(15) || ax[0] > .55, up: b(12) || ax[1] < -.55, down: b(13) || ax[1] > .55, ok: b(a11y("swap") ? 1 : 0), back: b(a11y("swap") ? 0 : 1), zoom: b(10) && b(11), options: b(9), create: b(8), l1: b(4), r1: b(5), search: b(3) };
+    if (!HOST) map.menu = b(16);
+    if (notesOn() || (screen === "search" && sFocus === "grid")) { map.del = b(2); }
+    if (!pinOn && ($("#osk").classList.contains("on") || (screen === "search" && sFocus === "osk"))) { delete map.search; map.del = b(2); map.space = b(3); map.enter = b(7); map.caps = b(6); }
+    let fired = false;
+    for (const [k, v] of Object.entries(map)) {
+      if (!focused || absorb) { hk[k] = v; ha[k] = now + ({ slow: 600, normal: 380, fast: 250 })[a11yv("hold", "normal")]; continue; }
+      if (k === "create" && capOpt("createMode", "menu") === "shot") { if (v && !hk[k]) createDownAt = now; else if (!v && hk[k]) { lastPad = true; input(now - createDownAt >= 600 ? "create" : "createshot"); } hk[k] = v; continue; }
+      if (v && !hk[k]) { if (!fired) { fired = true; lastPad = true; ha[k] = now + ({ slow: 600, normal: 380, fast: 250 })[a11yv("hold", "normal")]; input(screen === "boot" ? "ok" : k); } else ha[k] = now + ({ slow: 600, normal: 380, fast: 250 })[a11yv("hold", "normal")]; }
+      else if (v && ["left", "right", "up", "down"].includes(k) && now > ha[k]) { ha[k] = now + ({ slow: 200, normal: 110, fast: 60 })[a11yv("hold", "normal")]; input(k); }
+      hk[k] = v;
+    }
+    if (focused && !absorb && !HOST && b(16) && !hk.ps) { hk.ps = true; psButton(); } else if (!b(16)) hk.ps = false;
+  }
+  requestAnimationFrame(pad);
+}
+requestAnimationFrame(pad);
+
+/* accessibility (PS5 Settings > Accessibility: makeuseof's 4K shot of Display, Screen Reader, Controllers) */
+var CC_NAMES = { off: "Off", protan: "Protanopia (red)", deutan: "Deuteranopia (green)", tritan: "Tritanopia (blue)", gray: "Grayscale" };
+var CC_SIM = { protan: [[.152286, 1.052583, -.204868], [.114503, .786281, .099216], [-.003882, -.048116, 1.051998]], deutan: [[.367322, .860646, -.227968], [.280085, .672501, .047413], [-.01182, .04294, .968881]], tritan: [[1.255528, -.076749, -.178779], [-.078411, .930809, .147602], [.004733, .691367, .3039]] };
+function ccMatrix(kind, k) {
+  const S3 = CC_SIM[kind], E = kind === "tritan" ? [[1, 0, .7], [0, 1, .7], [0, 0, 0]] : [[0, 0, 0], [.7, 1, 0], [.7, 0, 1]], I = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const D = I.map((r, i) => r.map((v, j) => v - S3[i][j])), ED = E.map(r => [0, 1, 2].map(j => r[0] * D[0][j] + r[1] * D[1][j] + r[2] * D[2][j]));
+  const M = I.map((r, i) => r.map((v, j) => v + k * ED[i][j]));
+  return M.map(r => r.map(v => v.toFixed(4)).join(" ") + " 0 0").join(" ") + " 0 0 0 1 0";
+}
+function applyFilters() {
+  let svg = $("#a11yFilters");
+  if (!svg) { svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.id = "a11yFilters"; svg.setAttribute("style", "position:absolute;width:0;height:0"); svg.innerHTML = '<filter id="ccf" color-interpolation-filters="linearRGB"><feColorMatrix id="ccm" type="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 1 0"/></filter>'; document.body.appendChild(svg); }
+  const cc = a11yv("cc", "off"), f = [];
+  if (cc === "gray") f.push("grayscale(1)");
+  else if (cc !== "off") { $("#ccm").setAttribute("values", ccMatrix(cc, a11yv("ccStrength", 1))); f.push("url(#ccf)"); }
+  if (a11y("invert")) f.push("invert(1) hue-rotate(180deg)");
+  document.documentElement.style.filter = f.join(" ");
+}
+function applyTextSize() {
+  const f = { default: 1, large: 1.15, larger: 1.3 }[a11yv("text", "default")] || 1;
+  const sheet = [...document.styleSheets].find(x => x.ownerNode && x.ownerNode.tagName === "STYLE" && !x.ownerNode.id); if (!sheet) return;
+  const walk = rules => { for (const r of rules) { if (r.cssRules && !r.style) walk(r.cssRules); else if (r.style && !/legend|#clock|cchint|\.card|#shelf|\.shelf|#cards/.test(r.selectorText || "")) { if (r._fs === undefined) r._fs = r.style.fontSize || ""; const m = /^([\d.]+)rem$/.exec(r._fs); if (m && +m[1] < 2.6) r.style.fontSize = (+m[1] * f).toFixed(3) + "rem"; } } };
+  walk(sheet.cssRules);
+}
+function applyA11y() { applyFilters(); applyTextSize(); if (zoomOn && !a11y("zoom")) { zoomOn = false; applyZoom(); } }
+var zoomOn = false, zoomEl = null;
+function toggleZoom() { if (!a11y("zoom")) return; zoomOn = !zoomOn; zoomEl = null; applyZoom(); speak(zoomOn ? "Zoom on" : "Zoom off", true); }
+function applyZoom() {
+  const b = document.body;
+  if (!zoomOn) { b.style.transform = ""; b.style.transformOrigin = ""; return; }
+  const t = a11yTarget(); b.style.transform = "";
+  let x = innerWidth / 2, y = innerHeight / 2;
+  if (t && t.el) { const r = t.el.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2; }
+  b.style.transformOrigin = x + "px " + y + "px"; b.style.transform = "scale(2)";
+}
+function a11yTarget() {
+  if (restOn()) return null;
+  const q = sel => { for (const e of document.querySelectorAll(sel)) if (e.getClientRects().length) return e; return null; };
+  let e;
+  if (helpOn) return { el: $("#help"), text: "Help. Press back to close." };
+  if ($("#viewer").classList.contains("on")) { e = $("#vcap"); return { el: e, text: e.innerText }; }
+  if (screen === "menu" && (e = q("#menu .mi.sel"))) return { el: e, text: e.innerText };
+  if (createOn()) return { el: q("#create .sel"), text: $("#crLabel").textContent };
+  if ($("#osk").classList.contains("on") && (e = q("#oskKeys span.sel"))) return { el: e, text: e.firstChild ? e.firstChild.textContent : e.textContent };
+  if ($("#pin").classList.contains("on") && (e = q("#keys span.sel"))) return { el: e, text: e.firstChild ? e.firstChild.textContent : "" };
+  const sels = { cc: "#ccards .ccard.sel, #cicons .ci.sel", settings: "#slist .srow.sel, #ssec div.cur.foc", library: "#lgrid .lt.on", search: "#stabs span.sel, #sOsk span.sel, #sgrid .on", trophies: "#trList .sel", gallery: "#gTabs span.sel, #gSortBtn.sel, #gGrid .gi.sel", home: "#track .tile.foc, #cards .card.sel, #hubrows .sel, .foc" };
+  e = sels[screen] ? q(sels[screen]) : null;
+  if (!e) { const sec = $("#" + screen); e = sec ? [...sec.querySelectorAll(".sel, .foc, .on.sel")].find(x => x.getClientRects().length) : null; }
+  if (!e) return null;
+  let text = e.innerText || "";
+  if (e.classList.contains("tile")) text = (rowItems()[+e.dataset.i] || {}).title || text;
+  if (e.classList.contains("lt")) text = (libList()[+e.dataset.i] || {}).title || text;
+  if (e.classList.contains("ci")) text = (e.querySelector(".lbl") || e).textContent;
+  if (e.classList.contains("prof")) text = (PROFILES[prof] || {}).name || text;
+  const tg = e.querySelector(".tg"); if (tg) text += tg.classList.contains("on") ? ", on" : ", off";
+  return { el: e, text: text.replace(/\s+/g, " ").trim().slice(0, 220) };
+}
+var lastSpoken = "", mqEl = null, mqAnims = [];
+function speak(t, force) {
+  if (!a11y("reader") || !window.speechSynthesis || !t) return;
+  if (!force && t === lastSpoken) return;
+  lastSpoken = t; speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(t);
+  u.rate = { slow: .8, normal: 1, fast: 1.35, fastest: 1.7 }[a11yv("rate", "normal")];
+  u.volume = { low: .4, medium: .7, high: 1 }[a11yv("vol", "high")];
+  const v = speechSynthesis.getVoices().find(x => x.name === a11yv("voice", "")); if (v) u.voice = v;
+  speechSynthesis.speak(u);
+}
+function marquee(el) {
+  if (el === mqEl) return;
+  mqEl = el; mqAnims.forEach(a => { try { a.cancel(); a.effect.target.style.textOverflow = ""; } catch (x) {} }); mqAnims = [];
+  if (!el || a11y("motion")) return;
+  const speed = { slow: 35, normal: 70, fast: 130 }[a11yv("scroll", "normal")];
+  [el, ...el.querySelectorAll("*")].filter(x => x.scrollWidth > x.clientWidth + 2 && getComputedStyle(x).whiteSpace === "nowrap" && getComputedStyle(x).overflow.includes("hidden")).slice(0, 3).forEach(x => {
+    const d = x.scrollWidth - x.clientWidth, run = d / speed * 1000;
+    x.style.textOverflow = "clip";
+    mqAnims.push(x.animate([{ textIndent: "0px" }, { textIndent: "0px", offset: .2 }, { textIndent: -d + "px", offset: .8 }, { textIndent: -d + "px" }], { duration: run / .6, iterations: Infinity }));
+  });
+}
+setInterval(() => { const t = a11yTarget(); if (t && t.el !== zoomEl && zoomOn) { zoomEl = t.el; applyZoom(); } speak(t ? t.text : ""); marquee(t ? t.el : null); }, 250);
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (screen === "settings") drawSettings(); };
+
+/* downloads in the control center: data from cache/downloads.js (downloads.py; task "AnyPS5 downloads" every minute,
+   and AnyPS5.exe when the control center opens) */
+let DL = null;
+const DL_SVG = '<path d="M12 3.5v11M7.5 10.5L12 15l4.5-4.5M4 15.5v3A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-3"/>';
+const DL_KIND = { download: "Copying from the PS5", install: "Extracting", job: "Console job", test: "Testing", build: "Building", machine: "Other machine" };
+const DL_GLYPH = { test: '<rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M8 20h8M10.5 9.5l4 2-4 2z"/>', build: '<path d="M14.5 6.5l3 3M4 20l7.5-7.5M13 5l6 6-2.5 2.5-6-6z"/>', machine: '<rect x="4" y="5" width="16" height="10" rx="1.2"/><path d="M2.5 19h19"/>' };
+function loadDownloads(cb) { const sc = document.createElement("script"); sc.src = "cache/downloads.js?" + Date.now(); sc.onload = () => { DL = window.DOWNLOADS || null; sc.remove(); if (cb) cb(); }; sc.onerror = () => { sc.remove(); if (cb) cb(); }; document.head.appendChild(sc); }
+function dlItems() { return DL && DL.items ? DL.items : []; }
+function dlGame(x) { const t = fold((x.title || "").replace(/^Building AnyPS5 for /, "")); return ALL.find(g => x.gameId && g.id === x.gameId) || ALL.find(g => fold(g.title) === t) || null; }
+function dlOn() { return screen === "menu" && $("#menu").classList.contains("dlpanel"); }
+function openDownloads(keep) {
+  const sel = keep ? msel : 0;
+  let n = Math.min(5, dlItems().length);
+  dlPanel(n, sel);
+  const m = $("#menu");
+  while (n > 1 && m.scrollHeight > m.clientHeight + 2) { n--; dlPanel(n, sel); }
+}
+function dlPanel(n, sel) {
+  if (dlOn()) closeMenu();
+  const items = dlItems().slice(0, n);
+  const rows = items.map(x => { const g = dlGame(x), pct = typeof x.pct === "number" ? x.pct : null;
+    return [x.title, () => {}, `<i class="dic"${g && g.icon ? ` style="background-image:url('${g.icon}')"` : ""}>${g && g.icon ? "" : `<svg viewBox="0 0 24 24">${DL_GLYPH[x.kind] || DL_SVG}</svg>`}</i><div class="dtx"><small>${esc(DL_KIND[x.kind] || "Working")}${x.started ? " · since " + esc(x.started) : ""}</small><b>${esc(x.title)}</b><span>${esc(x.status || "")}</span><div class="dbar${pct === null ? " ind" : ""}"><i${pct === null ? "" : ` style="width:${pct}%"`}></i></div></div>${pct === null ? "" : `<em>${pct}%</em>`}`]; });
+  if (!rows.length) rows.push(["Nothing", () => {}, `<i class="dic"><svg viewBox="0 0 24 24">${DL_SVG}</svg></i><div class="dtx"><b>Nothing is downloading or running</b><span>Copies from your PS5, builds and tests show up here.</span></div>`]);
+  if (dlItems().length > n) rows.push(["More", () => { closeCc(); send({ machines: true }); }, `<div class="dtx"><b>${dlItems().length - n} more</b><span>See everything in the Machines window</span></div>`, "dla"]);
+  rows.push(["Open the Machines Window", () => { closeCc(); send({ machines: true }); }, `<i class="dic"><svg viewBox="0 0 24 24">${DL_GLYPH.machine}</svg></i><div class="dtx"><b>Open the Machines Window</b><span>The pipeline, every machine and its jobs</span></div>`, "dla"]);
+  openMenu($$("#cicons .ci")[3], rows, "dl");
+  const mh = $("#menu .mh"); if (mh && DL && DL.paused) mh.innerHTML += "<em>Pipeline paused</em>";
+  msel = Math.min(sel, rows.length - 1); drawMenu();
+}
+setInterval(() => { if (screen === "cc" || dlOn()) send({ downloads: true }); }, 20000);
+
+/* power menu and rest mode (AnyPS5.exe pauses the running game while AnyPS5 rests) */
+const PW_ICONS = { rest: '<path d="M12 3v8M7.5 6.2a7.5 7.5 0 1 0 9 0"/>', off: '<circle cx="12" cy="12" r="8.2"/>', restart: '<path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3M6 6l2.1 2.1M15.9 15.9L18 18M6 18l2.1-2.1M15.9 8.1L18 6"/>' };
+function powerRow(icon, title, desc) { return `<svg viewBox="0 0 24 24">${PW_ICONS[icon]}</svg><div>${esc(title)}<div class="pd">${esc(desc)}</div></div>`; }
+function powerMenu() {
+  const pg = playingGame(), g = pg ? pg.title : "";
+  openMenu($$("#cicons .ci")[9], [
+    ["Enter Rest Mode", enterRest, powerRow("rest", "Enter Rest Mode", g ? "Pauses " + g + " where it is and darkens the screen. Press any button to wake AnyPS5 and carry on playing." : "Darkens the screen. Press any button to wake AnyPS5. The test pipeline keeps working.")],
+    ["Turn Off AnyPS5", () => powerOff(false), powerRow("off", "Turn Off AnyPS5", (g ? "Closes " + g + " and " : "Closes ") + "AnyPS5. The test pipeline keeps working.")],
+    ["Restart AnyPS5", () => powerOff(true), powerRow("restart", "Restart AnyPS5", (g ? "Closes " + g + " and starts" : "Starts") + " AnyPS5 again.")]], "power");
+}
+function restOn() { return $("#rest").classList.contains("on"); }
+function enterRest() { closeAllMenus(); const r = $("#rest"); r.classList.remove("on"); void r.offsetWidth; r.classList.add("on"); send({ rest: true }); }
+function wakeUp(fromHost) { if (!restOn()) return; $("#rest").classList.remove("on"); if (!fromHost) send({ wake: true }); if (ingame) send({ resume: true }); ok(); }
+function powerOff(restart) { closeAllMenus(); toast(restart ? "Restarting AnyPS5..." : "Turning off AnyPS5..."); send({ power: restart ? "restart" : "off" }); }
+$("#rest").onclick = ev => { ev.stopPropagation(); wakeUp(); };
+addEventListener("keydown", e => { if (restOn()) { e.preventDefault(); e.stopImmediatePropagation(); wakeUp(); } }, true);
+
+/* Create menu: the DualSense Create button, here and over a game (AnyPS5.exe sends {ingame, open: "create"}) */
+let crSel = 1, crRec = null;
+const CR_ALL = { last: ["crLast", "Recent Captures"], recent: ["crRecent", "Save Recent Gameplay"], shot: ["crShot", "Take Screenshot"], rec: ["crRec", "Start New Recording"], opts: ["crOpts", "Capture Options"] };
+function crList() { if (!crRec || !crRec.supported) return ["last", "shot", "opts"]; return crRec.replay ? ["last", "recent", "shot", "rec", "opts"] : ["last", "shot", "rec", "opts"]; }
+function capOpt(k, d) { const c = S.capture || {}; return c[k] === undefined ? d : c[k]; }
+function setCapOpt(k, v) { S.capture = Object.assign({}, S.capture || {}, { [k]: v }); saveSettings(); }
+function createOn() { return $("#create").classList.contains("on"); }
+function openCreate() { closeMenu(); crSel = crList().indexOf("shot"); $("#create").classList.add("on"); drawCreate(); ok(); loadMedia(() => { if (createOn()) drawCreate(); });
+  if (window.REC) Promise.resolve(window.REC.status()).then(st => { const was = crList()[crSel]; crRec = st || null; crSel = Math.max(0, crList().indexOf(was)); if (createOn()) drawCreate(); }).catch(() => {}); }
+function closeCreate(resume) { $("#create").classList.remove("on"); closeMenu(); if (resume !== false && ingame) send({ resume: true }); }
+function drawCreate() {
+  const last = MEDIA && MEDIA.items[0], tile = $("#crLast");
+  tile.style.backgroundImage = last ? `url('${last.thumb}')` : "none";
+  tile.innerHTML = last ? `<em>${esc(last.game)}</em>` : `<span>No captures yet</span>`;
+  const L = crList(); if (crSel >= L.length) crSel = L.length - 1;
+  ["crRecent", "crRec"].forEach(id => { $("#" + id).style.display = L.some(k => CR_ALL[k][0] === id) ? "" : "none"; });
+  Object.values(CR_ALL).forEach(([id]) => $("#" + id).classList.toggle("sel", id === CR_ALL[L[crSel]][0]));
+  const el = $("#" + CR_ALL[L[crSel]][0]), bar = $(".crbar").getBoundingClientRect(), r = el.getBoundingClientRect(), lab = $("#crLabel");
+  lab.textContent = L[crSel] === "rec" && crRec && crRec.recording ? "Stop Recording" : CR_ALL[L[crSel]][1]; lab.style.left = Math.max(r.left + r.width / 2, lab.offsetWidth / 2 + 8) - bar.left + "px";
+  if (crSel === 0) lab.style.left = Math.max(r.left + r.width / 2 - bar.left, lab.offsetWidth / 2 + 8) + "px";
+}
+function createPick() {
+  const id = crList()[crSel];
+  if (id === "recent" && window.REC) { const lens = [[15, "Last 15 Seconds"], [30, "Last 30 Seconds"], [60, "Last 1 Minute"], [300, "Last 5 Minutes"], [900, "Last 15 Minutes"]].filter(x => x[0] <= ((S.video && S.video.recent) || 60)); openMenu($("#crRecent"), lens.map(([sec, t]) => [t, () => { window.REC.saveRecent(sec); }]).concat([["Cancel", () => {}, "", "sep"]]), "psmenu"); return; }
+  if (id === "rec" && window.REC) { const stop = crRec && crRec.recording; Promise.resolve(stop ? window.REC.stop() : window.REC.start()).then(r => { if (!(r && r.ok === false)) crRec = Object.assign({}, crRec, { recording: !stop }); if (createOn()) drawCreate(); }); if (!stop) closeCreate(); return; }
+  if (id === "last") {
+    const items = MEDIA ? MEDIA.items : [];
+    if (!items.length) { toast("No captures yet. Take a screenshot first."); return; }
+    openViewer(items.slice(0, 40).map(m => ({ img: m.src, title: m.trophy ? (m.trophy.name || "Trophy") + " · " + m.game : m.game, sub: mediaSub(m), mid: m.id })), 0); return;
+  }
+  if (id === "shot") { const was = ingame; closeCreate(); setTimeout(() => send({ shot: true }), was ? 250 : 150); return; }
+  const fmt = capOpt("fmt", "png"), tr = capOpt("trophy", true), nt = capOpt("notify", true);
+  openMenu($("#crOpts"), [
+    [(fmt === "png" ? "✓  " : "") + "Screenshot File Type: PNG", () => { setCapOpt("fmt", "png"); }],
+    [(fmt === "jpg" ? "✓  " : "") + "Screenshot File Type: JPG", () => { setCapOpt("fmt", "jpg"); }],
+    [(tr ? "✓  " : "") + "Save Trophy Screenshots", () => { setCapOpt("trophy", !tr); }, "", "sep"],
+    [(nt ? "✓  " : "") + "Show a Notification When Saved", () => { setCapOpt("notify", !nt); }],
+    ["Cancel", () => {}, "", "sep"]], "psmenu");
+}
+function createInput(k) {
+  if (k === "left" && crSel > 0) { crSel--; move(); drawCreate(); }
+  else if (k === "right" && crSel < crList().length - 1) { crSel++; move(); drawCreate(); }
+  else if (k === "ok" || k === "enter") createPick();
+  else if (k === "back" || k === "create") { closeCreate(); back(); }
+  else if (k === "menu") { closeCreate(false); openCc(); }
+}
+Object.entries(CR_ALL).forEach(([k, [id]]) => { $("#" + id).onclick = ev => { ev.stopPropagation(); const i = crList().indexOf(k); if (i < 0) return; crSel = i; drawCreate(); createPick(); }; });
+$("#create").onclick = ev => { if (ev.target === $("#create")) { closeCreate(); back(); } };
+
+/* media gallery: data from cache/media.js (media.py, scheduled task "AnyPS5 media" every minute, and after a capture) */
+let MEDIA = null, gTab = "all", gAlbum = null, gSel = 0, gFocus = "grid", gFrom = "home";
+const GTABS = [["all", "All"], ["fav", "Favorites"], ["trophies", "Trophies"], ["albums", "Albums"]];
+const GSORTS = { new: "Date (Newest)", old: "Date (Oldest)", game: "Game" };
+const HEART = '<svg class="heart" viewBox="0 0 24 24"><path d="M12 20.5l-1.4-1.3C5.4 14.6 2 11.5 2 7.8 2 4.8 4.4 2.5 7.4 2.5c1.7 0 3.4.8 4.6 2.1 1.2-1.3 2.9-2.1 4.6-2.1 3 0 5.4 2.3 5.4 5.3 0 3.7-3.4 6.8-8.6 11.4z"/></svg>';
+function loadMedia(cb) { const sc = document.createElement("script"); sc.src = "cache/media.js?" + Date.now(); sc.onload = () => { MEDIA = window.MEDIA || null; sc.remove(); if (cb) cb(); }; sc.onerror = () => { sc.remove(); if (cb) cb(); }; document.head.appendChild(sc); }
+function favs() { return (me && me.favMedia) || []; }
+function toggleFav(id) { if (!me) return; const f = favs().slice(), i = f.indexOf(id); if (i >= 0) f.splice(i, 1); else f.unshift(id); me.favMedia = f; saveSettings(); }
+function gWhen(ms) { const d = new Date(ms); return (window.anyps5FormatDate ? window.anyps5FormatDate(d) : d.toLocaleDateString()) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !S.clock24 }); }
+function testShots() { return ALL.filter(g => g.shot).map(g => ({ id: "test-" + g.id, game: g.title, gameId: g.id, src: g.shot, thumb: g.shot, at: Date.parse((g.lastRun || "").replace(" ", "T")) || 0, source: "Test run" })); }
+function albums() {
+  const by = {}; (MEDIA ? MEDIA.items : []).forEach(m => { (by[m.gameId] = by[m.gameId] || []).push(m); });
+  const list = Object.keys(by).map(id => { const l = by[id].slice().sort((a, b) => b.at - a.at); return { album: id, title: l[0].game, count: l.length, cover: l[0].thumb, at: l[0].at }; }).sort((a, b) => b.at - a.at);
+  const t = testShots().sort((a, b) => b.at - a.at); if (t.length) list.push({ album: "_tests", title: "Test Runs", count: t.length, cover: t[0].thumb, at: 0 });
+  return list;
+}
+function gItems() {
+  if (gTab === "albums" && !gAlbum) return albums();
+  const all = MEDIA ? MEDIA.items.slice() : [];
+  const list = gAlbum ? (gAlbum === "_tests" ? testShots() : all.filter(m => m.gameId === gAlbum)) : gTab === "fav" ? all.filter(m => favs().includes(m.id)) : gTab === "trophies" ? all.filter(m => m.trophy) : all;
+  const k = S.gSort || "new";
+  return list.sort(k === "old" ? (a, b) => a.at - b.at : k === "game" ? (a, b) => a.game.localeCompare(b.game) || b.at - a.at : (a, b) => b.at - a.at);
+}
+function galleryCols() { return matchMedia("(max-aspect-ratio: 4/3)").matches ? 2 : 3; }
+function openGallery(tab, album) { if (screen !== "gallery") gFrom = screen === "menu" || screen === "cc" ? "home" : screen; gTab = tab || "all"; gAlbum = album || null; gSel = 0; gFocus = "grid"; show("gallery"); drawGallery(); ok(); loadMedia(() => { if (screen === "gallery") drawGallery(); }); }
+function mediaSub(m) { return (m.source === "Trophy" ? "Trophy capture" : m.source === "Test run" ? "Test run" : m.source === "In game" ? "Screenshot (in the game)" : "Screenshot") + " · " + (m.at ? gWhen(m.at) : "date unknown"); }
+function drawGallery() {
+  const items = gItems(), albumView = gTab === "albums" && !gAlbum;
+  if (!items.length && gFocus === "grid") gFocus = gAlbum ? "side" : "tabs";
+  $("#gHead").textContent = gAlbum ? (gAlbum === "_tests" ? "Test Runs" : (items[0] && items[0].game) || "Album") : "Media Gallery";
+  $("#gTabs").innerHTML = gAlbum ? "" : GTABS.map(t => `<span class="${t[0] === gTab ? "on" : ""}${t[0] === gTab && gFocus === "tabs" ? " sel" : ""}" data-t="${t[0]}">${t[1]}</span>`).join("");
+  $$("#gTabs span").forEach(e => e.onclick = ev => { ev.stopPropagation(); gTab = e.dataset.t; gAlbum = null; gSel = 0; gFocus = "tabs"; move(); drawGallery(); });
+  $("#gSortLbl").textContent = albumView ? "" : "Sort by: " + GSORTS[S.gSort || "new"];
+  $("#gSortBtn").classList.toggle("sel", gFocus === "side");
+  $("#gSortBtn").onclick = ev => { ev.stopPropagation(); gFocus = "side"; galleryMenu(); };
+  if (gSel >= items.length) gSel = Math.max(0, items.length - 1);
+  const empty = gTab === "fav" && !gAlbum ? "No favorites yet. Press Options on a capture and add it to Favorites." : gTab === "trophies" && !gAlbum ? "No trophy captures yet. AnyPS5 saves one the moment you earn a trophy in a game." : "No captures yet. Use Screenshot in the control center while you play.";
+  $("#gGrid").innerHTML = !items.length ? `<div class="gempty">${empty}</div>` : items.map((x, i) => x.album
+    ? `<div class="gi${gFocus === "grid" && i === gSel ? " sel" : ""}" data-i="${i}"><i style="background-image:url('${x.cover}')"></i><div class="ga"><b>${esc(x.title)}</b><small>${x.count} ${x.count === 1 ? "item" : "items"}</small></div></div>`
+    : `<div class="gi${gFocus === "grid" && i === gSel ? " sel" : ""}" data-i="${i}"><i style="background-image:url('${x.thumb}')"></i><div class="gg">${esc(x.game)}</div><div class="gb">${x.trophy ? cup(x.trophy.grade) : ""}${favs().includes(x.id) ? HEART : ""}</div>${x.source === "Test run" ? `<span class="gt">Test run</span>` : ""}</div>`).join("");
+  $$("#gGrid .gi").forEach(e => e.onclick = ev => { ev.stopPropagation(); const i = +e.dataset.i; if (gFocus === "grid" && i === gSel) galleryOk(); else { gFocus = "grid"; gSel = i; move(); drawGallery(); } });
+  const on = $("#gGrid .gi.sel"); if (on) on.scrollIntoView({ block: "nearest" });
+}
+function galleryOk() {
+  const items = gItems(), x = items[gSel]; if (!x) return;
+  if (x.album) { gAlbum = x.album; gSel = 0; gFocus = "grid"; ok(); drawGallery(); return; }
+  openViewer(items.map(m => ({ img: m.src, title: m.trophy ? (m.trophy.name || "Trophy") + " · " + m.game : m.game, sub: mediaSub(m), mid: String(m.id).startsWith("test-") ? "" : m.id })), gSel);
+}
+function galleryMenu() {
+  const items = gItems(), x = gFocus === "grid" ? items[gSel] : null, acts = [];
+  if (x && x.id && !x.album && !String(x.id).startsWith("test-")) acts.push([favs().includes(x.id) ? "Remove from Favorites" : "Add to Favorites", () => { toggleFav(x.id); drawGallery(); }]);
+  if (!(gTab === "albums" && !gAlbum)) Object.keys(GSORTS).forEach((k, n) => acts.push([((S.gSort || "new") === k ? "✓  " : "") + "Sort by: " + GSORTS[k], () => { S.gSort = k; saveSettings(); gSel = 0; drawGallery(); }, "", acts.length && n === 0 ? "sep" : ""]));
+  acts.push(["Cancel", () => {}, "", "sep"]);
+  openMenu(x ? $$("#gGrid .gi")[gSel] : $("#gSortBtn"), acts, "psmenu");
+}
+function galleryInput(k) {
+  const items = gItems(), cols = galleryCols(), ti = GTABS.findIndex(t => t[0] === gTab);
+  if (k === "menu") { openCc(); return; }
+  if (k === "options") { galleryMenu(); return; }
+  if (k === "l1" || k === "r1" || k === "tab") { if (gAlbum) return; gTab = GTABS[(ti + (k === "l1" ? GTABS.length - 1 : 1)) % GTABS.length][0]; gSel = 0; move(); drawGallery(); return; }
+  if (k === "back") {
+    if (gAlbum) { const a = gAlbum; gAlbum = null; gTab = "albums"; gFocus = "grid"; gSel = Math.max(0, albums().findIndex(x => x.album === a)); back(); drawGallery(); return; }
+    show(gFrom || "home"); if (screen === "home") drawRow(); back(); return;
+  }
+  if (gFocus === "tabs") {
+    if (k === "left" && ti > 0) { gTab = GTABS[ti - 1][0]; gSel = 0; move(); }
+    else if (k === "right" && ti < GTABS.length - 1) { gTab = GTABS[ti + 1][0]; gSel = 0; move(); }
+    else if ((k === "down" || k === "ok" || k === "enter") && items.length) { gFocus = "grid"; move(); }
+    else if (k === "down") { gFocus = "side"; move(); }
+    else return;
+    drawGallery(); return;
+  }
+  if (gFocus === "side") {
+    if (k === "right" && items.length) { gFocus = "grid"; move(); }
+    else if (k === "up" && !gAlbum) { gFocus = "tabs"; move(); }
+    else if (k === "ok" || k === "enter") { galleryMenu(); return; }
+    else return;
+    drawGallery(); return;
+  }
+  if (k === "left") { if (gSel % cols) gSel--; else gFocus = "side"; }
+  else if (k === "right") { if (gSel % cols < cols - 1 && gSel < items.length - 1) gSel++; else return; }
+  else if (k === "down") { if (gSel + cols < items.length) gSel += cols; else return; }
+  else if (k === "up") { if (gSel >= cols) gSel -= cols; else if (!gAlbum) gFocus = "tabs"; else return; }
+  else if (k === "ok" || k === "enter") { galleryOk(); return; }
+  else return;
+  move(); drawGallery();
+}
+loadMedia();
+
+/* trophies: data from cache/trophies.js (trophies.py, scheduled task "AnyPS5 trophies" every minute) */
+let TR = null, trView = "games", trGame = "", trSel = 0, trGamesSel = 0, trFrom = "home", trListFrom = "games";
+const GRADES = ["platinum", "gold", "silver", "bronze"], GPTS = { platinum: 300, gold: 90, silver: 30, bronze: 15 };
+const GNAME = { platinum: "Platinum", gold: "Gold", silver: "Silver", bronze: "Bronze" };
+const TR_GSORT = { recent: "Recently Earned", progress: "Progress", az: "Alphabetical" }, TR_TSORT = { default: "Game Default", earned: "Date Earned", grade: "Grade", locked: "Not Earned First" };
+function cup(grade) { return `<svg class="cup ${grade}" viewBox="0 0 24 24"><path fill="currentColor" d="M6.2 3h11.6v4.6a5.8 5.8 0 0 1-11.6 0zM10.6 13.1h2.8v3.6h-2.8zM7.6 17.6h8.8l.9 3.2H6.7z"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="M6.2 5H3.6v1.2a3.6 3.6 0 0 0 3.3 3.6M17.8 5h2.6v1.2a3.6 3.6 0 0 1-3.3 3.6"/></svg>`; }
+function applyUser() { if (TR) TR.games.forEach(x => x.trophies.forEach(t => { t.earned = (t.e && me && (t.e[me.uid] || (isTestUser(me) && t.e._tests))) || null; })); }
+function loadTrophies(cb) { const sc = document.createElement("script"); sc.src = "cache/trophies.js?" + Date.now(); sc.onload = () => { TR = window.TROPHIES || null; sc.remove(); applyUser(); newTrophies(); if (cb) cb(); }; sc.onerror = () => { sc.remove(); if (cb) cb(); }; document.head.appendChild(sc); }
+function trStats(set) {
+  const st = { total: set.trophies.length, earned: 0, pts: 0, max: 0, last: 0, hasPlat: false, plat: false, got: { platinum: 0, gold: 0, silver: 0, bronze: 0 }, all: { platinum: 0, gold: 0, silver: 0, bronze: 0 } };
+  set.trophies.forEach(t => { const p = GPTS[t.grade] || 15; st.max += p; st.all[t.grade]++; if (t.grade === "platinum") st.hasPlat = true; if (t.earned) { st.earned++; st.pts += p; st.got[t.grade]++; st.last = Math.max(st.last, t.earned); if (t.grade === "platinum") st.plat = true; } });
+  st.pct = st.max ? Math.floor(st.pts * 100 / st.max) : 0; return st;
+}
+function trophyLevel(points) {
+  const tiers = [[99, 60], [100, 90], [100, 450], [100, 900], [100, 1350], [100, 1800], [100, 2250], [100, 2700], [100, 3150], [100, 3600]];
+  let level = 1, left = points;
+  for (const [count, step] of tiers) { const n = Math.min(count, Math.floor(left / step)); level += n; left -= n * step; if (n < count) return { level: Math.min(level, 999), into: left, step }; }
+  return { level: 999, into: 0, step: 1 };
+}
+function levelBadge(level) { const c = level >= 999 ? "#b9d3f5" : level >= 600 ? "#e3b347" : level >= 300 ? "#c3c8d1" : "#c9875a"; return `<svg viewBox="0 0 24 24"><path fill="${c}" d="M12 1.8l8.8 5.1v10.2L12 22.2l-8.8-5.1V6.9z"/><path fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.2" d="M12 5.2l5.9 3.4v6.8L12 18.8l-5.9-3.4V8.6z"/></svg>`; }
+function trSets() {
+  if (!TR) return [];
+  const played = id => { const g = ALL.find(x => x.id === id); return g && g.lastRun; };
+  const list = TR.games.filter(x => x.label === 0 || x.trophies.some(t => t.earned)).map(x => Object.assign({ st: trStats(x) }, x)).filter(x => x.st.earned || played(x.id));
+  const k = S.trSort || "recent";
+  return list.sort(k === "az" ? (a, b) => a.title.localeCompare(b.title) : k === "progress" ? (a, b) => b.st.pct - a.st.pct || a.title.localeCompare(b.title) : (a, b) => b.st.last - a.st.last || ((ALL.find(g => g.id === b.id) || {}).lastRun || "").localeCompare((ALL.find(g => g.id === a.id) || {}).lastRun || "") || a.title.localeCompare(b.title));
+}
+function trophySet(id) { applyUser(); return TR ? TR.games.find(x => x.id === id && x.label === 0) : null; }
+function trList(set) {
+  const k = S.trTSort || "default", rank = t => GRADES.indexOf(t.grade), list = set.trophies.slice();
+  if (k === "earned") list.sort((a, b) => (b.earned || 0) - (a.earned || 0) || a.id - b.id);
+  else if (k === "grade") list.sort((a, b) => rank(a) - rank(b) || a.id - b.id);
+  else if (k === "locked") list.sort((a, b) => (a.earned ? 1 : 0) - (b.earned ? 1 : 0) || a.id - b.id);
+  return list;
+}
+function trWhen(ms) { const d = new Date(ms); return (window.anyps5FormatDate ? window.anyps5FormatDate(d) : d.toLocaleDateString()) + " " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !S.clock24 }); }
+function trItems() { if (trView === "games") return trSets(); const set = TR && TR.games.find(x => x.key === trGame); return set ? trList(set) : []; }
+function openTrophies() { trFrom = screen === "trophies" ? trFrom : screen; trView = "games"; trSel = 0; show("trophies"); drawTrophies(); ok(); loadTrophies(() => { if (screen === "trophies") drawTrophies(); }); }
+function openTrophyList(key, from) { if (screen !== "trophies") trFrom = screen; trListFrom = from || "games"; if (trView === "games") trGamesSel = trSel; trView = "list"; trGame = key; trSel = 0; show("trophies"); drawTrophies(); ok(); }
+function drawTrophies() {
+  applyUser();
+  const el = $("#trophies"), list = $("#trList"); el.classList.toggle("list", trView === "list");
+  if (trView === "games") {
+    const sets = trSets(), all = TR ? TR.games.map(trStats) : [], pts = all.reduce((a, x) => a + x.pts, 0), lv = trophyLevel(pts), got = g => all.reduce((a, x) => a + x.got[g], 0);
+    $("#trHead").innerHTML = `<span>Trophies</span>`;
+    $("#trSum").innerHTML = `<div class="lv">${levelBadge(lv.level)}${lv.level}</div><div class="tx"><small>Total</small><b>${all.reduce((a, x) => a + x.earned, 0)}</b></div>` + GRADES.map(g => `<div class="g">${cup(g)}${got(g)}</div>`).join("");
+    if (trSel >= sets.length) trSel = Math.max(0, sets.length - 1);
+    list.innerHTML = !TR ? `<div class="trempty">Trophy data is not ready yet. It is read from every game's files every minute.</div>` : !sets.length ? `<div class="trempty">No trophies yet. Play a game and the trophies you earn show up here.</div>` :
+      sets.map((x, i) => `<div class="trg${i === trSel ? " sel" : ""}" data-i="${i}"><i class="ic" style="background-image:url('${x.icon || ""}')"></i><div class="nm"><b>${esc(x.title)}</b><em>${x.id.startsWith("CUSA") ? "PS4" : "PS5"}</em></div><div class="pl">${x.st.plat ? cup("platinum") : ""}</div><div class="pc">${x.st.pct}%<div class="trbarw"><i style="width:${x.st.pct}%"></i></div></div><div class="ct">${["gold", "silver", "bronze"].map(g => `<span>${cup(g)}${x.st.got[g]}</span>`).join("")}</div></div>`).join("");
+    $$("#trList .trg").forEach(e => e.onclick = ev => { ev.stopPropagation(); const i = +e.dataset.i; if (i === trSel) openTrophyList(sets[i].key, "games"); else { trSel = i; move(); drawTrophies(); } });
+  } else {
+    const set = TR && TR.games.find(x => x.key === trGame); if (!set) { trView = "games"; drawTrophies(); return; }
+    const st = trStats(set), items = trList(set);
+    $("#trHead").innerHTML = `<i style="background-image:url('${set.icon || ""}')"></i><span>${esc(set.title)}</span>`;
+    $("#trSum").innerHTML = (st.hasPlat ? `<div class="g">${cup(st.plat ? "platinum" : "none")}</div>` : "") + `<div class="tx"><small>Progress</small><b>${st.pct}%</b><div class="trbarw"><i style="width:${st.pct}%"></i></div></div><div class="tx"><small>Earned</small><b>${st.earned}/${st.total}</b></div>` + ["gold", "silver", "bronze"].map(g => `<div class="g">${cup(g)}${st.got[g]}</div>`).join("");
+    $("#trBar").innerHTML = `<span>All trophies: ${st.total}</span><span>Sort by: ${TR_TSORT[S.trTSort || "default"]}</span>`;
+    if (trSel >= items.length) trSel = Math.max(0, items.length - 1);
+    const grp = id => id !== -1 && set.groups && set.groups[String(id)] ? " · " + set.groups[String(id)] : "";
+    list.innerHTML = items.map((t, i) => { const hide = t.hidden && !t.earned; return `<div class="trc${t.earned ? "" : " lock"}${i === trSel ? " sel" : ""}" data-i="${i}"><i class="ti" style="${hide ? "" : `background-image:url('${t.icon}')`}">${hide ? "?" : ""}</i><div class="tm"><b>${esc(hide ? "Hidden Trophy" : t.name)}</b><span>${cup(t.grade)}${GNAME[t.grade]}${esc(grp(t.group))}</span><span>${t.earned ? "Earned" : "Not earned yet"}</span><span class="d2">${t.earned ? esc(trWhen(t.earned)) : ""}</span></div><div class="dt">${t.earned ? esc(trWhen(t.earned)) : ""}</div><div class="ds">${esc(hide ? "Keep playing to find out what this trophy is." : t.detail)}</div></div>`; }).join("");
+    $$("#trList .trc").forEach(e => e.onclick = ev => { ev.stopPropagation(); trSel = +e.dataset.i; move(); drawTrophies(); });
+  }
+  const on = list.querySelector(".sel"); if (on) on.scrollIntoView({ block: "nearest" });
+}
+function trSortMenu() {
+  const games = trView === "games", map = games ? TR_GSORT : TR_TSORT, key = games ? "trSort" : "trTSort", curk = S[key] || (games ? "recent" : "default");
+  openMenu($("#trBar").style.display !== "none" && !games ? $("#trBar") : $("#trHead"), Object.keys(map).map(k => [(curk === k ? "✓  " : "") + "Sort by: " + map[k], () => { S[key] = k; saveSettings(); trSel = 0; drawTrophies(); }]).concat([["Cancel", () => {}, "", "sep"]]), "psmenu");
+}
+function trophyInput(k) {
+  const n = trItems().length;
+  if (k === "up" && trSel > 0) { trSel--; move(); }
+  else if (k === "down" && trSel < n - 1) { trSel++; move(); }
+  else if (k === "options") { trSortMenu(); return; }
+  else if (k === "menu") { openCc(); return; }
+  else if ((k === "ok" || k === "enter") && trView === "games") { const sets = trSets(); if (sets[trSel]) openTrophyList(sets[trSel].key, "games"); return; }
+  else if (k === "back") {
+    if (trView === "list" && trListFrom === "games") { trView = "games"; trSel = trGamesSel; back(); drawTrophies(); return; }
+    show(trFrom === "trophies" || trFrom === "menu" ? "home" : trFrom || "home"); if (screen === "home") drawRow(); back(); return;
+  } else return;
+  drawTrophies();
+}
+function seenKey() { return "anyps5-trophies-seen-" + (me && me.uid || ""); }
+function markSeen(id) { try { const seen = JSON.parse(localStorage.getItem(seenKey()) || "null"); if (seen && !seen.includes(id)) { seen.push(id); localStorage.setItem(seenKey(), JSON.stringify(seen)); } } catch (x) {} }
+function newTrophies() {
+  if (!TR || !me || !me.uid) return;
+  applyUser();
+  let seen = null; try { seen = JSON.parse(localStorage.getItem(seenKey()) || "null"); } catch (x) { seen = null; }
+  const ids = [], fresh = [];
+  TR.games.forEach(x => x.trophies.forEach(t => { if (t.earned) { const id = x.key + ":" + t.id; ids.push(id); if (seen && !seen.includes(id)) fresh.push([x, t]); } }));
+  fresh.sort((a, b) => a[1].earned - b[1].earned).slice(-4).forEach(([x, t]) => toast("Trophy earned: " + (t.name || GNAME[t.grade] + " trophy"), x.title, t.icon));
+  if (fresh.length > 4) toast((fresh.length - 4) + " more trophies earned", "Trophies");
+  try { localStorage.setItem(seenKey(), JSON.stringify(ids)); } catch (x) {}
+}
+loadTrophies();
+setInterval(() => { if (!ingame) loadTrophies(() => { if (screen === "trophies") drawTrophies(); }); }, 120000);
+
+/* legend + clock */
+const LEG = { profiles: [["Select", "ok"], ["Help", "create"]], home: [["Select", "ok"], ["Options", "options"], ["Control center", "menu"], ["Create", "create"]], settings: [["Select", "ok"], ["Back", "back"]], library: [["Play", "ok"], ["Back", "back"], ["Tabs", "r1"], ["Sort", "options"]], search: [["Type", "ok"], ["Delete", "del"], ["Space", "space"], ["Done", "enter"], ["Back", "back"]], searchhist: [["Search", "ok"], ["Delete", "del"], ["Back", "back"]], cc: [["Select", "ok"], ["Close", "back"]], menu: [["Select", "ok"], ["Back", "back"]], trophies: [["Select", "ok"], ["Sort", "options"], ["Back", "back"]], gallery: [["Select", "ok"], ["Options", "options"], ["Back", "back"]], notes: [["Select", "ok"], ["Delete", "del"], ["Options", "options"], ["Back", "back"]] };
+const KEYNAME = { ok: ["Enter", "A"], back: ["Esc", "B"], menu: ["Q", "PS"], options: ["O", "☰"], help: ["H", "⧉"], r1: ["Tab", "R1"], create: ["C", "⧉"], del: ["Del", "□"], space: ["Space", "△"], enter: ["Enter", "R2"] };
+let legendWas = "";
+setInterval(() => {
+  const clk = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !S.clock24 }); $("#clock").textContent = clk; $("#pclock").textContent = clk; $("#ccclock").textContent = clk;
+  const overlay = helpOn || $("#osk").classList.contains("on") || $("#pin").classList.contains("on") || createOn();
+  const lk = notesOn() ? "notes" : screen === "search" && sFocus === "grid" && !sQuery.trim() ? "searchhist" : screen, key = (overlay ? "" : lk) + lastPad;
+  if (key === legendWas) return; legendWas = key;
+  const l = overlay ? [] : (LEG[lk] || []);
+  $("#legend").innerHTML = l.map(([t, k]) => `<span><b>${KEYNAME[k][lastPad ? 1 : 0]}</b>${t}</span>`).join("");
+}, 250);
+</script>
+</body>
+</html>

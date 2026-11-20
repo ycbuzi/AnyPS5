@@ -1,0 +1,30 @@
+7a8
+> #include <algorithm>
+8a10
+> #include <vector>
+162a165,185
+> bool SkipsOverBarrier(const SpirvEmitterState& state, const IrProgram& program, const BlockInfo& info) {
+>     const auto& term = info.terminator;
+>     if (term.loopHeader || term.kind != TerminatorKind::ConditionalBranch || term.mergeBlock == InvalidControlFlowId) return false;
+>     const IrBlock* merge = TargetBlock(program, term.mergeBlock);
+>     std::vector<const IrBlock*> work{TargetBlock(program, term.trueBlock), TargetBlock(program, term.falseBlock)};
+>     std::vector<const IrBlock*> seen;
+>     while (!work.empty()) {
+>         const IrBlock* block = work.back();
+>         work.pop_back();
+>         if (block == nullptr || block == merge || std::find(seen.begin(), seen.end(), block) != seen.end()) continue;
+>         seen.push_back(block);
+>         if (seen.size() > program.BlockOrder().size()) return false;
+>         for (const IrValue* inst : block->Instructions()) {
+>             if (inst->Opcode() == IrOpcode::Barrier) return true;
+>             if (state.waveLdsScope == spv::ScopeWorkgroup && SharedAccessOf(inst->Opcode()) != SharedAccess::None) return true;
+>         }
+>         for (const IrBlock* next : block->Successors()) work.push_back(next);
+>     }
+>     return false;
+> }
+> 
+165a189,191
+>     if (HostSubgroupSingleLane(state) && (kind == BranchCondition::ExecZero || kind == BranchCondition::ExecNonZero) && SkipsOverBarrier(state, state.program, info)) {
+>         return ConstantBool(state, kind == BranchCondition::ExecNonZero);
+>     }
